@@ -4,7 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "turbo build",
+    "format": "pnpm exec biome format --write .",
+    "check": "pnpm exec biome check --write .",
+    "knip": "knip",
+    "jscpd": "jscpd ./apps ./packages",
   },
   "keywords": [],
   "author": "",
@@ -17,5 +21,8 @@
     }
   },
   "packageManager": "pnpm@11.24.0",
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "turbo": "^2.10.12"
+  }
 }
