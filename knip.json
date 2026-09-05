@@ -29,8 +29,8 @@
       "ignoreDependencies": ["dotenv"]
     },
     "apps/subgraph": {
-      "entry": ["src/**/*.ts"],
-      "ignoreDependencies": ["@protofire/subgraph-toolkit", "matchstick-as"]
+      "entry": ["src/mappings/*.ts", "tests/**/*.ts", "scripts/*.mjs"],
+      "ignoreDependencies": ["assemblyscript"]
     },
     "packages/shared": {
       "entry": ["test/**/*.ts"]

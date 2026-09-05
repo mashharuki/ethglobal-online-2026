@@ -1,38 +1,64 @@
 specVersion: 0.0.4
-description: Subgraph for the MyToken (ERC-721) contract on Hedera
-repository: https://github.com/hashgraph/hedera-subgraph-example
+description: TrueCollective Rights Graph (RightsNFT + RightsRegistry on Hedera Testnet) - discovery and audit only
+repository: https://github.com/mashharuki/ethglobal-online-2026
 schema:
   file: ./schema.graphql
 dataSources:
   - kind: ethereum/contract
-    name: MyToken
-    network: testnet
+    name: RightsNFT
+    network: {{network}}
     source:
-      address: "{{MyToken}}"
-      abi: MyToken
+      address: "{{RightsNFT}}"
+      abi: RightsNFT
       startBlock: {{startBlock}}
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.6
       language: wasm/assemblyscript
       entities:
-        - Collection
-        - Token
+        - RightsToken
         - Owner
-        - Transfer
-        - Approval
-        - ApprovalForAll
-        - OwnershipTransferred
+        - TransferEvent
       abis:
-        - name: MyToken
-          file: ./abis/MyToken.json
+        - name: RightsNFT
+          file: ./abis/RightsNFT.json
       eventHandlers:
         - event: Transfer(indexed address,indexed address,indexed uint256)
           handler: handleTransfer
-        - event: Approval(indexed address,indexed address,indexed uint256)
-          handler: handleApproval
-        - event: ApprovalForAll(indexed address,indexed address,bool)
-          handler: handleApprovalForAll
-        - event: OwnershipTransferred(indexed address,indexed address)
-          handler: handleOwnershipTransferred
-      file: ./src/mappings.ts
+        - event: PolicyUpdated(indexed uint256,bytes32,bytes32)
+          handler: handlePolicyUpdated
+      file: ./src/mappings/rightsNft.ts
+  - kind: ethereum/contract
+    name: RightsRegistry
+    network: {{network}}
+    source:
+      address: "{{RightsRegistry}}"
+      abi: RightsRegistry
+      startBlock: {{startBlock}}
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - Receipt
+        - Consumption
+        - RevenueAllocation
+        - LicenseEpochChange
+        - Claim
+      abis:
+        - name: RightsRegistry
+          file: ./abis/RightsRegistry.json
+        - name: RightsNFT
+          file: ./abis/RightsNFT.json
+      eventHandlers:
+        - event: ReceiptIssued(indexed bytes32,indexed uint256,bytes32,indexed address,uint64,uint32)
+          handler: handleReceiptIssued
+        - event: ReceiptConsumed(indexed bytes32,uint32)
+          handler: handleReceiptConsumed
+        - event: RevenueAllocated(indexed uint256,indexed bytes32,address,uint256,address,uint256,uint256)
+          handler: handleRevenueAllocated
+        - event: LicenseEpochBumped(indexed uint256,uint256)
+          handler: handleLicenseEpochBumped
+        - event: Claimed(indexed address,uint256)
+          handler: handleClaimed
+      file: ./src/mappings/rightsRegistry.ts
