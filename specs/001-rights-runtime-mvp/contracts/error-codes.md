@@ -32,7 +32,7 @@
 
 | ErrorCode | HTTP | 用途 |
 |---|---|---|
-| `NONCE_INVALID_OR_EXPIRED` | 401 | `OwnerAuthChallenge` / `KeyGateChallenge` の nonce 再利用・期限切れ（FR-024） |
+| `NONCE_INVALID_OR_EXPIRED` | 401 | `OwnerAuthChallenge` / `LicenseeAuthChallenge` の nonce 再利用・期限切れ（FR-024。**2026-09-05 R-1a 改訂**：`KeyGateChallenge` は鍵導出専用に用途限定され、この nonce 検証の対象からは外れる） |
 | `SIGNATURE_INVALID` | 401 | EIP-712 署名の復元アドレス不一致 |
 | `NOT_CURRENT_OWNER` | 403 | 所有者パスで、有効なセッション提示が無く `ownerOf(tokenId) != caller`（FR-002 / FR-003(b)）。移転前セッションの提示時は `#11 OWNER_EPOCH_MISMATCH` が優先 |
 | `CONTRACT_WALLET_UNSUPPORTED` | 400 | `ownerOf` / `licensee` がコード付きアドレス（コントラクトウォレット、FR-025） |
@@ -40,6 +40,11 @@
 | `SETTLEMENT_NOT_FINALIZED` | 409 | R-2 フォールバック時、`finalize` 未完了で `share_G` 要求 |
 | `MANIFEST_SCHEMA_INVALID` | 422 | zod バリデーション失敗（Creator の登録時） |
 | `RATE_LIMITED` | 429 | レート制限（§9.2） |
+| `POLICY_CONTENT_MISMATCH` | 403 | **2026-09-05 追加（R-6a、Critical・Codex #1／Fable C-1 独立一致）**：`policyHash` が `price`/`maxUses`/`transferMode` 等の内容から再計算した値と不一致（正規の `policyHash` を使い回しつつ内容だけ改変した攻撃を検出） |
+| `EXPIRY_MISMATCH` | 403 | **2026-09-05 追加（R-6a）**：`issuedAt` が見積（402 応答）時刻から許容窓を超えている（古い見積の使い回し防止） |
+| `COMMITTED_PARAMS_MISMATCH` | 409 | **2026-09-05 追加（R-2a、Codex #2 Critical）**：R-2 フォールバックの `finalize` で、渡された `receiptParams` が `payFor` 時に固定した `committedParamsHash` と不一致（誰でも呼べる `finalize` による収益転用の防止） |
+| `MCP_SESSION_MISMATCH` | 403 | **2026-09-05 追加（R-9a、Fable H-1 発見）**：MCP `decrypt_content` に渡された `receiptHash` が、呼び出し元と異なる `Mcp-Session-Id` で購入されたもの（`receiptHash` は subgraph 等で公開されるため、この確認が無いと第三者が他人の購入済みコンテンツを読める） |
+| `SETTLEMENT_IN_PROGRESS` | 409 | **2026-09-06 追加（R-10、Codex bounded exec レビュー指摘）**：同一 `payment_id` の別リクエストが `status='pending'` のまま処理中。新規 settle は起動せず、短時間ポーリング後もこの状態なら返す（同時 settle の二重実行防止） |
 
 ## JSON エラー body（Gateway）
 

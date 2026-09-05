@@ -45,9 +45,9 @@
       "additionalProperties": false,
       "required": ["price", "durationSec", "maxUses"],
       "properties": {
-        "price": { "type": "string", "pattern": "^[1-9][0-9]*$", "description": "ネイティブ HBAR の weibar（10^18 = 1 HBAR）整数文字列。native 精度下限 tinybar のため 10^10 の倍数であること" },
+        "price": { "type": "string", "pattern": "^[1-9][0-9]*$", "description": "ネイティブ HBAR の weibar（10^18 = 1 HBAR）整数文字列（人間可読・UI 表示用）。native 精度下限 tinybar のため 10^10 の倍数であること。**2026-09-05 R-4 改訂**：コントラクト内部の会計は tinybar 単位（`price / 1e10`）で行うため、ここでの weibar 表現はアプリ層の zod refine で 10^10 の倍数チェックのみ行い、`RightsRegistry.settleAndIssue` へ渡す前に tinybar へ変換する" },
         "durationSec": { "type": "integer", "minimum": 1 },
-        "maxUses": { "type": "integer", "minimum": 1 }
+        "maxUses": { "type": "integer", "minimum": 1, "maximum": 4294967295, "description": "uint32 の範囲に制約（2026-09-05 M-5 対応：Solidity/DB/GraphQL 側の型上限とスキーマの不整合を防ぐ）" }
       }
     },
     "permissions": {
@@ -72,5 +72,5 @@
       "description": "creatorBps + ownerBps == 10000（zod refine で検証。2 者のみ、FR-022）"
     }
   },
-  "$comment": "policyHash = keccak256(abi.encode(paidAccess.price, paidAccess.durationSec, paidAccess.maxUses, permissionsBitflags, transferModeEnum, revenueSplit.creatorBps, revenueSplit.ownerBps)) — R-6。conditionsHash = keccak256(abi.encode(ownerConditionSelector, licenseConditionSelector, verifyingContract))。"
+  "$comment": "policyHash = keccak256(abi.encode(priceTinybar, paidAccess.durationSec, paidAccess.maxUses, permissionsBitflags, transferModeEnum, revenueSplit.creatorBps, revenueSplit.ownerBps)) — R-6。**priceTinybar = paidAccess.price（weibar 整数文字列） / 1e10** へ変換した値を使う（2026-09-05 R-4/R-6a 改訂：Manifest 上の price は人間可読の weibar 表記のままだが、policyHash の算出・RightsNFT.setPolicy への登録・settleAndIssue での再検証は全て tinybar 単位の同一値で行わないと、契約が保持する policyHash と settleAndIssue が再導出する policyHash が一致しなくなる。Manifest 作成時〔RightsNFT.setPolicy 呼び出し前〕と settle 検証時の両方で、同じ /1e10 変換を通してから policyHash を計算すること）。conditionsHash = keccak256(abi.encode(ownerConditionSelector, licenseConditionSelector, verifyingContract))。"
 }

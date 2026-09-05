@@ -22,9 +22,9 @@
 ```json
 [ { "assetId": "0x…", "tokenId": "1", "nftContract": "0x…",
     "previewURI": "ipfs://…", "manifestURI": "ipfs://…",
-    "paidAccess": { "price": "100000", "durationSec": 300, "maxUses": 5 },
+    "paidAccess": { "price": "5000000000000000000", "durationSec": 300, "maxUses": 5 },
     "transferMode": "SURVIVE_TRANSFER",
-    "permissions": { "commercial": true, "aiTraining": false, "derivative": true } } ]
+    "permissions": { "commercialUse": true, "aiTraining": false, "derivativeGeneration": true } } ]
 ```
 
 Rights Graph（subgraph）経由の発見であり、**この結果を `buy_access` / `decrypt_content` の認可判定根拠として使ってはならない**（FR-020、憲章 II）——各ツールは呼び出しの都度オンチェーンを直読みする。
@@ -33,7 +33,7 @@ Rights Graph（subgraph）経由の発見であり、**この結果を `buy_acce
 
 ## `buy_access`
 
-対象資産の有料アクセス権を x402 で購入する（User Story 2 / FR-004〜009）。MCP Server が保持する資金付き EOA（Workers Secrets Store）が支払人になる。
+対象資産の有料アクセス権を x402 で購入する（User Story 2 / FR-004〜009）。**MCP Server が使う決済ウォレットは Privy server wallet（session signer + spend policy、R-9）** — 生の秘密鍵は Gateway / MCP サーバーが保持しない。
 
 **Input**:
 ```json
@@ -45,7 +45,8 @@ Rights Graph（subgraph）経由の発見であり、**この結果を `buy_acce
 2. `purchaseRequestHash` を計算し、`mcp/wallet.ts` の Privy server wallet（session signer）で x402「exact」（ネイティブ HBAR）の認可署名を作成
 3. `x402/facilitator.ts`（Blocky402）経由で `RightsRegistry.settleAndIssue{value: price}` を submit（1 Hedera tx：HBAR 受領 → `RevenueAllocation` → `ReceiptIssued`。primary 不成立時は `payFor` + `finalize`）
 4. tx 確定後、`receipt/issue.ts` が EIP-712 Receipt にサーバ署名
-5. `audit_log`（`action='x402_settle'`、呼び出し元を `mcp-agent` として記録）
+5. **`receiptHash` を、この呼び出しの MCP セッション（`Mcp-Session-Id`）に束縛する**（`mcp_session_binding` テーブルへ記録。2026-09-05 新設、R-9a・Fable H-1 対応。下記「信頼モデル」参照）
+6. `audit_log`（`action='x402_settle'`、呼び出し元を `mcp-agent` として記録）
 
 **Output**:
 ```json
@@ -67,8 +68,9 @@ Rights Graph（subgraph）経由の発見であり、**この結果を `buy_acce
 ```
 
 **サーバ処理**（`gateway-api.md` の `POST /keygate/share`（licensee パス）と同一の三層原子制御・R-3 を内部で実行）
-1. `mcp/wallet.ts` の秘密鍵で `KeyGateChallenge{assetId, purpose:"licensee", receiptHash}` に署名
-2. `ReceiptLock` Durable Object 内で `receiptStatus` 直読み・`useIndex` 採番・`RightsRegistry.consume` submit・`share_G` 放出（settle-before-release、憲章 V）
+0. **`receiptHash` がこの呼び出しの `Mcp-Session-Id` に束縛された（＝この MCP セッションで `buy_access` した）Receipt であることを `mcp_session_binding` で確認する** → 否なら `MCP_SESSION_MISMATCH`（2026-09-05 新設、R-9a・Fable H-1 対応：`receiptHash` は subgraph/HashScan で公開されるため、この確認が無いと第三者が他人の Receipt で `decrypt_content` を呼び平文を得られる）
+1. `mcp/wallet.ts` の Privy server wallet（session signer）で `LicenseeAuthChallenge{nonce, chainId, receiptHash, expiresAt}` に署名し認証する。鍵導出用の `KeyGateChallenge{assetId, purpose:"licensee", receiptHash}` への署名は初回のみ（R-1a）
+2. `ReceiptLock` Durable Object 内で `receiptStatus` 直読み・`useIndex` 採番（DO 自前カウンタ、R-3a）・`RightsRegistry.consume` submit（`OperatorTxQueue` 経由）・`share_G` 放出（settle-before-release、憲章 V）
 3. `share_U` を導出し `K = share_G XOR share_U` を復元、暗号化コンテンツを取得して **MCP Server プロセス内で** `AES-256-GCM` 復号する（このツールに関しては MCP Server 自身が「クライアント」としての役割を担う。§9.1 参照。Access Gateway 自体は `K`・平文を扱わないという不変条件は変わらない）
 4. 復号済みデータセットをツールの戻り値として返す
 
@@ -78,12 +80,13 @@ Rights Graph（subgraph）経由の発見であり、**この結果を `buy_acce
   "dataset": { "format": "csv", "content": "region,segment,mrr_usd,churn_pct\n…" } }
 ```
 
-**エラー**: `LICENSEE_MISMATCH` / `RECEIPT_EXPIRED` / `USE_LIMIT_EXCEEDED` / `RECEIPT_ALREADY_CONSUMED` / `LICENSE_INVALIDATED_ON_TRANSFER` / `LICENSE_EPOCH_MISMATCH`（[error-codes.md](./error-codes.md) #1・#2・#6・#7・#8・#13・#14）。
+**エラー**: `MCP_SESSION_MISMATCH` / `LICENSEE_MISMATCH` / `RECEIPT_EXPIRED` / `USE_LIMIT_EXCEEDED` / `RECEIPT_ALREADY_CONSUMED` / `LICENSE_INVALIDATED_ON_TRANSFER` / `LICENSE_EPOCH_MISMATCH`（[error-codes.md](./error-codes.md) #1・#2・#6・#7・#8・#13・#14 + 補助コード）。
 
 ---
 
 ## 信頼モデル・スコープ注記
 
-- MCP Server は資金付き EOA の秘密鍵を保持し、`buy_access` / `decrypt_content` を代行実行する。**URL に到達できる任意の MCP クライアントがこのウォレットから支出できる**（デモ用の残高制限・レート制限で許容。`docs/idea.md` §9.1 信頼モデル・§19 リスク）。
+- **（2026-09-05 訂正：本節は R-9 導入前の旧記述だった。Privy server wallet 採用後の正しい記述に更新）** MCP Server は資金付き EOA の生秘密鍵を保持しない。`buy_access` / `decrypt_content` の決済は **Privy server wallet（session signer + spend policy、R-9）** が代行し、Gateway / MCP サーバーは policy 制約下で署名要求を作るのみ。**それでも `discover_assets` / `buy_access` / `decrypt_content` の3ツール自体は無認証**（デモ用途）であり、URL に到達できる任意の MCP クライアントが spend policy の上限内で支出・購入できる点は変わらない（`docs/idea.md` §9.1 信頼モデル・§19 リスク）。
+- **`decrypt_content` は購入者（MCP セッション）に束縛される**（2026-09-05 新設、R-9a・Fable H-1 対応）：`receiptHash` は subgraph/HashScan で公開されるため、無認証のまま `decrypt_content` が任意の `receiptHash` を受理すると第三者が他人の購入済みコンテンツを読めてしまう。`mcp_session_binding`（`data-model.md`）で「この `receiptHash` を購入した MCP セッション」に限定することで、無認証エンドポイントのままこの穴を塞ぐ。
 - `analyze`（データセットへの分析質問への回答）はツール化しない。SC-007 / SC-009 の人手0自動検証は、CI 専用の `apps/agent/` ハーネス（`apps/agent/src/mcpClient.ts` が本ツール群を呼び、`apps/agent/src/analyze.ts` が Claude tool-use で分析する）で担保する（`research.md` 参照）。
 - 認証・レート制限は本 MVP では簡略化（デモ用途）。本番運用では MCP クライアントごとの API キー発行・ウォレット分離が必要（非ゴール）。

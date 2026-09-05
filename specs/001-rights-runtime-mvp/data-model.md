@@ -111,8 +111,8 @@ settleAndIssue(auth, receiptParams) payable  ── R-2 primary：1 tx で原子
 
 | フィールド | 型 | 説明 |
 |---|---|---|
-| `claimable[account]` | `uint256` | 引き出し可能なネイティブ HBAR 残高（weibar、10^18 = 1 HBAR） |
-| `allocationOf[paymentId]` | `struct{creator, creatorAmount, owner, ownerAmount, blockNumber}` | 監査用の不可逆記録（FR-009, FR-010） |
+| `claimable[account]` | `uint256` | 引き出し可能なネイティブ HBAR 残高（**tinybar**、10^8 = 1 HBAR。2026-09-05 R-4 改訂：weibar 建てだと `mulDiv` 按分が tinybar 境界に乗らず claim 失敗・dust 滞留の原因になるため tinybar に変更。`.call{value:}` 送金時にのみ `× 1e10` で weibar へ戻す） |
+| `allocationOf[paymentId]` | `struct{creator, creatorAmount, owner, ownerAmount, blockNumber}` | 監査用の不可逆記録（FR-009, FR-010）。`creatorAmount`/`ownerAmount` は tinybar |
 
 **状態遷移**
 
@@ -191,7 +191,8 @@ settleAndIssue → claimable[creator] += creatorAmount
 
 | ストア | 役割 |
 |---|---|
-| **Durable Object `ReceiptLock`**（`idFromName(receiptHash)`） | 同一 Receipt への `consume` を単一スレッドで直列化（R-3 の第 1 層）。状態は持たず「1 Receipt = 1 キュー」の実行境界としてのみ使う |
+| **Durable Object `ReceiptLock`**（`idFromName(receiptHash)`） | 同一 Receipt への `consume` を単一スレッドで直列化（R-3 の第 1 層）。`useIndex` の自前採番カウンタを保持（2026-09-05 R-3a：`eth_call usedCount` に都度依存しない）。「1 Receipt = 1 キュー」の実行境界 |
+| **Durable Object `OperatorTxQueue`**（単一インスタンス、2026-09-05 新設・R-3a・Fable H-12対応） | `HEDERA_OPERATOR_KEY` からの tx 送出（`consume` 等）を一元化し nonce を逐次採番。異なる `receiptHash` の `ReceiptLock` から同時に tx 送出依頼が来ても nonce 競合を起こさない |
 | **Workers KV** `SHARE_G`（key = `assetId`） | `share_G` を KEK（Secrets Store）で暗号化して保管。読みは `share_G` 放出時のみ |
 | **Workers Secrets Store** | `share_U[assetId]` / `RECEIPT_SIGNER_KEY` / `KV_KEK` / `HEDERA_OPERATOR_KEY`（DB・KV の外、§2.4） |
 | **PostgreSQL（Hyperdrive 経由、drizzle スキーマ）** | 下記テーブル。`SELECT ... FOR UPDATE` / `UNIQUE` 制約（憲章 V） |
@@ -202,7 +203,9 @@ table wallet_blinded_shares
   asset_id            bytea
   wallet              bytea
   path                text  CHECK (path IN ('owner','licensee'))
-  blinded_u           bytea NOT NULL          -- share_U XOR HKDF(sig_wallet)
+  blinded_u           bytea NOT NULL          -- share_U XOR HKDF(sig_wallet)。2026-09-05 R-1a：この行が存在すれば
+                                              -- 以降のアクセスは認証チャレンジのみで済み、KeyGateChallenge への
+                                              -- 再署名（sig_wallet の再送）は不要（初回のみ計算・保存）
   access_epoch_at_grant  numeric              -- owner パスのみ（監査・UX 表示用、認可には不使用）
   receipt_hash        bytea                   -- licensee パスのみ
   created_at          timestamptz
@@ -218,22 +221,53 @@ table receipt_consumption
                                               -- 同一 use_index への share_G 再配信を許容（consume は再送しない、spec Edge Case #1 / FR-007 / I9）
   created_at          timestamptz
   UNIQUE (receipt_hash, use_index)            -- 憲章 V
+  -- 2026-09-05 追加（R-3a・Codex #10／Fable H-6 対応。2026-09-06 訂正：別 use_index への再採番は誤り）：
+  --   UNIQUE 衝突時の復旧規則。既存行が status='locked' かつ (now - created_at) > 60s の場合、オンチェーン
+  --   consumed[receipt_hash][use_index] を直接確認し、true なら 'settled' へ補正（既存 TTL 規則に合流）、
+  --   false なら 'failed' にして **同一の use_index** で consume を再送する（別の use_index へは進めない ―
+  --   maxUses=1 のような境界で、未送信のまま失敗した index 0 を放棄して index 1 を新規採番すると
+  --   USE_LIMIT_EXCEEDED となり支払い済みの利用権が消費されずに失われる。Codex bounded exec レビュー指摘）。
+  --   use_index 自体は eth_call usedCount からではなく ReceiptLock DO の自前カウンタから払い出す
+  --   （mirror node の反映遅延による誤採番を避けるため。DO 起動時のみ usedCount で初期化）
 
 table payment_binding
-  payment_id          bytea
-  purchase_request_hash bytea
-  receipt_hash        bytea NOT NULL
+  payment_id          bytea PRIMARY KEY       -- 2026-09-05 修正（R-10・Codex #5／Fable H-2 対応）：単独 PK に変更。
+                                              -- 旧 UNIQUE(payment_id, purchase_request_hash) は「同一 payment_id・
+                                              -- 別内容」の共存を許してしまい、憲章 V の一意性要件を満たさなかった。
+                                              -- payment_id は client の自由入力にせず、**buyer 署名ペイロード（X-PAYMENT の
+                                              -- 署名対象）の keccak** から決定的に導出する（2026-09-06 訂正：facilitator の
+                                              -- settle 応答〔tx id〕は settle 後にしか得られず INSERT 時点には使えない循環依存
+                                              -- だったため撤回、Codex 指摘）。
+  purchase_request_hash bytea NOT NULL
+  receipt_hash        bytea                   -- settle 確定後に埋める（pending 中は NULL）
   amount              numeric NOT NULL
+  status              text CHECK (status IN ('pending','settled','failed')) NOT NULL DEFAULT 'pending'
+                                              -- INSERT 衝突時：purchase_request_hash が一致すれば
+                                              --   settled → 冪等応答（保存済み receiptHash を返す、settle 再実行しない）
+                                              --   pending → 新規 settle を起動せず短時間ポーリング（既存処理が実行中の
+                                              --     可能性があるため。2026-09-06 追加、Codex 指摘）。変化なければ
+                                              --     SETTLEMENT_IN_PROGRESS
+                                              --   failed → settle 再試行可
+                                              -- 不一致なら PAYMENT_ID_PAYLOAD_CONFLICT
   created_at          timestamptz
-  UNIQUE (payment_id, purchase_request_hash)  -- 憲章 V（PAYMENT_ID_PAYLOAD_CONFLICT）
 
 table auth_nonce
   nonce               bytea PRIMARY KEY
   wallet              bytea NOT NULL
-  purpose             text NOT NULL           -- 'owner-access' | 'keygate-challenge'
+  purpose             text NOT NULL           -- 'owner-access' | 'keygate-challenge'（licensee 認証、2026-09-05 R-1a で
+                                              -- LicenseeAuthChallenge の nonce として再利用。KeyGateChallenge〔鍵導出〕は
+                                              -- 固定チャレンジのままここには乗らない）
   chain_id            integer NOT NULL
   expires_at          timestamptz NOT NULL
   used_at             timestamptz             -- 一度使ったら埋める（FR-024）
+
+table mcp_session_binding                     -- 2026-09-05 新設（R-9a・Fable H-1 対応）
+  receipt_hash        bytea PRIMARY KEY       -- buy_access で発行された Receipt
+  mcp_session_id      bytea NOT NULL          -- MCP Streamable HTTP の Mcp-Session-Id（この Receipt を購入したセッション）
+  created_at          timestamptz
+  -- decrypt_content は receipt_hash → mcp_session_id を引き、呼び出し元の Mcp-Session-Id と一致するかを検証する
+  -- （不一致は MCP_SESSION_MISMATCH）。receiptHash は subgraph/HashScan で公開されるため、この束縛が無いと
+  -- 第三者が他人の購入済み Receipt で decrypt_content を呼び平文を取得できてしまう。
 
 table audit_log
   id                  bigserial PRIMARY KEY
@@ -261,11 +295,16 @@ ReceiptLock DO 内（1 リクエストずつ）:
   1. eth_call RightsRegistry.receiptStatus / hasValidConsumption   -- 憲章 II の権威
   2. BEGIN;
        SELECT * FROM receipt_consumption WHERE receipt_hash = $1 FOR UPDATE;   -- defense-in-depth
-       use_index := usedCount(on-chain)
+       use_index := DO 自前カウンタ.next()    -- 2026-09-05 修正（R-3a）：起動時のみ usedCount(on-chain) で
+                                              -- 初期化。以降は eth_call に依存しない（mirror node の反映遅延対策）
        INSERT INTO receipt_consumption(receipt_hash, use_index, wallet, status)
          VALUES ($1, $n, $wallet, 'locked');            -- UNIQUE 制約で二重を弾く
      COMMIT;
-  3. RightsRegistry.consume($1, $n) を submit            -- オンチェーン最終権威
+       -- UNIQUE 衝突時（2026-09-05 追加、R-3a。2026-09-06 訂正）：既存行が 'locked' かつ 60s 超過なら consumed(on-chain) を確認し
+       -- true→'settled' 補正／false→'failed' にして**同一 use_index で consume 再送**（別 use_index への再採番は不可）。
+       -- 60s 以内は RECEIPT_ALREADY_CONSUMED
+  3. OperatorTxQueue DO へ consume($1, $n) の送出を依頼    -- 2026-09-05 追加（R-3a・Fable H-12対応）：
+                                                          -- nonce 採番を一元化し、異なる receiptHash 間の tx 競合を防ぐ
   4. tx 確定 → status='settled', onchain_tx=…  →  KV から share_G を取得・放出
      tx revert → status='failed'  →  custom error を ErrorCode にマップして返す
 ```
@@ -276,7 +315,7 @@ ReceiptLock DO 内（1 リクエストずつ）:
 
 | キー | 用途 |
 |---|---|
-| `share_U[assetId]` | KeyGate の client share の素。Gateway が blinding 計算時に一時参照し、平文をメモリ保持しない（R-1）。**licensee パスは発行時に破棄 → 憲章 VI 準拠。owner パスは新所有者のたびに再取得が必要なため Gateway が再取得可能＝残存信頼点**（plan.md Complexity Tracking / R-1「憲章 VI との関係」）。production は Shamir 2-of-3 |
+| `share_U[assetId]` | KeyGate の client share の素。Gateway が blinding 計算時に一時参照し、平文をメモリ保持しない（R-1）。**licensee パスは発行時に破棄 → 憲章 VI 準拠。owner パスは新所有者のたびに再取得が必要なため Gateway が再取得可能＝残存信頼点**（plan.md Complexity Tracking / R-1「憲章 VI との関係」）。production は Shamir 2-of-3。**2026-09-05 R-1a：`blindedU` の計算（＝この `share_U` の参照）は「初回アクセス成功時」の 1 回のみ発生し、以降は `wallet_blinded_shares` の既存値を再利用するため、`share_U` への参照頻度自体も従来より減る** |
 | `RECEIPT_SIGNER_KEY` | EIP-712 Rights Receipt の署名鍵（利便クレデンシャル。偽造されてもオンチェーン `hasValidConsumption` が独立検証、`docs/idea.md` §9.1） |
 | `KV_KEK` | Workers KV `SHARE_G` に入れる `share_G` の暗号化鍵 |
 | `HEDERA_OPERATOR_KEY` | Gateway が `consume` / デプロイ tx を送るオペレータ鍵 |
@@ -310,13 +349,17 @@ ReceiptLock DO 内（1 リクエストずつ）:
 | 16 | `nonce` | `bytes32` | 二重発行防止 |
 | 17 | `issuedAt` | `uint64` | |
 
-### `KeyGateChallenge`（`share_U` blinding 用の固定チャレンジ）
+### `KeyGateChallenge`（`share_U` blinding **専用**の固定チャレンジ、2026-09-05 R-1a：用途を鍵導出に限定し認証には使わない）
 
 `{ assetId: bytes32, purpose: string /* "owner" | "licensee" */, receiptHash: bytes32 /* licensee のみ、owner は 0x00.. */ }`
 
 ### `OwnerAuthChallenge`（所有者アクセスの署名要求、FR-024）
 
-`{ nonce: bytes32, chainId: uint256, tokenId: uint256, expiresAt: uint64 }`
+`{ nonce: bytes32, chainId: uint256, tokenId: uint256, assetId: bytes32 /* 2026-09-05 R-11 追加：Cross-Resource 攻撃防止 */, expiresAt: uint64 }`
+
+### `LicenseeAuthChallenge`（購入者アクセスの署名要求、2026-09-05 新設・R-1a）
+
+`{ nonce: bytes32, chainId: uint256, receiptHash: bytes32, expiresAt: uint64 }`
 
 ---
 
