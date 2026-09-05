@@ -15,6 +15,18 @@ Development follows **Spec-Driven Development (SDD)** via **GitHub Spec Kit**, d
 - The constitution references a canon document `docs/idea.md` — **this file does not exist in the repo yet**; treat `spec.md` / `plan.md` as the working source of truth until it's added.
 - All Spec Kit artifacts (spec/plan/tasks/checklists/constitution and command output) are written in **Japanese** — see `.claude/rules/speckit-language.md` for the exceptions (code identifiers, error codes, protocol/standard names, feature-dir slugs, commit messages, source code/comments, external quotes).
 
+### Subagents that carry the Spec-Kit phases
+
+Running `/speckit-plan`'s exploration, a multi-file `/speckit-tasks` breakdown, or actual implementation directly in the main session burns context fast and triggers compaction. Three dedicated subagents in `.claude/agents/` each own one phase boundary — use them proactively per `.claude/rules/proactive-subagents-and-skills.md` instead of doing the research/planning/implementation inline:
+
+| Phase | Subagent | Job |
+|---|---|---|
+| Before `/speckit-specify` | `speckit-requirements-analyst` | Turns a free-text request or GitHub issue into a Japanese requirements brief, checked against the constitution and existing specs for contradictions/duplication. Read-only research — never writes `spec.md` itself. |
+| `/speckit-plan` → `/speckit-tasks` → `/speckit-analyze` | `speckit-plan-coordinator` | Resumes from whichever of `plan.md`/`research.md`/`tasks.md` already exist, enforces the constitution's Constitution Check gate (unresolved NON-NEGOTIABLE deviations must be recorded in Complexity Tracking, not waved through), then runs the cross-artifact consistency pass. |
+| `/speckit-implement` | `speckit-dev-agent` | Implements one `tasks.md` phase/task-group at a time, test-first (constitution principle IV) and no-mocks-on-core-paths (principle III), runs the relevant lint/typecheck/test commands, and never commits. |
+
+Typical flow: feature idea or issue number → `speckit-requirements-analyst` → (human reviews the brief) → `/speckit-specify` → `/speckit-clarify` if needed → `speckit-plan-coordinator` → (human reviews plan/tasks) → `speckit-dev-agent` per phase → the main session handles commits/PRs. Per `.claude/rules/development.md`, don't fan `speckit-dev-agent` out across phases in parallel — run it sequentially.
+
 ## Current repository state (important — read before assuming code exists)
 
 This is still a very early-stage skeleton, not the full monorepo described in `plan.md`:
