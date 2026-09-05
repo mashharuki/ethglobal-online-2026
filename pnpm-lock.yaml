@@ -355,6 +355,9 @@ importers:
       viem:
         specifier: ^2.56.3
         version: 2.56.3(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@5.0.10)(zod@4.5.4)
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.22.0

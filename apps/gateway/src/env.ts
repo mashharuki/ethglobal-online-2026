@@ -9,15 +9,19 @@ import type {
  * Binding types are imported (not ambient) so modules that only need `Env` typecheck under
  * the node tsconfig too.
  */
-type SettlementMode = "primary" | "fallback" | "custodial";
+export type SettlementMode = "primary" | "fallback" | "custodial";
 
 export type Env = {
   // vars
   HEDERA_CHAIN_ID: string;
   HEDERA_RPC_URL: string;
+  /** Hedera mirror node REST base (payer account id -> EVM address) */
+  HEDERA_MIRROR_URL: string;
   X402_FACILITATOR_URL: string;
   PAYMENT_ASSET: "native";
   SETTLEMENT_MODE: SettlementMode;
+  /** Hedera account id that receives HBAR on the custodial rail (R-2a third option) */
+  SETTLEMENT_ACCOUNT_ID: string;
   SUBGRAPH_URL: string;
   /** Empty string = fall back to packages/shared DEFAULT_DEPLOYMENT (deploy write-back). */
   RIGHTS_NFT_ADDRESS: string;

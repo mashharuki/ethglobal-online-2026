@@ -4,6 +4,7 @@ import {
   type ContractFunctionArgs,
   ContractFunctionRevertedError,
   type Hex,
+  parseEventLogs,
   type TransactionReceipt,
 } from "viem";
 import { AppError } from "../errors";
@@ -15,10 +16,8 @@ import type { ChainContext, OperatorWallet } from "./clients";
  * returns the tx hash) is separated from confirmation (`waitForTx`) so OperatorTxQueue can
  * persist the hash before waiting and never double-submits after a crash (R-3a). The
  * `send*` helpers compose both for callers that do not need that split. Nonce assignment
- * is left to the caller; pass `nonce` to pin it. `@lintignore` marks exports whose
- * consumer is the x402 facilitator / settlement route (tasks.md T084 / T088).
+ * is left to the caller; pass `nonce` to pin it.
  */
-/** @lintignore T084/T088 */
 export type ReceiptParams = ContractFunctionArgs<
   typeof rightsRegistryAbi,
   "payable",
@@ -122,7 +121,7 @@ export async function sendConsume(
 
 /**
  * `settleAndIssue(p)` with exact native value (weibar = price tinybar * 1e10). Returns the
- * tx hash and the receiptHash the simulation produced. @lintignore T084/T088
+ * tx hash and the receiptHash the simulation produced.
  */
 export async function submitSettleAndIssue(
   ctx: WriteContext,
@@ -187,6 +186,62 @@ export async function submitBumpLicenseEpoch(
   } catch (error) {
     rethrow(error);
   }
+}
+
+/** `finalize(paymentId, p)` - fallback rail (R-2a). Returns the tx hash. */
+export async function submitFinalize(
+  ctx: WriteContext,
+  paymentId: Hex,
+  params: ReceiptParams,
+  options: WriteOptions = {},
+): Promise<Hex> {
+  try {
+    const { request } = await ctx.publicClient.simulateContract({
+      account: ctx.wallet.account,
+      address: ctx.deployment.rightsRegistry,
+      abi: rightsRegistryAbi,
+      functionName: "finalize",
+      args: [paymentId, params],
+    });
+    return await ctx.wallet.writeContract({
+      ...request,
+      nonce: options.nonce,
+    });
+  } catch (error) {
+    rethrow(error);
+  }
+}
+
+/**
+ * Waits for a settlement tx (settleAndIssue / finalize, submitted by the operator or by the
+ * facilitator) and returns every receiptHash the registry's ReceiptIssued logs carry. The
+ * caller matches the one it expects (a tx may issue several receipts).
+ */
+export async function receiptHashesFromReceipt(
+  ctx: ChainContext,
+  txHash: Hex,
+): Promise<Hex[]> {
+  const { receipt } = await waitForTx(ctx, txHash, "settleAndIssue");
+  const logs = parseEventLogs({
+    abi: rightsRegistryAbi,
+    eventName: "ReceiptIssued",
+    logs: receipt.logs,
+  });
+  const hashes = logs
+    .filter(
+      (log) =>
+        log.address.toLowerCase() ===
+        ctx.deployment.rightsRegistry.toLowerCase(),
+    )
+    .map((log) => log.args.receiptHash);
+  if (hashes.length === 0) {
+    throw new AppError(
+      "SETTLEMENT_NOT_FINALIZED",
+      "settlement tx emitted no ReceiptIssued from the registry",
+      { txHash },
+    );
+  }
+  return hashes;
 }
 
 /** @lintignore T084/T088 */

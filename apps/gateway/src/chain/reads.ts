@@ -36,7 +36,7 @@ async function readOwnerOf(
   });
 }
 
-async function readAccessEpoch(
+export async function readAccessEpoch(
   ctx: ChainContext,
   tokenId: bigint,
   options: ReadOptions = {},
@@ -88,6 +88,21 @@ export async function readAssetId(
     address: ctx.deployment.rightsNFT,
     abi: rightsNftAbi,
     functionName: "assetId",
+    args: [tokenId],
+    blockNumber: options.blockNumber,
+  });
+}
+
+/** Creator recorded at mint (RightsNFT.creatorOf) - the only wallet allowed to revoke (T091). */
+export async function readCreatorOf(
+  ctx: ChainContext,
+  tokenId: bigint,
+  options: ReadOptions = {},
+): Promise<Address> {
+  return ctx.publicClient.readContract({
+    address: ctx.deployment.rightsNFT,
+    abi: rightsNftAbi,
+    functionName: "creatorOf",
     args: [tokenId],
     blockNumber: options.blockNumber,
   });

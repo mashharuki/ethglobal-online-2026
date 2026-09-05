@@ -45,8 +45,14 @@ export type BlindedSharePath = (typeof BLINDED_SHARE_PATHS)[number];
 export const CONSUMPTION_STATUSES = ["locked", "settled", "failed"] as const;
 export type ConsumptionStatus = (typeof CONSUMPTION_STATUSES)[number];
 
+// pending: a request holds (or held) the claim | settled: receipt on chain | failed: rejected
+// before any value moved (the same payload may be retried)
 export const PAYMENT_STATUSES = ["pending", "settled", "failed"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+// how far the claim holder got: verify (nothing moved) -> settle (facilitator call in flight,
+// outcome unknown if we crash) -> anchor (paid; receipt not yet on chain) -> done
+export const PAYMENT_STAGES = ["verify", "settle", "anchor", "done"] as const;
+export type PaymentStage = (typeof PAYMENT_STAGES)[number];
 
 export const NONCE_PURPOSES = ["owner-access", "keygate-challenge"] as const;
 export type NoncePurpose = (typeof NONCE_PURPOSES)[number];
@@ -121,6 +127,13 @@ export const paymentBinding = pgTable(
     receiptHash: bytea("receipt_hash"),
     amount: numeric("amount", { mode: "bigint" }).notNull(),
     status: text("status").$type<PaymentStatus>().default("pending").notNull(),
+    stage: text("stage").$type<PaymentStage>().default("verify").notNull(),
+    // set once the facilitator confirmed the payment; survives claim hand-overs
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    // ownership token of the request working on this row (NULL = released); a claim older
+    // than the lease may be taken over
+    claimToken: bytea("claim_token"),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -129,6 +142,10 @@ export const paymentBinding = pgTable(
     check(
       "payment_binding_status_check",
       sql`${t.status} IN ('pending', 'settled', 'failed')`,
+    ),
+    check(
+      "payment_binding_stage_check",
+      sql`${t.stage} IN ('verify', 'settle', 'anchor', 'done')`,
     ),
     // tinybar amount: non-negative finite integer (numeric would otherwise accept
     // 1.5 / -1 / NaN / Infinity; `< 1e30` rejects the last two)

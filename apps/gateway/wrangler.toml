@@ -12,10 +12,16 @@ enabled = true
 [vars]
 HEDERA_CHAIN_ID = "296"
 HEDERA_RPC_URL = "https://testnet.hashio.io/api"
+HEDERA_MIRROR_URL = "https://testnet.mirrornode.hedera.com"
 X402_FACILITATOR_URL = "https://api.testnet.blocky402.com"
 PAYMENT_ASSET = "native"
-# primary | fallback | custodial - fixed by the day1 probe (research.md R-2 / R-2a)
-SETTLEMENT_MODE = "primary"
+# primary | fallback | custodial - fixed by the day1 probe (research.md R-2 / R-2a).
+# The @x402/hedera exact scheme only carries plain HBAR transfers, so custodial is the
+# expected rail until T020 proves otherwise.
+SETTLEMENT_MODE = "custodial"
+# Hedera account that receives HBAR on the custodial rail (payment receipt only; the
+# operator key anchors the receipt with settleAndIssue{value}). Set after the account exists.
+SETTLEMENT_ACCOUNT_ID = ""
 SUBGRAPH_URL = ""
 # Empty = packages/shared DEFAULT_DEPLOYMENT (filled by apps/contracts deploy write-back, T047).
 RIGHTS_NFT_ADDRESS = ""

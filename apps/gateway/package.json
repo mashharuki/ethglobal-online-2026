@@ -25,7 +25,8 @@
     "drizzle-orm": "^0.45.2",
     "hono": "^4.13.7",
     "postgres": "^3.4.9",
-    "viem": "^2.56.3"
+    "viem": "^2.56.3",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",

@@ -1,18 +1,17 @@
 import type { JsonResponse } from "@truenft/openapi";
 import { Hono } from "hono";
 import { createDb } from "./db/client";
-import type { Db } from "./db/types";
-import { type Env, getChainId } from "./env";
+import { getChainId } from "./env";
 import { handleError } from "./errors";
 import { clientIp, rateLimit, walletOrIp } from "./middleware/rateLimit";
+import { type AppEnv, registerRoutes } from "./routes";
+import { createServices } from "./services";
 
 /**
- * Access Gateway entrypoint (tasks.md T069). Routes are mounted here as they are
- * implemented (Phase 7). Handler I/O is typed with the openapi-generated `paths`;
- * every error goes through `handleError` so clients always get the openapi Error body.
+ * Access Gateway entrypoint (tasks.md T069). Every request gets a Hyperdrive-backed drizzle
+ * handle and a Services bundle (chain reads via viem, Durable Objects, facilitator); routes
+ * are typed with the openapi-generated `paths` and every error goes through `handleError`.
  */
-export type AppEnv = { Bindings: Env; Variables: { db: Db } };
-
 const app = new Hono<AppEnv>();
 
 app.onError(handleError);
@@ -23,6 +22,7 @@ app.notFound((c) => c.json({ error: "not_found" }, 404));
 app.use("*", async (c, next) => {
   const handle = createDb(c.env);
   c.set("db", handle.db);
+  c.set("services", createServices(c.env, handle.db));
   try {
     await next();
   } finally {
@@ -46,6 +46,8 @@ app.get("/healthz", (c) => {
   };
   return c.json(body);
 });
+
+registerRoutes(app);
 
 export default app;
 
