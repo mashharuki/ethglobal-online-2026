@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Hex } from "viem";
 import { createChainContext, createOperatorWallet } from "../chain/clients";
+import { readLicenseEpoch } from "../chain/reads";
 import {
   submitBumpLicenseEpoch,
   submitConsume,
@@ -24,17 +25,15 @@ const NONCE_KEY = "operator-nonce";
 const JOB_PREFIX = "job:";
 const HEX32 = /^0x[0-9a-fA-F]{64}$/;
 const KEY_RE = /^[A-Za-z0-9:_.-]{1,200}$/;
+const DECIMAL_RE = /^\d+$/;
 
 function parseJob(value: unknown): OperatorJob | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const v = value as Record<string, unknown>;
-  const idempotencyKey =
-    v.idempotencyKey === undefined
-      ? undefined
-      : typeof v.idempotencyKey === "string" && KEY_RE.test(v.idempotencyKey)
-        ? v.idempotencyKey
-        : null;
-  if (idempotencyKey === null) return undefined;
+  if (typeof v.idempotencyKey !== "string" || !KEY_RE.test(v.idempotencyKey)) {
+    return undefined;
+  }
+  const idempotencyKey = v.idempotencyKey;
   if (v.kind === "consume") {
     if (typeof v.receiptHash !== "string" || !HEX32.test(v.receiptHash))
       return undefined;
@@ -52,11 +51,14 @@ function parseJob(value: unknown): OperatorJob | undefined {
     };
   }
   if (v.kind === "bumpLicenseEpoch") {
-    if (typeof v.tokenId !== "string" || !/^\d+$/.test(v.tokenId))
+    if (typeof v.tokenId !== "string" || !DECIMAL_RE.test(v.tokenId))
+      return undefined;
+    if (typeof v.fromEpoch !== "string" || !DECIMAL_RE.test(v.fromEpoch))
       return undefined;
     return {
       kind: "bumpLicenseEpoch",
       tokenId: BigInt(v.tokenId),
+      fromEpoch: BigInt(v.fromEpoch),
       idempotencyKey,
     };
   }
@@ -82,8 +84,12 @@ function createQueuePorts(env: Env, storage: DurableObjectStorage): QueuePorts {
     },
     loadNonce: () => storage.get<number>(NONCE_KEY),
     saveNonce: (nonce) => storage.put(NONCE_KEY, nonce),
+    clearNonce: async () => {
+      await storage.delete(NONCE_KEY);
+    },
     loadJob: (key) => storage.get<JobRecord>(`${JOB_PREFIX}${key}`),
     saveJob: (key, record) => storage.put(`${JOB_PREFIX}${key}`, record),
+    readLicenseEpoch: (tokenId) => readLicenseEpoch(ctx(), tokenId),
     submit: (job, nonce) =>
       job.kind === "consume"
         ? submitConsume(ctx(), job.receiptHash, job.useIndex, { nonce })
@@ -107,7 +113,7 @@ export class OperatorTxQueue extends DurableObject<Env> {
     if (job === undefined) {
       return doFailure(
         "BAD_REQUEST",
-        "expected a consume or bumpLicenseEpoch job",
+        "expected a consume or bumpLicenseEpoch job with an idempotencyKey",
         400,
       );
     }

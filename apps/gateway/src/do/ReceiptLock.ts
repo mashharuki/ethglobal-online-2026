@@ -128,12 +128,12 @@ function createLockPorts(env: Env, handle: DbHandle): LockPorts {
         .returning({ useIndex: receiptConsumption.useIndex });
       return updated.length > 0;
     },
-    submitConsume: (receiptHash, useIndex) =>
+    submitConsume: (receiptHash, useIndex, attemptId) =>
       submitViaOperatorQueue(env, {
         kind: "consume",
         receiptHash,
         useIndex,
-        idempotencyKey: `consume:${receiptHash.toLowerCase()}:${useIndex}`,
+        idempotencyKey: `consume:${receiptHash.toLowerCase()}:${useIndex}:${attemptId}`,
       }),
     waitForTx: async (txHash) => {
       await waitForTx(ctx, txHash, "consume");

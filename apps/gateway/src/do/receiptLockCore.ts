@@ -72,8 +72,16 @@ export type LockPorts = {
     useIndex: number,
     patch: StatusPatch,
   ): Promise<boolean>;
-  /** OperatorTxQueue: returns the tx hash; throws the mapped AppError on revert */
-  submitConsume(receiptHash: Hex, useIndex: number): Promise<Hex>;
+  /**
+   * OperatorTxQueue: returns the tx hash; throws the mapped AppError on revert. `attemptId`
+   * (ms timestamp of the lock / relock) makes every attempt a distinct idempotent job, so a
+   * reverted transaction from an earlier attempt is never replayed for a fresh one.
+   */
+  submitConsume(
+    receiptHash: Hex,
+    useIndex: number,
+    attemptId: number,
+  ): Promise<Hex>;
   waitForTx(txHash: Hex): Promise<void>;
 };
 
@@ -90,7 +98,7 @@ export type ConsumeOutcome = {
 };
 
 type Plan =
-  | { kind: "consume"; useIndex: number }
+  | { kind: "consume"; useIndex: number; attemptId: number }
   | { kind: "redeliver"; useIndex: number; onchainTx: Hex | undefined };
 
 function redeliver(row: ConsumptionRow): Plan {
@@ -121,7 +129,7 @@ export class ReceiptLockCore {
         redelivered: true,
       };
     }
-    return this.settle(input.receiptHash, plan.useIndex);
+    return this.settle(input.receiptHash, plan.useIndex, plan.attemptId);
   }
 
   private serialize<T>(fn: () => Promise<T>): Promise<T> {
@@ -158,7 +166,11 @@ export class ReceiptLockCore {
         continue;
       }
       await this.relock(receiptHash, row.useIndex, wallet, now);
-      return { kind: "consume", useIndex: row.useIndex };
+      return {
+        kind: "consume",
+        useIndex: row.useIndex,
+        attemptId: now.getTime(),
+      };
     }
 
     // a failed attempt keeps its useIndex: resend the same index (R-3a, 2026-09-06 correction)
@@ -175,7 +187,11 @@ export class ReceiptLockCore {
         continue;
       }
       await this.relock(receiptHash, row.useIndex, wallet, now);
-      return { kind: "consume", useIndex: row.useIndex };
+      return {
+        kind: "consume",
+        useIndex: row.useIndex,
+        attemptId: now.getTime(),
+      };
     }
 
     const receipt = await this.ports.readReceipt(receiptHash);
@@ -192,7 +208,7 @@ export class ReceiptLockCore {
       useIndex += 1; // row already exists (settled elsewhere): skip forward
     }
     this.counters.set(receiptHash, useIndex + 1);
-    return { kind: "consume", useIndex };
+    return { kind: "consume", useIndex, attemptId: now.getTime() };
   }
 
   private async relock(
@@ -281,13 +297,18 @@ export class ReceiptLockCore {
   private async settle(
     receiptHash: Hex,
     useIndex: number,
+    attemptId: number,
   ): Promise<ConsumeOutcome> {
     const key = rowKey(receiptHash, useIndex);
     this.inflight.add(key);
     try {
       let txHash: Hex;
       try {
-        txHash = await this.ports.submitConsume(receiptHash, useIndex);
+        txHash = await this.ports.submitConsume(
+          receiptHash,
+          useIndex,
+          attemptId,
+        );
       } catch (error) {
         await this.ports.updateStatus(receiptHash, useIndex, {
           status: "failed",

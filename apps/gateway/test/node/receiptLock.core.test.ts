@@ -22,6 +22,7 @@ type Harness = {
   ports: LockPorts;
   rows: ConsumptionRow[];
   submits: number[];
+  attempts: number[];
   inserts: number;
   clock: { now: number };
   chain: {
@@ -48,6 +49,7 @@ function harness(
   const clock = { now: Date.parse("2026-09-06T12:00:00Z") };
   const rows: ConsumptionRow[] = [];
   const submits: number[] = [];
+  const attempts: number[] = [];
   const chain = {
     maxUses: options.maxUses ?? 5,
     usedCount: options.usedCount ?? 0,
@@ -66,6 +68,7 @@ function harness(
   const h: Harness = {
     rows,
     submits,
+    attempts,
     inserts: 0,
     clock,
     chain,
@@ -112,8 +115,9 @@ function harness(
         }
         return true;
       },
-      submitConsume: async (_r, useIndex) => {
+      submitConsume: async (_r, useIndex, attemptId) => {
         submits.push(useIndex);
+        attempts.push(attemptId);
         started?.();
         if (h.submitError !== undefined) throw h.submitError();
         if (options.manualSubmit) await gate;
@@ -336,9 +340,12 @@ describe("ReceiptLockCore (R-3 / R-3a)", () => {
     ).toBe("LICENSE_EPOCH_MISMATCH");
     expect(h.rows[0]?.status).toBe("failed");
     h.submitError = undefined;
+    h.clock.now += 1_000;
     const retry = await core.consume({ receiptHash: RECEIPT, wallet: BUYER });
     expect(retry.useIndex).toBe(0);
     expect(h.submits).toEqual([0, 0]);
+    // the relock is a distinct attempt: the queue must not replay the reverted tx hash
+    expect(new Set(h.attempts).size).toBe(2);
   });
 
   it("should not let a late revert overwrite a settlement recorded by recovery (conditional transition)", async () => {

@@ -1,5 +1,5 @@
 import { blindShareU, buildDomain, keyGateTypedData } from "@truenft/shared";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   type Address,
   bytesToHex,
@@ -163,10 +163,13 @@ export async function getOrCreateBlindedShare(
         accessEpochAtGrant: input.accessEpochAtGrant,
         receiptHash: input.receiptHash,
       },
+      // only a licensee row bound to ANOTHER receipt is replaced; a concurrent first access
+      // for the same (asset, wallet, path, receipt) keeps the first writer's row so both
+      // callers read back one canonical blindedU (KeyGateChallenge signatures are
+      // deterministic - RFC6979 - so both writers derived the same value anyway)
+      setWhere: sql`${walletBlindedShares.path} = 'licensee' AND ${walletBlindedShares.receiptHash} IS DISTINCT FROM excluded.receipt_hash`,
     });
-  return {
-    blindedU,
-    accessEpochAtGrant: input.accessEpochAtGrant ?? null,
-    createdNow: true,
-  };
+  const stored = await findBlindedShare(db, input, receiptHash);
+  if (stored === undefined) throw new Error("blinded share upsert vanished");
+  return { ...stored, createdNow: stored.blindedU === blindedU };
 }
