@@ -8,7 +8,7 @@
       "ignoreDependencies": ["tsx"]
     },
     "apps/contracts": {
-      "entry": ["scripts/*.ts", "test/**/*.ts", "ignition/modules/*.ts"],
+      "entry": ["scripts/*.ts", "test/**/*.ts"],
       "ignoreDependencies": [
         "forge-std",
         "@types/chai-as-promised",

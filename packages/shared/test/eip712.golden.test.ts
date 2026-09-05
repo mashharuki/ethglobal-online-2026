@@ -8,6 +8,7 @@ import {
   type RightsReceipt,
   receiptTypedData,
 } from "../src/eip712";
+import { computePolicyHash } from "../src/hashing";
 import { GOLDEN_RECEIPT, REGISTRY } from "./fixtures";
 
 /**
@@ -18,6 +19,26 @@ const GOLDEN_TYPEHASH =
   "0xd4aaed81b9c5f7040cca0726ae0a2c44640db626d394ef0d61351e1a90ee8ac4";
 const GOLDEN_RECEIPT_HASH =
   "0xc7f47a15158690ea6f43dd75a98b825cb606352a1d6e137f3641ff4556681a52";
+
+/** computePolicyHash golden, pinned against apps/contracts/test/ReceiptLib.golden.t.sol. */
+const GOLDEN_POLICY_HASH =
+  "0xeba5698d0b8fcd7d42d32191278887beb0997bef075812d00d9f9a10b4b4e29c";
+
+describe("policyHash golden (Solidity ReceiptLib.policyContentHash)", () => {
+  it("should produce the pinned policyHash for the golden fixture", () => {
+    expect(
+      computePolicyHash({
+        priceTinybar: 500_000_000n,
+        durationSec: GOLDEN_RECEIPT.expiresAt - GOLDEN_RECEIPT.issuedAt,
+        maxUses: GOLDEN_RECEIPT.maxUses,
+        permittedAction: GOLDEN_RECEIPT.permittedAction,
+        transferMode: GOLDEN_RECEIPT.transferMode,
+        creatorBps: 3000,
+        ownerBps: 7000,
+      }),
+    ).toBe(GOLDEN_POLICY_HASH);
+  });
+});
 
 describe("EIP-712 RightsReceipt golden", () => {
   it("should encode the 17-field type string exactly as the spec", () => {
