@@ -83,9 +83,13 @@ type Fake = {
   issuedOnChain: Set<Hex>;
   /** the "mined" tx emits a foreign receipt instead of ours */
   minesWrongHash: boolean;
-  /** facilitator /settle: throws (outcome unknown) or answers success=false */
+  /** facilitator /settle: throws (outcome unknown), throws an AppError, or answers success=false */
   settleThrows: boolean;
+  settleThrowsAppError: boolean;
   settleRejects: boolean;
+  settleDelayMs: number;
+  /** the receipt wait (tx confirmation) blows up */
+  receiptWaitThrows: boolean;
 };
 
 function paymentHeader(quote: ReceiptQuote, salt = "tx-1"): string {
@@ -211,7 +215,16 @@ function buildServices(): Services {
       }),
       settle: async () => {
         fake.settleCalls += 1;
+        if (fake.settleDelayMs > 0) {
+          await new Promise((r) => setTimeout(r, fake.settleDelayMs));
+        }
         if (fake.settleThrows) throw new Error("facilitator timeout");
+        if (fake.settleThrowsAppError) {
+          throw new AppError(
+            "UNDERPAYMENT",
+            "facilitator answered 402 mid-flight",
+          );
+        }
         return {
           success: !fake.settleRejects,
           errorReason: fake.settleRejects ? "insufficient" : undefined,
@@ -247,6 +260,7 @@ function buildServices(): Services {
       return txHash;
     },
     receiptHashesFromTx: async (txHash) => {
+      if (fake.receiptWaitThrows) throw new Error("receipt wait timed out");
       const hash = mined.get(txHash);
       if (hash === undefined) throw new Error("unknown tx");
       return [hash];
@@ -330,13 +344,26 @@ function expectedReceiptHash(
   });
 }
 
-async function bindingStatus(header: string): Promise<string | undefined> {
+type BindingView = {
+  status: string;
+  stage: string;
+  paid: boolean;
+  claimed: boolean;
+};
+
+async function binding(header: string): Promise<BindingView | undefined> {
   const paymentId = derivePaymentId(new TextEncoder().encode(atob(header)));
   const [row] = await db
-    .select({ status: paymentBinding.status })
+    .select()
     .from(paymentBinding)
     .where(eq(paymentBinding.paymentId, paymentId));
-  return row?.status;
+  if (row === undefined) return undefined;
+  return {
+    status: row.status,
+    stage: row.stage,
+    paid: row.paidAt !== null,
+    claimed: row.claimToken !== null,
+  };
 }
 
 async function quoteFor(): Promise<ReceiptQuote> {
@@ -371,7 +398,10 @@ beforeEach(async () => {
     issuedOnChain: new Set(),
     minesWrongHash: false,
     settleThrows: false,
+    settleThrowsAppError: false,
     settleRejects: false,
+    settleDelayMs: 0,
+    receiptWaitThrows: false,
   };
   const services = buildServices();
   app = new Hono<AppEnv>();
@@ -626,13 +656,20 @@ describe("x402 (T088 / T063)", () => {
     expect(await stuck.json()).toMatchObject({
       code: "PAYMENT_ID_PAYLOAD_CONFLICT",
     });
-    expect(await bindingStatus(header)).toBe("paid");
+    expect(await binding(header)).toEqual({
+      status: "pending",
+      stage: "anchor",
+      paid: true,
+      claimed: false,
+    });
     expect(fake.settleCalls).toBe(1);
     // 2. some other receipt being issued does not count
     fake.issuedOnChain.add(`0x${"f0".repeat(32)}`);
     expect((await pay()).status).toBe(409);
     expect(fake.settleCalls).toBe(1); // resumed at anchoring, never paid again
-    // 3. the registry holds exactly our receipt: recovered without a second payment
+    // 3. the receipt wait blows up but issuance became visible meanwhile: recovered in-flight
+    fake.operatorConflict = false;
+    fake.receiptWaitThrows = true;
     fake.issuedOnChain.add(ours);
     const recovered = await pay();
     expect(recovered.status).toBe(200);
@@ -640,8 +677,13 @@ describe("x402 (T088 / T063)", () => {
       receiptHash: ours,
       onchainTx: "already-issued",
     });
-    expect(await bindingStatus(header)).toBe("settled");
+    expect(await binding(header)).toMatchObject({
+      status: "settled",
+      stage: "done",
+      claimed: false,
+    });
     expect(fake.settleCalls).toBe(1);
+    fake.receiptWaitThrows = false;
     // 4. a fresh payment whose tx issued a foreign receipt is a params mismatch, still paid
     fake.operatorConflict = false;
     fake.minesWrongHash = true;
@@ -655,7 +697,7 @@ describe("x402 (T088 / T063)", () => {
     expect(await foreign.json()).toMatchObject({
       code: "COMMITTED_PARAMS_MISMATCH",
     });
-    expect(await bindingStatus(other)).toBe("paid");
+    expect(await binding(other)).toMatchObject({ stage: "anchor", paid: true });
     // ... and resumes to success once the operator anchors the right receipt
     fake.minesWrongHash = false;
     const resumed = await post(
@@ -680,12 +722,22 @@ describe("x402 (T088 / T063)", () => {
     fake.settleRejects = true;
     const rejected = await pay();
     expect(rejected.status).toBe(402);
-    expect(await bindingStatus(header)).toBe("failed");
+    expect(await binding(header)).toEqual({
+      status: "failed",
+      stage: "verify",
+      paid: false,
+      claimed: false,
+    });
     fake.settleRejects = false;
     fake.settleThrows = true;
     const unknown = await pay();
     expect(unknown.status).toBe(500);
-    expect(await bindingStatus(header)).toBe("pending");
+    expect(await binding(header)).toEqual({
+      status: "pending",
+      stage: "settle",
+      paid: false,
+      claimed: false,
+    });
     expect(fake.settleCalls).toBe(2);
     fake.settleThrows = false;
     // the outcome is unknown: nobody re-submits the payment
@@ -695,6 +747,94 @@ describe("x402 (T088 / T063)", () => {
       code: "SETTLEMENT_IN_PROGRESS",
     });
     expect(fake.settleCalls).toBe(2);
+    expect(fake.operatorJobs).toHaveLength(0);
+  });
+
+  it("should treat an AppError thrown mid-settlement as unknown, not as a rejection", async () => {
+    const quote = await quoteFor();
+    const header = paymentHeader(quote, "midflight");
+    fake.settleThrowsAppError = true;
+    const res = await post(
+      `/assets/${asset.assetId}/paid`,
+      { licensee: buyer.address },
+      { "X-PAYMENT": header },
+    );
+    expect(res.status).toBe(402);
+    expect(await binding(header)).toMatchObject({
+      status: "pending",
+      stage: "settle",
+    });
+    fake.settleThrowsAppError = false;
+    const retry = await post(
+      `/assets/${asset.assetId}/paid`,
+      { licensee: buyer.address },
+      { "X-PAYMENT": header },
+    );
+    expect(await retry.json()).toMatchObject({
+      code: "SETTLEMENT_IN_PROGRESS",
+    });
+    expect(fake.settleCalls).toBe(1);
+  });
+
+  it("should let exactly one of two concurrent identical payments settle", async () => {
+    const quote = await quoteFor();
+    const header = paymentHeader(quote, "race");
+    fake.settleDelayMs = 60; // longer than the replay wait budget (pendingWaitMs)
+    const pay = () =>
+      post(
+        `/assets/${asset.assetId}/paid`,
+        { licensee: buyer.address },
+        { "X-PAYMENT": header },
+      );
+    const [a, b] = await Promise.all([pay(), pay()]);
+    const statuses = [a.status, b.status].sort();
+    expect(statuses).toEqual([200, 409]);
+    const loser = a.status === 409 ? a : b;
+    expect(await loser.json()).toMatchObject({
+      code: "SETTLEMENT_IN_PROGRESS",
+    });
+    expect(fake.settleCalls).toBe(1);
+    expect(fake.operatorJobs).toHaveLength(1);
+    fake.settleDelayMs = 0;
+    const replay = await pay();
+    expect(replay.status).toBe(200);
+    expect(fake.settleCalls).toBe(1);
+  });
+
+  it("should resume a primary-rail payment only once the facilitator tx is visible", async () => {
+    fake.mode = "primary";
+    const quote = await quoteFor();
+    const header = paymentHeader(quote, "primary");
+    const ours = expectedReceiptHash(quote, header, buyer.address);
+    const pay = () =>
+      post(
+        `/assets/${asset.assetId}/paid`,
+        { licensee: buyer.address },
+        { "X-PAYMENT": header },
+      );
+    fake.receiptWaitThrows = true;
+    expect((await pay()).status).toBe(500);
+    expect(await binding(header)).toMatchObject({
+      status: "pending",
+      stage: "anchor",
+      paid: true,
+      claimed: false,
+    });
+    // paid but not visible yet: no second payment, no operator involvement
+    const notYet = await pay();
+    expect(await notYet.json()).toMatchObject({
+      code: "SETTLEMENT_IN_PROGRESS",
+    });
+    expect(fake.settleCalls).toBe(1);
+    fake.issuedOnChain.add(ours);
+    const done = await pay();
+    expect(done.status).toBe(200);
+    expect(await done.json()).toMatchObject({
+      receiptHash: ours,
+      onchainTx: "already-issued",
+      settlementMode: "primary",
+    });
+    expect(fake.settleCalls).toBe(1);
     expect(fake.operatorJobs).toHaveLength(0);
   });
 

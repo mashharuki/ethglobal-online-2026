@@ -44,15 +44,22 @@ The 402 `receiptQuote` (including the server-chosen receipt `nonce`) travels bac
 replay of the same payload returns the identical receipt and hash, and it is re-validated
 against fresh chain reads before the facilitator is called and again right before anchoring.
 
-`payment_binding.status` after a failure depends on the stage reached:
+`payment_binding` separates three things: `status` (pending / settled / failed), the durable
+payment evidence (`paid_at`) and claim ownership (`claim_token` + `claimed_at`, 60 s lease).
+Every lifecycle write is a CAS on the caller's token, so a request that lost its claim cannot
+downgrade a row another request completed. `stage` is written BEFORE the step it describes,
+so a crash is read the same way as a thrown error:
 
-| stage | failure -> status | what a retry of the same payload does |
+| stage reached | failure -> row | what a retry of the same payload does |
 |---|---|---|
-| verify (facilitator `/verify`, payer check) | `failed` | runs the whole settlement again (nothing moved) |
-| settle (`/settle` in flight) | any error: stays `pending` | SETTLEMENT_IN_PROGRESS - outcome unknown, reconcile against the facilitator / mirror node before touching the row |
-| rejected (`/settle` answered `success=false`) | `failed` | runs the whole settlement again |
-| anchor (HBAR received; quote re-check, operator `settleAndIssue`, log match) | `paid` + deny audit | resumes at anchoring - the facilitator is never called again for this payload. A stale quote keeps failing here: the HBAR stays on `SETTLEMENT_ACCOUNT_ID` (no refund path, constitution non-goal) |
-| settled (receipt on chain) | stays `settled` | replays the receipt + signature |
+| verify (facilitator `/verify`, payer check) | `failed`, claim released | runs the whole settlement again (nothing moved) |
+| settle (`/settle` in flight) | stays `pending` / `settle`, claim released | SETTLEMENT_IN_PROGRESS - outcome unknown, reconcile against the facilitator / mirror node before touching the row |
+| rejected (`/settle` answered `success === false`) | `failed` | runs the whole settlement again |
+| anchor (`paid_at` set; quote re-check, operator `settleAndIssue`, log match) | stays `pending` / `anchor`, claim released, deny audit | resumes at anchoring under a new claim - the facilitator is never called again for this payload. A stale quote keeps failing here: the HBAR stays on `SETTLEMENT_ACCOUNT_ID` (no refund path, constitution non-goal) |
+| settled (receipt on chain, `done`) | stays `settled` | replays the receipt + signature |
+
+A live claim (lease not expired) makes concurrent retries wait briefly, then answer
+SETTLEMENT_IN_PROGRESS; an expired lease is taken over according to the stage above.
 
 Anchoring treats the registry as the authority: whatever the operator call or the receipt
 wait threw, `RightsRegistry.receiptStatus(expectedHash).issued === true` means it succeeded

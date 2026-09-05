@@ -1,2 +1,0 @@
-ALTER TABLE "payment_binding" DROP CONSTRAINT "payment_binding_status_check";--> statement-breakpoint
-ALTER TABLE "payment_binding" ADD CONSTRAINT "payment_binding_status_check" CHECK ("payment_binding"."status" IN ('pending', 'paid', 'settled', 'failed'));

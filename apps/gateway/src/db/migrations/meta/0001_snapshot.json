@@ -1,5 +1,5 @@
 {
-  "id": "ebbe2143-af3a-42b4-a3fe-544f42c3a578",
+  "id": "b61096f9-9d19-4fe7-90bf-49f9ddb32b75",
   "prevId": "f6add503-7c8d-4187-99f3-0779ccad283e",
   "version": "7",
   "dialect": "postgresql",
@@ -181,6 +181,31 @@
           "notNull": true,
           "default": "'pending'"
         },
+        "stage": {
+          "name": "stage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'verify'"
+        },
+        "paid_at": {
+          "name": "paid_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claim_token": {
+          "name": "claim_token",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -197,7 +222,11 @@
       "checkConstraints": {
         "payment_binding_status_check": {
           "name": "payment_binding_status_check",
-          "value": "\"payment_binding\".\"status\" IN ('pending', 'paid', 'settled', 'failed')"
+          "value": "\"payment_binding\".\"status\" IN ('pending', 'settled', 'failed')"
+        },
+        "payment_binding_stage_check": {
+          "name": "payment_binding_stage_check",
+          "value": "\"payment_binding\".\"stage\" IN ('verify', 'settle', 'anchor', 'done')"
         },
         "payment_binding_amount_check": {
           "name": "payment_binding_amount_check",
