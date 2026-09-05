@@ -97,8 +97,8 @@ type Fake = {
   receiptWaitThrows: boolean;
   /** injected clock (lease expiry) */
   now: Date;
-  /** when set, the next facilitator /verify awaits it before answering */
-  verifyGate?: Promise<void>;
+  /** when set, the next facilitator /verify signals entry, then awaits `wait` before answering */
+  verifyGate?: { entered: () => void; wait: Promise<void> };
 };
 
 function paymentHeader(quote: ReceiptQuote, salt = "tx-1"): string {
@@ -221,7 +221,10 @@ function buildServices(): Services {
         // one-shot barrier so a test can park a request inside its claim
         const gate = fake.verifyGate;
         fake.verifyGate = undefined;
-        if (gate !== undefined) await gate;
+        if (gate !== undefined) {
+          gate.entered();
+          await gate.wait;
+        }
         return {
           isValid: fake.verifyOk,
           invalidReason: fake.verifyOk ? undefined : "bad",
@@ -905,15 +908,46 @@ describe("x402 (T088 / T063)", () => {
       claimToken: observed.claimToken,
       claimedAt: observed.claimedAt,
     });
-    // and the same observation with only the lease refreshed is stale too
+    // every predicate independently: the observation is stale as soon as ONE of stage,
+    // lease timestamp, token or status differs, and the row stays exactly as it was
+    const mutations: Array<Partial<typeof observed>> = [
+      { stage: "verify", claimedAt: NOW },
+      {
+        stage: "verify",
+        claimedAt: expired,
+        claimToken: `0x${"cc".repeat(16)}`,
+      },
+      {
+        stage: "verify",
+        claimedAt: expired,
+        claimToken: observed.claimToken,
+        status: "failed",
+      },
+    ];
+    for (const [i, mutation] of mutations.entries()) {
+      await db
+        .update(paymentBinding)
+        .set(mutation)
+        .where(eq(paymentBinding.paymentId, paymentId));
+      const before = await rowOf();
+      expect(
+        await takeClaim(services.settle, observed, `0x${"e0".repeat(15)}0${i}`),
+      ).toBeUndefined();
+      expect(await rowOf()).toEqual(before);
+    }
+    // ... and an observation that matches the row exactly does take it over
     await db
       .update(paymentBinding)
-      .set({ stage: "verify", claimedAt: NOW })
+      .set({
+        stage: "verify",
+        claimedAt: expired,
+        claimToken: observed.claimToken,
+        status: "pending",
+      })
       .where(eq(paymentBinding.paymentId, paymentId));
     expect(
-      await takeClaim(services.settle, observed, `0x${"ef".repeat(16)}`),
-    ).toBeUndefined();
-    expect((await rowOf()).claimToken).toBe(observed.claimToken);
+      await takeClaim(services.settle, await rowOf(), `0x${"ea".repeat(16)}`),
+    ).toEqual({ kind: "claimed", token: `0x${"ea".repeat(16)}` });
     expect(fake.settleCalls).toBe(1);
   });
 
@@ -927,22 +961,32 @@ describe("x402 (T088 / T063)", () => {
         { "X-PAYMENT": header },
       );
     let release: () => void = () => {};
-    fake.verifyGate = new Promise<void>((resolve) => {
-      release = resolve;
+    let entered: () => void = () => {};
+    const parked = new Promise<void>((resolve) => {
+      entered = resolve;
     });
+    fake.verifyGate = {
+      entered: () => entered(),
+      wait: new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    };
     const holder = pay(); // claims, then parks inside /verify
-    await new Promise((r) => setTimeout(r, 10));
-    expect(await binding(header)).toMatchObject({
-      stage: "verify",
-      claimed: true,
-    });
-    // its lease expires (clock jump) and a retry takes the row over and settles
-    fake.now = new Date(NOW.getTime() + 10 * 60_000);
-    const taker = await pay();
-    expect(taker.status).toBe(200);
-    expect(fake.settleCalls).toBe(1);
+    try {
+      await parked; // the holder is inside its claim, at the barrier
+      expect(await binding(header)).toMatchObject({
+        stage: "verify",
+        claimed: true,
+      });
+      // its lease expires (clock jump) and a retry takes the row over and settles
+      fake.now = new Date(NOW.getTime() + 10 * 60_000);
+      const taker = await pay();
+      expect(taker.status).toBe(200);
+      expect(fake.settleCalls).toBe(1);
+    } finally {
+      release();
+    }
     // the original holder wakes up: its stage write is refused, it never reaches /settle
-    release();
     const lost = await holder;
     expect(lost.status).toBe(409);
     expect(await lost.json()).toMatchObject({ code: "SETTLEMENT_IN_PROGRESS" });
