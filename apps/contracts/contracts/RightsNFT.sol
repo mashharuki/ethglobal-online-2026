@@ -6,7 +6,8 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IRightsNFT} from "./interfaces/IRightsNFT.sol";
 
 /// @title RightsNFT - ERC-721 whose Owner Epoch (`accessEpoch`) advances on every transfer.
-/// @notice The ONLY place `_accessEpoch` is written is `_update` (constitution I / FR-001).
+/// @notice After the value is initialised to 1 in `mint`, the ONLY writer of `_accessEpoch`
+///         is `_update` (constitution I / FR-001).
 ///         Policy changes (`setPolicy`) never touch the License Epoch; that counter lives in
 ///         RightsRegistry and only moves on `bumpLicenseEpoch`.
 contract RightsNFT is ERC721, IRightsNFT {
@@ -52,7 +53,9 @@ contract RightsNFT is ERC721, IRightsNFT {
         external
         returns (uint256 tokenId)
     {
-        if (creator == address(0)) revert NotCreator();
+        // The creator must mint themselves (possibly to a different first owner) so nobody can
+        // attribute a token - and its future revenue split - to a creator who never consented.
+        if (creator == address(0) || creator != msg.sender) revert NotCreator();
         tokenId = _nextTokenId++;
         _creator[tokenId] = creator;
         _policyHash[tokenId] = policyHash_;
