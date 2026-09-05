@@ -20,6 +20,8 @@ describe("RightsNFT (integration)", () => {
       ownerA.address,
       deployer.address,
       ethers.ZeroHash,
+      ethers.id("asset-a"),
+      ethers.id("ciphertext-a"),
       "ipfs://m",
     );
     await tx.wait();

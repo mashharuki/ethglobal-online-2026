@@ -39,9 +39,21 @@ contract RightsNFTTest is Test {
     }
 
     /// @dev The creator mints (msg.sender == creator) to the first owner.
+    bytes32 internal constant ASSET_ID = bytes32(uint256(0xaaaa));
+    bytes32 internal constant CONTENT_HASH = bytes32(uint256(0xbbbb));
+
     function _mint(string memory uri) internal returns (uint256 tokenId) {
         vm.prank(creator);
-        tokenId = nft.mint(ownerA, creator, POLICY, uri);
+        tokenId = nft.mint(ownerA, creator, POLICY, ASSET_ID, CONTENT_HASH, uri);
+    }
+
+    function test_ResourceHashIsBoundToContractTokenAssetAndContent() public {
+        uint256 tokenId = _mint("ipfs://m");
+        assertEq(nft.assetId(tokenId), ASSET_ID);
+        assertEq(nft.contentHash(tokenId), CONTENT_HASH);
+        assertEq(nft.resourceHash(tokenId), keccak256(abi.encode(address(nft), tokenId, ASSET_ID, CONTENT_HASH)));
+        vm.expectRevert(IRightsNFT.NonexistentToken.selector);
+        nft.resourceHash(42);
     }
 
     function test_MintSetsEpochOneAndMetadata() public {
@@ -59,11 +71,11 @@ contract RightsNFTTest is Test {
         // ownerA tries to mint a token attributed to `creator`
         vm.prank(ownerA);
         vm.expectRevert(IRightsNFT.NotCreator.selector);
-        nft.mint(ownerA, creator, POLICY, "ipfs://m");
+        nft.mint(ownerA, creator, POLICY, ASSET_ID, CONTENT_HASH, "ipfs://m");
         // zero creator is never a valid msg.sender either
         vm.prank(ownerA);
         vm.expectRevert(IRightsNFT.NotCreator.selector);
-        nft.mint(ownerA, address(0), POLICY, "ipfs://m");
+        nft.mint(ownerA, address(0), POLICY, ASSET_ID, CONTENT_HASH, "ipfs://m");
     }
 
     function test_TransferBumpsEpochByOne() public {

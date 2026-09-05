@@ -19,11 +19,26 @@ interface IRightsNFT is IERC721 {
 
     function manifestURI(uint256 tokenId) external view returns (string memory);
 
+    /// @notice Immutable content binding fixed at mint (FR-015: the ciphertext never changes).
+    function assetId(uint256 tokenId) external view returns (bytes32);
+
+    function contentHash(uint256 tokenId) external view returns (bytes32);
+
+    /// @notice keccak256(abi.encode(address(this), tokenId, assetId, contentHash)) - R-6 resourceHash,
+    ///         recomputed on-chain so RightsRegistry can reject cross-resource receipts.
+    function resourceHash(uint256 tokenId) external view returns (bytes32);
+
     // ---- writes ----
 
-    function mint(address to, address creator, bytes32 policyHash_, string calldata manifestURI_)
-        external
-        returns (uint256 tokenId);
+    /// @notice `creator` must be msg.sender. `assetId` / `contentHash` are fixed for the token's life.
+    function mint(
+        address to,
+        address creator,
+        bytes32 policyHash_,
+        bytes32 assetId_,
+        bytes32 contentHash_,
+        string calldata manifestURI_
+    ) external returns (uint256 tokenId);
 
     /// @notice Creator only. Does NOT bump the License Epoch (that lives in RightsRegistry).
     function setPolicy(uint256 tokenId, bytes32 newPolicyHash, string calldata newManifestURI) external;
