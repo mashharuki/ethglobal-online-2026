@@ -71,6 +71,7 @@ export function buildUserData(opts: UserDataOptions): ec2.UserData {
     opts.composeYaml.trimEnd(),
     HEREDOC_EOF,
     `umask 077 && printf 'HEDERA_RPC_URL=%s\\n' '${relay}' > ${COMPOSE_DIR}/.env`,
+    `chmod 600 ${COMPOSE_DIR}/.env`,
     `cd ${COMPOSE_DIR} && docker compose up -d`,
     'echo "[graph-node] waiting for graph-node index status endpoint"',
     "READY=0",

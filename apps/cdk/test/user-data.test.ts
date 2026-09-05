@@ -31,6 +31,7 @@ describe("buildUserData", () => {
     expect(script).toContain(
       "umask 077 && printf 'HEDERA_RPC_URL=%s\\n' 'https://testnet.hashio.io/api' > /opt/graph-node/.env",
     );
+    expect(script).toContain("chmod 600 /opt/graph-node/.env");
     expect(compose).toContain('ethereum: "testnet:${HEDERA_RPC_URL}"');
   });
 
