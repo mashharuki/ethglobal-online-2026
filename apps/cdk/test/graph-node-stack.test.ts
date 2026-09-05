@@ -77,6 +77,30 @@ describe("GraphNodeStack networking", () => {
     ).toBe(false);
   });
 
+  it("should refuse unrestricted or malformed admin / SSH CIDRs before creating any rule", () => {
+    for (const bad of [
+      "0.0.0.0/0",
+      "10.0.0.0/8",
+      "203.0.113.4",
+      "999.0.0.1/32",
+      "::/0",
+    ]) {
+      expect(() => synth({ allowedAdminCidr: bad }), bad).toThrow();
+      expect(() => synth({ allowedSshCidr: bad }), bad).toThrow();
+    }
+    expect(() => synth({ allowedAdminCidr: "203.0.113.0/24" })).not.toThrow();
+  });
+
+  it("should produce exactly four ingress rules with admin + no SSH, none of them world-open except 8000", () => {
+    const rules = ingressRules(synth({ allowedAdminCidr: "203.0.113.4/32" }));
+    expect(rules.map((r) => r.FromPort).sort()).toEqual([
+      5001, 8000, 8020, 8030,
+    ]);
+    expect(
+      rules.filter((r) => r.CidrIp === "0.0.0.0/0").map((r) => r.FromPort),
+    ).toEqual([8000]);
+  });
+
   it("should open SSH only to the given CIDR when allowedSshCidr is set", () => {
     expect(ingressRules(synth()).some((r) => r.FromPort === 22)).toBe(false);
     const t = synth({ allowedSshCidr: "203.0.113.4/32" });
@@ -111,20 +135,21 @@ describe("GraphNodeStack compute", () => {
     });
   });
 
-  it("should require IMDSv2 and use only the SSM managed policy", () => {
+  it("should require IMDSv2 and grant exactly the SSM managed policy with no inline policies", () => {
     const t = synth();
     expect(JSON.stringify(t.toJSON())).toContain('"HttpTokens":"required"');
-    t.hasResourceProperties("AWS::IAM::Role", {
-      ManagedPolicyArns: Match.arrayWith([
-        Match.objectLike({
-          "Fn::Join": Match.arrayWith([
-            Match.arrayWith([
-              Match.stringLikeRegexp("AmazonSSMManagedInstanceCore"),
-            ]),
-          ]),
-        }),
-      ]),
-    });
+    const roles = Object.values(t.findResources("AWS::IAM::Role")) as Array<{
+      Properties: { ManagedPolicyArns?: unknown[]; Policies?: unknown[] };
+    }>;
+    expect(roles).toHaveLength(1);
+    const role = roles[0] as {
+      Properties: { ManagedPolicyArns?: unknown[]; Policies?: unknown[] };
+    };
+    expect(role.Properties.ManagedPolicyArns).toHaveLength(1);
+    expect(JSON.stringify(role.Properties.ManagedPolicyArns)).toContain(
+      "AmazonSSMManagedInstanceCore",
+    );
+    expect(role.Properties.Policies).toBeUndefined();
     t.resourceCountIs("AWS::IAM::Policy", 0);
   });
 

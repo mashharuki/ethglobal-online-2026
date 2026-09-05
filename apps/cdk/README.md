@@ -44,6 +44,13 @@ pnpm --filter cdk destroy     # 撤去
 — deploy → graph-node 到達待ち → subgraph deploy → `_meta.block.number` を 3 分観測 → `out/probe-graph-node.json`。
 結果は research.md の「day1 probe 結果の記録欄」（R-5）へ手で転記する。**有料リソースなので `PROBE_CONFIRM=yes` が無ければ実行を拒否する。**
 
+## 注意（運用上の罠）
+
+- **user-data を変えると EC2 は置き換えられ、ルート EBS（Postgres / IPFS のデータ）も消える**（`userDataCausesReplacement`）。subgraph は再 deploy で再同期できるので許容しているが、長期運用ならデータ用 EBS を分離すること。
+- `hederaRpcUrl` は CloudFormation テンプレートと `/opt/graph-node/.env` に平文で入る。**認証情報付き URL は使わない**（`validateRelayUrl` が userinfo 付き URL と shell に危険な文字を拒否する）。
+- `allowedAdminCidr` / `allowedSshCidr` は `/16` より広い範囲（特に `0.0.0.0/0`）を拒否する。
+- 旧テンプレートの `HederaSubgraphStack` をデプロイしたことがあるアカウントでは、本スタックとは別に残って課金される。`aws cloudformation delete-stack --stack-name HederaSubgraphStack --region <region>` で削除すること。
+
 ## ログ / トラブルシュート
 
 ```bash

@@ -23,6 +23,30 @@ export interface GraphNodeStackProps extends cdk.StackProps {
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Admin / SSH ingress must be a real, restricted IPv4 CIDR: anything with a prefix shorter
+ * than /16 (in particular 0.0.0.0/0) would expose the unauthenticated graph-node admin API
+ * and IPFS to the internet.
+ */
+function validateRestrictedCidr(value: string, label: string): string {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(
+    value,
+  );
+  if (match === null)
+    throw new Error(`${label} must be an IPv4 CIDR like 203.0.113.4/32`);
+  const octets = match.slice(1, 5).map(Number);
+  const prefix = Number(match[5]);
+  if (octets.some((o) => o > 255) || prefix > 32) {
+    throw new Error(`${label} is not a valid IPv4 CIDR`);
+  }
+  if (prefix < 16) {
+    throw new Error(
+      `${label} is too broad (/${prefix}); use a /16 or narrower range, never 0.0.0.0/0`,
+    );
+  }
+  return value;
+}
 export const DEFAULT_COMPOSE_PATH = resolve(
   here,
   "../docker/docker-compose.graph-node.yml",
@@ -54,7 +78,9 @@ export class GraphNodeStack extends cdk.Stack {
       "GraphQL query endpoint",
     );
     if (props.allowedAdminCidr) {
-      const admin = ec2.Peer.ipv4(props.allowedAdminCidr);
+      const admin = ec2.Peer.ipv4(
+        validateRestrictedCidr(props.allowedAdminCidr, "allowedAdminCidr"),
+      );
       securityGroup.addIngressRule(
         admin,
         ec2.Port.tcp(8020),
@@ -73,7 +99,9 @@ export class GraphNodeStack extends cdk.Stack {
     }
     if (props.allowedSshCidr) {
       securityGroup.addIngressRule(
-        ec2.Peer.ipv4(props.allowedSshCidr),
+        ec2.Peer.ipv4(
+          validateRestrictedCidr(props.allowedSshCidr, "allowedSshCidr"),
+        ),
         ec2.Port.tcp(22),
         "Emergency SSH",
       );

@@ -13,7 +13,7 @@ describe("buildUserData", () => {
 
   it("should start with a bash shebang and fail fast", () => {
     expect(script.startsWith("#!/bin/bash")).toBe(true);
-    expect(script).toContain("set -euxo pipefail");
+    expect(script).toContain("set -euo pipefail");
   });
 
   it("should install docker + compose plugin and never clone a repository", () => {
@@ -27,11 +27,10 @@ describe("buildUserData", () => {
     expect(script).toContain("cd /opt/graph-node && docker compose up -d");
   });
 
-  it("should write the Hedera relay URL to a 0600 .env consumed by compose", () => {
+  it("should write the Hedera relay URL to an owner-only .env consumed by compose", () => {
     expect(script).toContain(
-      "'https://testnet.hashio.io/api' > /opt/graph-node/.env",
+      "umask 077 && printf 'HEDERA_RPC_URL=%s\\n' 'https://testnet.hashio.io/api' > /opt/graph-node/.env",
     );
-    expect(script).toContain("chmod 600 /opt/graph-node/.env");
     expect(compose).toContain('ethereum: "testnet:${HEDERA_RPC_URL}"');
   });
 
@@ -45,6 +44,38 @@ describe("buildUserData", () => {
         hederaRpcUrl: "https://ok",
       }),
     ).toThrow(/terminator/);
+  });
+
+  it("should reject relay URLs that could break out of the shell quoting or leak credentials", () => {
+    const attacks = [
+      "https://relay.example/'; rm -rf / #",
+      "https://relay.example/api\nreboot",
+      "https://relay.example/$(id)",
+      "https://relay.example/`id`",
+      "https://relay.example/a\\b",
+      "https://relay.example/api with space",
+      "https://user:secret@relay.example/api",
+    ];
+    for (const url of attacks) {
+      expect(
+        () => buildUserData({ composeYaml: compose, hederaRpcUrl: url }),
+        url,
+      ).toThrow();
+    }
+    expect(() =>
+      buildUserData({
+        composeYaml: compose,
+        hederaRpcUrl: "https://testnet.hashio.io/api?x=1&y=2",
+      }),
+    ).not.toThrow();
+  });
+
+  it("should not trace commands (no set -x) and must fail the boot when graph-node never answers", () => {
+    expect(script).not.toContain("set -euxo");
+    expect(script).not.toContain("set -x");
+    expect(script).toContain("curl -fsS --max-time 5 http://127.0.0.1:8030/");
+    expect(script).toContain('if [ "$READY" != "1" ]; then');
+    expect(script).toContain("exit 1");
   });
 
   it("should capture output to a log file and write a readiness marker", () => {
