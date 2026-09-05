@@ -1,11 +1,20 @@
 {
   "compilerOptions": {
     "lib": ["es2023"],
-    "module": "node20",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "target": "es2023",
+    "strict": true,
     "skipLibCheck": true,
     "outDir": "dist",
     "types": ["node", "mocha"],
-    "verbatimModuleSyntax": true
-  }
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "scripts/**/*.ts",
+    "test/**/*.ts",
+    "hardhat.config.ts",
+    "types/**/*.ts"
+  ]
 }

@@ -15,14 +15,18 @@ export const KV_FORMAT_VERSION = "tc-kv-v1";
 const IV_BYTES = 12;
 const KEK_BYTES = 32;
 
-function subtle(): SubtleCrypto {
+// Structural types so this module typechecks against both DOM lib and @types/node (webcrypto).
+type SubtleApi = typeof globalThis.crypto.subtle;
+type AesKey = Awaited<ReturnType<SubtleApi["importKey"]>>;
+
+function subtle(): SubtleApi {
   const api = globalThis.crypto?.subtle;
   if (api === undefined)
     throw new Error("Web Crypto (crypto.subtle) is not available");
   return api;
 }
 
-async function importKek(kek: Uint8Array): Promise<CryptoKey> {
+async function importKek(kek: Uint8Array): Promise<AesKey> {
   if (kek.length !== KEK_BYTES)
     throw new RangeError(`KEK must be ${KEK_BYTES} bytes`);
   return subtle().importKey(

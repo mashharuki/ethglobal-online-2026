@@ -3,7 +3,8 @@ import { resolve } from "node:path";
 
 /**
  * Funded Hedera Testnet accounts produced by `apps/contracts/scripts/seed.ts` (T048).
- * The file `.accounts.json` is gitignored; it is the only place test keys live.
+ * The per-chain file `.accounts.<chainId>.json` is gitignored and 0600; it is the only
+ * place test keys live. Default chain is Hedera testnet (296).
  */
 export type TestAccountRole =
   | "creator"
@@ -28,15 +29,19 @@ const ROLES: readonly TestAccountRole[] = [
   "agent",
 ];
 
-export function loadTestAccounts(
-  path = resolve(import.meta.dirname, ".accounts.json"),
-): TestAccounts {
+export function accountsPath(
+  chainId = Number(process.env.HEDERA_CHAIN_ID ?? "296"),
+): string {
+  return resolve(import.meta.dirname, `.accounts.${chainId}.json`);
+}
+
+export function loadTestAccounts(path = accountsPath()): TestAccounts {
   const raw = JSON.parse(readFileSync(path, "utf8")) as Partial<TestAccounts>;
   for (const role of ROLES) {
     const account = raw[role];
     if (account === undefined || !account.privateKey.startsWith("0x")) {
       throw new Error(
-        `.accounts.json is missing a funded "${role}" account; run seed.ts first`,
+        `${path} is missing a funded "${role}" account; run seed first`,
       );
     }
   }

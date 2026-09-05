@@ -1,0 +1,14 @@
+{
+  "title": "Exclusive dataset B - Solar micro-grid telemetry sample (synthetic)",
+  "description": "Hourly generation, consumption and battery state of charge for two sites. 8 rows, 5 columns. Licenses are invalidated when the NFT changes hands.",
+  "columns": [
+    "hour",
+    "siteId",
+    "generationKwh",
+    "consumptionKwh",
+    "batterySocPct"
+  ],
+  "sampleRow": [6, "site-01", "***", "***", "***"],
+  "rowCount": 8,
+  "transferMode": "INVALIDATE_ON_TRANSFER"
+}
