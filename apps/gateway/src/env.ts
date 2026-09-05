@@ -1,5 +1,13 @@
+import type {
+  DurableObjectNamespace,
+  Hyperdrive,
+  KVNamespace,
+} from "@cloudflare/workers-types";
+
 /**
  * Worker bindings and variables (mirrors wrangler.toml). Secrets are listed in CONFIG.md.
+ * Binding types are imported (not ambient) so modules that only need `Env` typecheck under
+ * the node tsconfig too.
  */
 type SettlementMode = "primary" | "fallback" | "custodial";
 
@@ -14,6 +22,8 @@ export type Env = {
   /** Empty string = fall back to packages/shared DEFAULT_DEPLOYMENT (deploy write-back). */
   RIGHTS_NFT_ADDRESS: string;
   RIGHTS_REGISTRY_ADDRESS: string;
+  /** HTTP gateway used to fetch ipfs:// manifests / content. */
+  IPFS_GATEWAY_URL: string;
   // secrets (wrangler secret put / .dev.vars)
   HEDERA_OPERATOR_KEY?: string;
   RECEIPT_SIGNER_KEY?: string;

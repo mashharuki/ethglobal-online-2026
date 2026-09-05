@@ -6,5 +6,6 @@ export * from "./addresses";
 export * from "./eip712";
 export * from "./errors";
 export * from "./hashing";
+export * from "./keygate";
 export * from "./kv-format";
 export * from "./manifest";

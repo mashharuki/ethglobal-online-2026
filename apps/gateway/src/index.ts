@@ -4,6 +4,7 @@ import { createDb } from "./db/client";
 import type { Db } from "./db/types";
 import { type Env, getChainId } from "./env";
 import { handleError } from "./errors";
+import { clientIp, rateLimit, walletOrIp } from "./middleware/rateLimit";
 
 /**
  * Access Gateway entrypoint (tasks.md T069). Routes are mounted here as they are
@@ -28,6 +29,15 @@ app.use("*", async (c, next) => {
     c.executionCtx.waitUntil(handle.close());
   }
 });
+
+// Rate limits (spec 9.2, tasks.md T080): preview 60/min per IP; owner + keygate 30/min per
+// wallet behind a 120/min per-IP brake (so wallet buckets cannot be minted without bound).
+const MINUTE = 60_000;
+app.use("/assets/*", rateLimit({ limit: 60, windowMs: MINUTE, key: clientIp }));
+for (const prefix of ["/owner/*", "/keygate/*"]) {
+  app.use(prefix, rateLimit({ limit: 120, windowMs: MINUTE, key: clientIp }));
+  app.use(prefix, rateLimit({ limit: 30, windowMs: MINUTE, key: walletOrIp }));
+}
 
 app.get("/healthz", (c) => {
   const body: JsonResponse<"/healthz", "get"> = {

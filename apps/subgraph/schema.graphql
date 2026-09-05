@@ -19,6 +19,8 @@ type RightsToken @entity(immutable: false) {
   creator: Bytes!
   accessEpoch: BigInt!
   policyHash: Bytes!
+  "assetId committed at mint (immutable); discovery key for the gateway assetId -> tokenId lookup"
+  assetId: Bytes!
   manifestURI: String!
   licenseEpoch: BigInt!
   transfers: [TransferEvent!]! @derivedFrom(field: "token")

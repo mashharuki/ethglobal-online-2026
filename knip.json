@@ -16,7 +16,7 @@
       ]
     },
     "apps/gateway": {
-      "entry": ["test/**/*.ts", "scripts/*.ts"],
+      "entry": ["test/**/*.ts", "scripts/*.ts", "src/keygate/ports.ts"],
       "ignoreDependencies": ["cloudflare"]
     },
     "apps/agent": {

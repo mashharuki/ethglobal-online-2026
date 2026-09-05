@@ -7,8 +7,6 @@ import type { ChainContext } from "./clients";
  * source of authorization truth (constitution II): every KeyGate / owner / MCP decision
  * calls these at request time. Nothing here is cached; the subgraph is never consulted.
  * Pass `blockNumber` to pin several reads to one block (see readOwnerSnapshot).
- * The `@lintignore` tags mark exports whose consumers land with keygate/release and
- * ReceiptLock (tasks.md T081 / T083).
  */
 type ReadOptions = { blockNumber?: bigint };
 
@@ -24,8 +22,7 @@ type ReceiptStatus = {
   expiresAt: bigint;
 };
 
-/** @lintignore T081/T083 */
-export async function readOwnerOf(
+async function readOwnerOf(
   ctx: ChainContext,
   tokenId: bigint,
   options: ReadOptions = {},
@@ -39,8 +36,7 @@ export async function readOwnerOf(
   });
 }
 
-/** @lintignore T081/T083 */
-export async function readAccessEpoch(
+async function readAccessEpoch(
   ctx: ChainContext,
   tokenId: bigint,
   options: ReadOptions = {},
@@ -54,7 +50,6 @@ export async function readAccessEpoch(
   });
 }
 
-/** @lintignore T081/T083 */
 export async function readPolicyHash(
   ctx: ChainContext,
   tokenId: bigint,
@@ -69,7 +64,6 @@ export async function readPolicyHash(
   });
 }
 
-/** @lintignore T081/T083 */
 export async function readResourceHash(
   ctx: ChainContext,
   tokenId: bigint,
@@ -84,10 +78,7 @@ export async function readResourceHash(
   });
 }
 
-/**
- * assetId committed at mint (immutable); the owner path derives tokenId -> assetId from
- * here (R-11). @lintignore T081/T083
- */
+/** assetId committed at mint (immutable); the owner path derives tokenId -> assetId from here (R-11). */
 export async function readAssetId(
   ctx: ChainContext,
   tokenId: bigint,
@@ -97,6 +88,20 @@ export async function readAssetId(
     address: ctx.deployment.rightsNFT,
     abi: rightsNftAbi,
     functionName: "assetId",
+    args: [tokenId],
+    blockNumber: options.blockNumber,
+  });
+}
+
+export async function readManifestURI(
+  ctx: ChainContext,
+  tokenId: bigint,
+  options: ReadOptions = {},
+): Promise<string> {
+  return ctx.publicClient.readContract({
+    address: ctx.deployment.rightsNFT,
+    abi: rightsNftAbi,
+    functionName: "manifestURI",
     args: [tokenId],
     blockNumber: options.blockNumber,
   });
@@ -116,7 +121,6 @@ export async function readLicenseEpoch(
   });
 }
 
-/** @lintignore T081/T083 */
 export async function readReceiptStatus(
   ctx: ChainContext,
   receiptHash: Hex,
@@ -152,10 +156,7 @@ export async function readReceiptStatus(
   };
 }
 
-/**
- * Authority predicate for the licensee path (all validity branches live in the contract).
- * @lintignore T081/T083
- */
+/** Authority predicate for the licensee path (all validity branches live in the contract). */
 export async function readHasValidConsumption(
   ctx: ChainContext,
   receiptHash: Hex,
@@ -171,7 +172,7 @@ export async function readHasValidConsumption(
   });
 }
 
-/** consumed[receiptHash][useIndex] - used by ReceiptLock crash recovery (R-3a). @lintignore T081/T083 */
+/** consumed[receiptHash][useIndex] - used by ReceiptLock crash recovery (R-3a). */
 export async function readIsConsumed(
   ctx: ChainContext,
   receiptHash: Hex,
@@ -187,27 +188,29 @@ export async function readIsConsumed(
   });
 }
 
-/** Owner-path snapshot: all four reads are pinned to one block so the tuple is consistent. */
+/** Owner-path snapshot: all reads are pinned to one block so the tuple is consistent. */
 type OwnerSnapshot = {
   blockNumber: bigint;
   owner: Address;
   accessEpoch: bigint;
   policyHash: Hex;
+  resourceHash: Hex;
   assetId: Hex;
 };
 
-/** @lintignore T081/T083 */
 export async function readOwnerSnapshot(
   ctx: ChainContext,
   tokenId: bigint,
 ): Promise<OwnerSnapshot> {
   const blockNumber = await ctx.publicClient.getBlockNumber();
   const at = { blockNumber };
-  const [owner, accessEpoch, policyHash, assetId] = await Promise.all([
-    readOwnerOf(ctx, tokenId, at),
-    readAccessEpoch(ctx, tokenId, at),
-    readPolicyHash(ctx, tokenId, at),
-    readAssetId(ctx, tokenId, at),
-  ]);
-  return { blockNumber, owner, accessEpoch, policyHash, assetId };
+  const [owner, accessEpoch, policyHash, resourceHash, assetId] =
+    await Promise.all([
+      readOwnerOf(ctx, tokenId, at),
+      readAccessEpoch(ctx, tokenId, at),
+      readPolicyHash(ctx, tokenId, at),
+      readResourceHash(ctx, tokenId, at),
+      readAssetId(ctx, tokenId, at),
+    ]);
+  return { blockNumber, owner, accessEpoch, policyHash, resourceHash, assetId };
 }

@@ -37,6 +37,7 @@ export function loadOrCreateToken(tokenId: BigInt): RightsToken {
     token.creator = ZERO_ADDRESS;
     token.accessEpoch = BigInt.zero();
     token.policyHash = ZERO_HASH;
+    token.assetId = ZERO_HASH;
     token.manifestURI = "";
     token.licenseEpoch = BigInt.zero();
     token.totalRevenue = BigInt.zero();
