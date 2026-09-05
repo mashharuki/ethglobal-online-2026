@@ -15,6 +15,13 @@ import {
 export const TINYBAR_PER_HBAR = 100_000_000n;
 export const WEIBAR_PER_TINYBAR = 10_000_000_000n;
 export const WEIBAR_PER_HBAR = TINYBAR_PER_HBAR * WEIBAR_PER_TINYBAR;
+export const UINT256_MAX = (1n << 256n) - 1n;
+
+/** True when `value` is a decimal integer string that fits in uint256 (ABI-encodable). */
+export function isUint256Decimal(value: string): boolean {
+  if (!/^[0-9]+$/.test(value)) return false;
+  return BigInt(value) <= UINT256_MAX;
+}
 
 /** `transferMode` uint8 encoding used on-chain and in the EIP-712 struct. */
 export const TransferMode = {
@@ -133,9 +140,13 @@ export function computePolicyHash(input: PolicyHashInput): Hex {
   );
 }
 
-/** bytes4 selector of a KeyGate condition expression (keccak256 of its UTF-8 text). */
-export function conditionSelector(condition: string): Hex {
-  return `0x${keccak256(stringToHex(condition)).slice(2, 10)}`;
+/**
+ * Digest of a KeyGate condition expression (full keccak256 of its UTF-8 text). A full
+ * 32-byte digest is used rather than a 4-byte selector so conditionsHash keeps
+ * collision resistance for arbitrary expressions.
+ */
+export function conditionDigest(condition: string): Hex {
+  return keccak256(stringToHex(condition));
 }
 
 export type ConditionsHashInput = {
@@ -144,18 +155,24 @@ export type ConditionsHashInput = {
   verifyingContract: Address;
 };
 
-/** keccak256(abi.encode(ownerConditionSelector bytes4, licenseConditionSelector bytes4, verifyingContract)) */
+/** keccak256(abi.encode(ownerConditionDigest bytes32, licenseConditionDigest bytes32, verifyingContract)) */
 export function computeConditionsHash(input: ConditionsHashInput): Hex {
   return keccak256(
     encodeAbiParameters(
-      [{ type: "bytes4" }, { type: "bytes4" }, { type: "address" }],
+      [{ type: "bytes32" }, { type: "bytes32" }, { type: "address" }],
       [
-        conditionSelector(input.ownerCondition),
-        conditionSelector(input.licenseCondition),
+        conditionDigest(input.ownerCondition),
+        conditionDigest(input.licenseCondition),
         input.verifyingContract,
       ],
     ),
   );
+}
+
+/** Locale-independent code-unit ordering (hash preimages must not depend on ICU collation). */
+function ordinalCompare(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
 }
 
 /**
@@ -177,9 +194,7 @@ export function canonicalPath(rawPath: string): string {
       const [key = "", ...rest] = pair.split("=");
       return [key.toLowerCase(), rest.join("=")] as const;
     })
-    .sort(([a, av], [b, bv]) =>
-      a === b ? av.localeCompare(bv) : a.localeCompare(b),
-    );
+    .sort(([a, av], [b, bv]) => ordinalCompare(a, b) || ordinalCompare(av, bv));
   return `${path}?${pairs.map(([k, v]) => (v === "" ? k : `${k}=${v}`)).join("&")}`;
 }
 

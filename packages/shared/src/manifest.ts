@@ -2,6 +2,7 @@ import type { Address, Hex } from "viem";
 import { z } from "zod";
 import {
   computePolicyHash,
+  isUint256Decimal,
   type PolicyHashInput,
   permissionsToBitflags,
   TransferMode,
@@ -30,7 +31,7 @@ export const RightsManifestSchema = z
     nftContract: address,
     tokenId: z
       .string()
-      .regex(/^[0-9]+$/, "tokenId must be a decimal integer string"),
+      .refine(isUint256Decimal, "tokenId must be a decimal uint256 string"),
     previewURI: z.string().url(),
     encryptedContentURI: z.string().url(),
     contentHash: hex32,
@@ -53,14 +54,19 @@ export const RightsManifestSchema = z
       .object({
         price: z
           .string()
-          .regex(
-            /^[1-9][0-9]*$/,
-            "price must be a positive weibar integer string",
+          .refine(
+            (value) => /^[1-9][0-9]*$/.test(value) && isUint256Decimal(value),
+            "price must be a positive weibar integer string within uint256",
           )
-          .refine((value) => BigInt(value) % WEIBAR_PER_TINYBAR === 0n, {
-            message:
-              "price must be a multiple of 1e10 weibar (tinybar precision)",
-          }),
+          .refine(
+            (value) =>
+              isUint256Decimal(value) &&
+              BigInt(value) % WEIBAR_PER_TINYBAR === 0n,
+            {
+              message:
+                "price must be a multiple of 1e10 weibar (tinybar precision)",
+            },
+          ),
         durationSec: z.number().int().min(1),
         maxUses: z.number().int().min(1).max(uint32Max),
       })

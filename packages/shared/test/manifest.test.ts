@@ -41,6 +41,35 @@ describe("RightsManifest schema", () => {
     ).toBe(false);
   });
 
+  it("should return ok:false (never throw) for non-numeric price/tokenId and reject values above uint256", () => {
+    const uint256Max = ((1n << 256n) - 1n).toString();
+    const overflow = (1n << 256n).toString();
+    expect(
+      parseManifest({
+        ...SAMPLE_MANIFEST,
+        paidAccess: { ...SAMPLE_MANIFEST.paidAccess, price: "abc" },
+      }).ok,
+    ).toBe(false);
+    expect(parseManifest({ ...SAMPLE_MANIFEST, tokenId: "1e3" }).ok).toBe(
+      false,
+    );
+    expect(parseManifest({ ...SAMPLE_MANIFEST, tokenId: overflow }).ok).toBe(
+      false,
+    );
+    expect(parseManifest({ ...SAMPLE_MANIFEST, tokenId: uint256Max }).ok).toBe(
+      true,
+    );
+    expect(
+      parseManifest({
+        ...SAMPLE_MANIFEST,
+        paidAccess: {
+          ...SAMPLE_MANIFEST.paidAccess,
+          price: `1${"0".repeat(80)}`,
+        },
+      }).ok,
+    ).toBe(false);
+  });
+
   it("should reject maxUses above uint32, unknown transferMode and unknown keys", () => {
     expect(
       RightsManifestSchema.safeParse({

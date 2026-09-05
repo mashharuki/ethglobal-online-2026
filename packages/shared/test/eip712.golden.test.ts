@@ -5,6 +5,7 @@ import {
   computeReceiptHash,
   RIGHTS_RECEIPT_TYPE,
   RIGHTS_RECEIPT_TYPEHASH,
+  type RightsReceipt,
   receiptTypedData,
 } from "../src/eip712";
 import { GOLDEN_RECEIPT, REGISTRY } from "./fixtures";
@@ -43,21 +44,35 @@ describe("EIP-712 RightsReceipt golden", () => {
     expect(ours).toBe(viemDigest);
   });
 
-  it("should change the hash when any single field changes", () => {
+  it("should change the hash when any one of the 17 fields changes", () => {
     const base = computeReceiptHash(GOLDEN_RECEIPT);
-    const variants: Array<Partial<typeof GOLDEN_RECEIPT>> = [
-      { chainId: 295n },
-      { tokenId: 2n },
-      { licensee: "0x4444444444444444444444444444444444444444" },
-      { transferMode: 1 },
-      { maxUses: 6 },
-      { issuedAt: GOLDEN_RECEIPT.issuedAt + 1n },
-      { nonce: `0x${"03".repeat(32)}` },
+    const other32 = `0x${"09".repeat(32)}` as const;
+    const otherAddress = "0x4444444444444444444444444444444444444444" as const;
+    const variants: Array<[keyof RightsReceipt, Partial<RightsReceipt>]> = [
+      ["chainId", { chainId: 295n }],
+      ["verifyingContract", { verifyingContract: otherAddress }],
+      ["nftContract", { nftContract: otherAddress }],
+      ["tokenId", { tokenId: 2n }],
+      ["resourceHash", { resourceHash: other32 }],
+      ["policyHash", { policyHash: other32 }],
+      ["licenseEpoch", { licenseEpoch: 2n }],
+      ["ownerEpochAtIssue", { ownerEpochAtIssue: 2n }],
+      ["licensee", { licensee: otherAddress }],
+      ["permittedAction", { permittedAction: 7 }],
+      ["transferMode", { transferMode: 1 }],
+      ["maxUses", { maxUses: 6 }],
+      ["expiresAt", { expiresAt: GOLDEN_RECEIPT.expiresAt + 1n }],
+      ["purchaseRequestHash", { purchaseRequestHash: other32 }],
+      ["paymentId", { paymentId: other32 }],
+      ["nonce", { nonce: other32 }],
+      ["issuedAt", { issuedAt: GOLDEN_RECEIPT.issuedAt + 1n }],
     ];
-    for (const patch of variants) {
-      expect(computeReceiptHash({ ...GOLDEN_RECEIPT, ...patch })).not.toBe(
-        base,
-      );
+    expect(variants).toHaveLength(17);
+    for (const [field, patch] of variants) {
+      expect(
+        computeReceiptHash({ ...GOLDEN_RECEIPT, ...patch }),
+        field,
+      ).not.toBe(base);
     }
   });
 });

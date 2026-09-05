@@ -6,7 +6,7 @@ import {
   computePolicyHash,
   computePurchaseRequestHash,
   computeResourceHash,
-  conditionSelector,
+  conditionDigest,
   permissionsToBitflags,
   TransferMode,
   tinybarToWeibar,
@@ -32,6 +32,11 @@ describe("canonicalPath", () => {
     expect(canonicalPath("/")).toBe("/");
     expect(canonicalPath("/assets/1#frag")).toBe("/assets/1");
     expect(canonicalPath("assets/1")).toBe("/assets/1");
+  });
+  it("should sort query keys by code unit, independent of locale (uppercase before lowercase)", () => {
+    expect(canonicalPath("/p?b=1&B=2&a=3")).toBe("/p?a=3&b=1&b=2");
+    expect(canonicalPath("/p?%C3%A9=1&z=2")).toBe("/p?%c3%a9=1&z=2");
+    expect(canonicalPath("/p?k=b&k=a")).toBe("/p?k=a&k=b");
   });
   it("should be idempotent", () => {
     const once = canonicalPath("/A/B/?q=2&p=1");
@@ -110,12 +115,12 @@ describe("resourceHash / policyHash / conditionsHash / purchaseRequestHash", () 
     ).not.toBe(h);
   });
 
-  it("should derive 4-byte condition selectors and a conditionsHash bound to the registry", () => {
+  it("should derive full 32-byte condition digests and a conditionsHash bound to the registry", () => {
     expect(
-      conditionSelector(
+      conditionDigest(
         "RightsRegistry.hasValidConsumption(:receiptHash, :useIndex)",
       ),
-    ).toMatch(/^0x[0-9a-f]{8}$/);
+    ).toMatch(/^0x[0-9a-f]{64}$/);
     const input = {
       ownerCondition: "owner",
       licenseCondition: "license",

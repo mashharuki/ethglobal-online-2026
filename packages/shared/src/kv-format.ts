@@ -1,4 +1,4 @@
-import { bytesToHex, hexToBytes } from "viem";
+import { bytesToHex, type Hex, hexToBytes } from "viem";
 
 /**
  * share_G at-rest format for Workers KV (FR-016). The seed loader (apps/contracts
@@ -6,8 +6,10 @@ import { bytesToHex, hexToBytes } from "viem";
  * (apps/gateway/src/kv/shareStore.ts) both import THIS module so the ciphertext layout
  * can never drift between writer and reader.
  *
- * Layout: `tc-kv-v1:<iv hex (12 bytes)>:<ciphertext||tag hex>` using AES-256-GCM with
- * the version string as additional authenticated data. Web Crypto only (Workers/browser/Node).
+ * Layout: `tc-kv-v1:<iv hex (12 bytes)>:<ciphertext||tag hex>` using AES-256-GCM.
+ * The AAD binds the version AND the assetId (the KV key) so a blob encrypted for one
+ * asset cannot be swapped into another asset's KV record under the same KEK.
+ * Web Crypto only (Workers/browser/Node).
  */
 export const KV_FORMAT_VERSION = "tc-kv-v1";
 const IV_BYTES = 12;
@@ -25,25 +27,35 @@ async function importKek(kek: Uint8Array): Promise<CryptoKey> {
     throw new RangeError(`KEK must be ${KEK_BYTES} bytes`);
   return subtle().importKey(
     "raw",
-    kek as BufferSource,
+    Uint8Array.from(kek),
     { name: "AES-GCM" },
     false,
     ["encrypt", "decrypt"],
   );
 }
 
-const AAD = new TextEncoder().encode(KV_FORMAT_VERSION);
+/** KV key for an asset's share_G record; also the AAD binding. */
+export function shareGKvKey(assetId: Hex): string {
+  return `share_g:${assetId.toLowerCase()}`;
+}
+
+function aadFor(assetId: Hex): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(
+    new TextEncoder().encode(`${KV_FORMAT_VERSION}|${shareGKvKey(assetId)}`),
+  );
+}
 
 export async function encryptShareG(
   shareG: Uint8Array,
   kek: Uint8Array,
+  assetId: Hex,
 ): Promise<string> {
   const key = await importKek(kek);
   const iv = globalThis.crypto.getRandomValues(new Uint8Array(IV_BYTES));
   const ciphertext = await subtle().encrypt(
-    { name: "AES-GCM", iv, additionalData: AAD },
+    { name: "AES-GCM", iv, additionalData: aadFor(assetId) },
     key,
-    shareG as BufferSource,
+    Uint8Array.from(shareG),
   );
   return `${KV_FORMAT_VERSION}:${bytesToHex(iv).slice(2)}:${bytesToHex(new Uint8Array(ciphertext)).slice(2)}`;
 }
@@ -55,6 +67,7 @@ export class KvFormatError extends Error {
 export async function decryptShareG(
   blob: string,
   kek: Uint8Array,
+  assetId: Hex,
 ): Promise<Uint8Array> {
   const parts = blob.split(":");
   if (parts.length !== 3 || parts[0] !== KV_FORMAT_VERSION) {
@@ -76,7 +89,7 @@ export async function decryptShareG(
       {
         name: "AES-GCM",
         iv: Uint8Array.from(hexToBytes(`0x${ivHex}`)),
-        additionalData: AAD,
+        additionalData: aadFor(assetId),
       },
       key,
       Uint8Array.from(hexToBytes(`0x${ctHex}`)),
@@ -84,7 +97,7 @@ export async function decryptShareG(
     return new Uint8Array(plain);
   } catch {
     throw new KvFormatError(
-      "share_G blob failed authentication (tampered or wrong KEK)",
+      "share_G blob failed authentication (tampered, wrong KEK, or wrong asset)",
     );
   }
 }
