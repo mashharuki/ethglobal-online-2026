@@ -22,27 +22,33 @@ import {
   CONTRACTS_DIR,
   HEDERA_TESTNET_CHAIN_ID,
   hasFlag,
-  OUT_DIR,
+  outDirFor,
   REPO_ROOT,
   readDeployment,
   writeJson,
+  writeSecretJson,
 } from "./lib/deployment.js";
-import { storeObject } from "./lib/storage.js";
+import { hasPinata, storeObject } from "./lib/storage.js";
 
 /**
  * tasks.md T048 - demo seed.
  *
  *   pnpm --filter contracts seed:local     # deploys fresh contracts on the simulated network first
- *   pnpm --filter contracts seed:testnet   # uses out/deployment.296.json from deploy:testnet
+ *   pnpm --filter contracts seed:testnet   # uses out/296/deployment.json from deploy:testnet
  *
  * Creates 5 demo accounts (creator / ownerA / ownerB / buyer / agent), funds them from the
  * operator signer, encrypts the two demo datasets client-side (AES-256-GCM), splits K into
  * share_G / share_U, stores ciphertext + preview + manifest (Pinata when PINATA_JWT is set,
- * file:// otherwise), and mints asset A (SURVIVE_TRANSFER, 5 HBAR, 5 uses) and asset B
- * (INVALIDATE_ON_TRANSFER, 5 HBAR, 3 uses) to ownerA.
+ * file:// otherwise - refused on testnet without --allow-local-storage), and mints asset A
+ * (SURVIVE_TRANSFER, 5 HBAR, 5 uses) and asset B (INVALIDATE_ON_TRANSFER, 5 HBAR, 3 uses)
+ * to ownerA. The manifest is bound to the tokenId taken from the mint receipt and attached
+ * with setPolicy afterwards, so no tokenId race with concurrent mints is possible.
  *
+ * Secrets are persisted BEFORE the step that depends on them (keys before funding, shares
+ * before upload/mint) with 0600 permissions, per chain:
+ *   out/<chainId>/seed-artifacts.json   (raw share_G / share_U - keep local)
+ *   apps/e2e/.accounts.<chainId>.json   (funded test keys - gitignored)
  * Key material is NOT loaded into KV / secrets here - see apps/gateway/scripts/load-shares.ts.
- * Outputs: out/seed-artifacts.json (shares in clear - keep local) and apps/e2e/.accounts.json.
  */
 const { ethers, networkName } = await network.getOrCreate();
 
@@ -91,15 +97,30 @@ const OWNER_CONDITION =
 const LICENSE_CONDITION =
   "RightsRegistry.hasValidConsumption(:receiptHash, :useIndex)";
 
+type SeedArtifacts = {
+  chainId: number;
+  network: string;
+  rightsNFT: string;
+  rightsRegistry: string;
+  seededAt: string;
+  assets: Record<string, unknown>;
+};
+
 async function main(): Promise<void> {
   const [operator] = await ethers.getSigners();
   if (operator === undefined)
     throw new Error("no signer configured for this network");
   const chainId = Number((await ethers.provider.getNetwork()).chainId);
   const isTestnet = BigInt(chainId) === HEDERA_TESTNET_CHAIN_ID;
+  const outDir = outDirFor(chainId);
   console.log(
-    `network=${networkName} chainId=${chainId} operator=${operator.address}`,
+    `network=${networkName} chainId=${chainId} operator=${operator.address} out=${outDir}`,
   );
+  if (isTestnet && !hasPinata() && !hasFlag("--allow-local-storage")) {
+    throw new Error(
+      "PINATA_JWT is not set: on Hedera testnet file:// URIs would be unreachable by the deployed gateway (pass --allow-local-storage to override)",
+    );
+  }
 
   // ---- contracts
   // The simulated network is per-process, so a deployment record from deploy:local is stale by
@@ -111,7 +132,7 @@ async function main(): Promise<void> {
   if (deployment === undefined) {
     if (isTestnet && !hasFlag("--deploy-if-missing")) {
       throw new Error(
-        "out/deployment.296.json not found - run deploy:testnet first",
+        "out/296/deployment.json not found - run deploy:testnet first",
       );
     }
     console.log(
@@ -144,13 +165,29 @@ async function main(): Promise<void> {
     deployment.rightsRegistry,
   );
 
-  // ---- accounts (fresh ECDSA keys; Hedera lazy-creates the account on first transfer)
+  // ---- accounts: generate, PERSIST, then fund (a funding failure must never orphan funds)
   const accounts = Object.fromEntries(
     ROLES.map((role) => {
       const wallet = ethers.Wallet.createRandom().connect(ethers.provider);
       return [role, wallet] as const;
     }),
   ) as Record<Role, ReturnType<typeof ethers.Wallet.createRandom>>;
+
+  const accountsPath = resolve(REPO_ROOT, `apps/e2e/.accounts.${chainId}.json`);
+  writeSecretJson(
+    accountsPath,
+    Object.fromEntries(
+      ROLES.map((role) => [
+        role,
+        {
+          role,
+          address: accounts[role].address,
+          privateKey: accounts[role].privateKey,
+        },
+      ]),
+    ),
+  );
+  console.log(`wrote ${accountsPath} (0600, funded test keys - gitignored)`);
 
   for (const role of ROLES) {
     const to = accounts[role].address;
@@ -163,7 +200,17 @@ async function main(): Promise<void> {
   }
 
   // ---- assets
-  const artifacts: Record<string, unknown> = {};
+  const artifactsPath = resolve(outDir, "seed-artifacts.json");
+  const artifacts: SeedArtifacts = {
+    chainId,
+    network: networkName,
+    rightsNFT: deployment.rightsNFT,
+    rightsRegistry: deployment.rightsRegistry,
+    seededAt: new Date().toISOString(),
+    assets: {},
+  };
+  const persist = (): void => writeSecretJson(artifactsPath, artifacts);
+
   for (const spec of ASSETS) {
     const plaintext = readFileSync(
       resolve(CONTRACTS_DIR, "scripts/seed-data", spec.dataFile),
@@ -187,47 +234,48 @@ async function main(): Promise<void> {
     const assetId = keccak256(
       stringToHex(`truecollective/${chainId}/${spec.name}`),
     );
+    // shares are on disk before anything is uploaded or minted
+    artifacts.assets[spec.key] = {
+      assetId,
+      transferMode: spec.transferMode,
+      contentHash,
+      shareG: toHex(shareG),
+      shareU: toHex(shareU),
+      status: "encrypted",
+    };
+    persist();
 
     const stored = await storeObject(
+      outDir,
       `${spec.name}.enc`,
       ciphertext,
       "application/octet-stream",
     );
     const storedPreview = await storeObject(
+      outDir,
       `${spec.name}.preview.json`,
       new Uint8Array(preview),
       "application/json",
     );
 
-    // mint first so the manifest can carry the real tokenId
-    const creator = accounts.creator;
-    const tokenIdPreview = await nft
-      .connect(creator)
-      .mint.staticCall(
-        accounts.ownerA.address,
-        creator.address,
-        ethers.ZeroHash,
-        assetId,
-        contentHash,
-        "",
-      );
-    const conditionsHash = computeConditionsHash({
-      ownerCondition: OWNER_CONDITION,
-      licenseCondition: LICENSE_CONDITION,
-      verifyingContract: deployment.rightsRegistry,
-    });
-    const manifestDraft = {
+    // mint with the final policyHash but an empty manifestURI; the manifest needs the real
+    // tokenId, which only the mint receipt can give us (no staticCall race)
+    const policyInputManifest = {
       schemaVersion: "1.0",
       assetId,
       nftContract: deployment.rightsNFT,
-      tokenId: tokenIdPreview.toString(),
+      tokenId: "0",
       previewURI: storedPreview.uri,
       encryptedContentURI: stored.uri,
       contentHash,
       keyGate: {
         scheme: "xor-2share",
         keyGateVersion: 1,
-        conditionsHash,
+        conditionsHash: computeConditionsHash({
+          ownerCondition: OWNER_CONDITION,
+          licenseCondition: LICENSE_CONDITION,
+          verifyingContract: deployment.rightsRegistry,
+        }),
         ownerCondition: OWNER_CONDITION,
         licenseCondition: LICENSE_CONDITION,
       },
@@ -245,17 +293,12 @@ async function main(): Promise<void> {
       transferMode: spec.transferMode,
       revenueSplit: { creatorBps: 3000, ownerBps: 7000 },
     };
-    const parsed = RightsManifestSchema.safeParse(manifestDraft);
-    if (!parsed.success)
-      throw new Error(`manifest ${spec.key} invalid: ${parsed.error.message}`);
-    const manifest = parsed.data;
-    const policyHash = manifestPolicyHash(manifest);
-    const storedManifest = await storeObject(
-      `${spec.name}.manifest.json`,
-      new TextEncoder().encode(JSON.stringify(manifest, null, 2)),
-      "application/json",
-    );
+    const draft = RightsManifestSchema.safeParse(policyInputManifest);
+    if (!draft.success)
+      throw new Error(`manifest ${spec.key} invalid: ${draft.error.message}`);
+    const policyHash = manifestPolicyHash(draft.data);
 
+    const creator = accounts.creator;
     const mintTx = await nft
       .connect(creator)
       .mint(
@@ -264,72 +307,65 @@ async function main(): Promise<void> {
         policyHash,
         assetId,
         contentHash,
-        storedManifest.uri,
+        "",
       );
     const mintReceipt = await mintTx.wait();
-    const tokenId = tokenIdPreview;
+    const transfer = mintReceipt?.logs
+      .map((log) => {
+        try {
+          return nft.interface.parseLog(log);
+        } catch {
+          return null;
+        }
+      })
+      .find((parsed) => parsed?.name === "Transfer");
+    if (transfer === undefined || transfer === null)
+      throw new Error(`mint of asset ${spec.key} emitted no Transfer event`);
+    const tokenId = transfer.args.tokenId as bigint;
+
+    const manifest = { ...draft.data, tokenId: tokenId.toString() };
+    const storedManifest = await storeObject(
+      outDir,
+      `${spec.name}.manifest.json`,
+      new TextEncoder().encode(JSON.stringify(manifest, null, 2)),
+      "application/json",
+    );
+    const policyTx = await nft
+      .connect(creator)
+      .setPolicy(tokenId, policyHash, storedManifest.uri);
+    await policyTx.wait();
     if ((await nft.policyHash(tokenId)) !== policyHash)
       throw new Error(`policyHash mismatch for asset ${spec.key}`);
+    if ((await nft.manifestURI(tokenId)) !== storedManifest.uri)
+      throw new Error(`manifestURI mismatch for asset ${spec.key}`);
+    if ((await registry.licenseEpoch(tokenId)) !== 0n)
+      throw new Error("unexpected license epoch");
     console.log(
       `minted asset ${spec.key} tokenId=${tokenId} ${spec.transferMode} (${mintTx.hash})`,
     );
 
-    artifacts[spec.key] = {
-      assetId,
+    artifacts.assets[spec.key] = {
+      ...(artifacts.assets[spec.key] as Record<string, unknown>),
+      status: "minted",
       tokenId: tokenId.toString(),
-      transferMode: spec.transferMode,
       policyHash,
-      contentHash,
-      conditionsHash,
+      conditionsHash: manifest.keyGate.conditionsHash,
       contentCID: stored.cid,
       previewCID: storedPreview.cid,
       encryptedContentURI: stored.uri,
       previewURI: storedPreview.uri,
       manifestURI: storedManifest.uri,
       manifest,
-      shareG: toHex(shareG),
-      shareU: toHex(shareU),
       mintTxHash: mintTx.hash,
+      setPolicyTxHash: policyTx.hash,
       mintBlock: mintReceipt?.blockNumber ?? 0,
       localCiphertextPath: stored.localPath,
     };
+    persist();
   }
-
-  const artifactsPath = resolve(OUT_DIR, "seed-artifacts.json");
-  writeJson(artifactsPath, {
-    chainId,
-    network: networkName,
-    rightsNFT: deployment.rightsNFT,
-    rightsRegistry: deployment.rightsRegistry,
-    seededAt: new Date().toISOString(),
-    assets: artifacts,
-  });
   console.log(
-    `wrote ${artifactsPath} (contains raw share_G / share_U - keep local)`,
+    `wrote ${artifactsPath} (0600, contains raw share_G / share_U - keep local)`,
   );
-
-  const accountsPath = resolve(REPO_ROOT, "apps/e2e/.accounts.json");
-  writeJson(
-    accountsPath,
-    Object.fromEntries(
-      ROLES.map((role) => [
-        role,
-        {
-          role,
-          address: accounts[role].address,
-          privateKey: accounts[role].privateKey,
-        },
-      ]),
-    ),
-  );
-  console.log(`wrote ${accountsPath} (funded test keys - gitignored)`);
-
-  // sanity: registry sees the minted assets with a zero license epoch
-  for (const spec of ASSETS) {
-    const a = artifacts[spec.key] as { tokenId: string };
-    if ((await registry.licenseEpoch(BigInt(a.tokenId))) !== 0n)
-      throw new Error("unexpected license epoch");
-  }
 }
 
 await main();

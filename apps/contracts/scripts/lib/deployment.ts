@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,9 +15,14 @@ export const CONTRACTS_DIR = resolve(
 );
 /** repository root */
 export const REPO_ROOT = resolve(CONTRACTS_DIR, "../..");
-export const OUT_DIR = resolve(CONTRACTS_DIR, "out");
+const OUT_DIR = resolve(CONTRACTS_DIR, "out");
 
 export const HEDERA_TESTNET_CHAIN_ID = 296n;
+
+/** Per-chain output directory so a local dry run never overwrites testnet artifacts. */
+export function outDirFor(chainId: number): string {
+  return resolve(OUT_DIR, String(chainId));
+}
 
 export type DeploymentRecord = {
   chainId: number;
@@ -27,7 +38,7 @@ export type DeploymentRecord = {
 };
 
 export function deploymentPath(chainId: number): string {
-  return resolve(OUT_DIR, `deployment.${chainId}.json`);
+  return resolve(outDirFor(chainId), "deployment.json");
 }
 
 export function readDeployment(chainId: number): DeploymentRecord | undefined {
@@ -41,11 +52,22 @@ export function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+/** Owner-only file for private keys / key shares (0600, enforced on existing files too). */
+export function writeSecretJson(path: string, value: unknown): void {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(path, 0o600);
+}
+
+export type PreparedWrite = { path: string; content: string };
+
 /**
- * Replaces the block between `/** @deploy-writeback:start *\/` and `:end` in
- * packages/shared/src/addresses.ts with the deployed addresses (tasks.md T047).
+ * Builds the write-back for packages/shared/src/addresses.ts (block between the
+ * `@deploy-writeback:start/end` markers, tasks.md T047) without touching the disk.
  */
-export function writeBackSharedAddresses(record: DeploymentRecord): string {
+export function prepareSharedAddressesWriteBack(
+  record: DeploymentRecord,
+): PreparedWrite {
   const path = resolve(REPO_ROOT, "packages/shared/src/addresses.ts");
   const source = readFileSync(path, "utf8");
   const start = source.indexOf("/** @deploy-writeback:start */");
@@ -62,20 +84,35 @@ export function writeBackSharedAddresses(record: DeploymentRecord): string {
     "};",
     "",
   ].join("\n");
-  writeFileSync(path, source.slice(0, start) + block + source.slice(end));
-  return path;
+  return { path, content: source.slice(0, start) + block + source.slice(end) };
 }
 
 /** apps/subgraph/config/testnet.json consumed by subgraph.template.yaml (mustache). */
-export function writeBackSubgraphConfig(record: DeploymentRecord): string {
+export function prepareSubgraphConfigWriteBack(
+  record: DeploymentRecord,
+): PreparedWrite {
   const path = resolve(REPO_ROOT, "apps/subgraph/config/testnet.json");
-  writeJson(path, {
-    network: "testnet",
-    startBlock: record.startBlock,
-    RightsNFT: record.rightsNFT,
-    RightsRegistry: record.rightsRegistry,
-  });
-  return path;
+  const content = `${JSON.stringify(
+    {
+      network: "testnet",
+      startBlock: record.startBlock,
+      RightsNFT: record.rightsNFT,
+      RightsRegistry: record.rightsRegistry,
+    },
+    null,
+    2,
+  )}\n`;
+  return { path, content };
+}
+
+/** Validates every destination first, then writes all of them (no half-applied write-back). */
+export function applyWrites(writes: PreparedWrite[]): string[] {
+  for (const w of writes) {
+    if (!existsSync(dirname(w.path)))
+      throw new Error(`write-back target dir missing: ${dirname(w.path)}`);
+  }
+  for (const w of writes) writeFileSync(w.path, w.content);
+  return writes.map((w) => w.path);
 }
 
 export function hasFlag(flag: string): boolean {

@@ -14,6 +14,6 @@ dist
 **/coverage
 **/test-results
 **/playwright-report
-apps/e2e/.accounts.json
+apps/e2e/.accounts*.json
 apps/contracts/out
 **/.turbo

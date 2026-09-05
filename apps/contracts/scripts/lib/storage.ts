@@ -1,11 +1,11 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { OUT_DIR } from "./deployment.js";
 
 /**
  * Content storage for seed artifacts. With PINATA_JWT set, files are pinned to IPFS via
- * Pinata and referenced as ipfs://<cid>. Otherwise they are written under out/storage/ and
- * referenced as file:// URIs (local dry run - NOT reachable by a deployed gateway).
+ * Pinata and referenced as ipfs://<cid>. Otherwise they are written under <outDir>/storage/
+ * and referenced as file:// URIs (local dry run - NOT reachable by a deployed gateway; seed.ts
+ * refuses this mode on Hedera testnet unless --allow-local-storage is passed).
  */
 export type StoredObject = {
   uri: string;
@@ -15,18 +15,23 @@ export type StoredObject = {
 
 type PinResponse = { IpfsHash: string };
 
+export function hasPinata(): boolean {
+  const jwt = process.env.PINATA_JWT;
+  return jwt !== undefined && jwt !== "";
+}
+
 export async function storeObject(
+  outDir: string,
   name: string,
   bytes: Uint8Array,
   contentType: string,
 ): Promise<StoredObject> {
-  const dir = resolve(OUT_DIR, "storage");
+  const dir = resolve(outDir, "storage");
   mkdirSync(dir, { recursive: true });
   const localPath = resolve(dir, name);
   writeFileSync(localPath, bytes);
 
-  const jwt = process.env.PINATA_JWT;
-  if (jwt === undefined || jwt === "") {
+  if (!hasPinata()) {
     return { uri: `file://${localPath}`, cid: null, localPath };
   }
   const form = new FormData();
@@ -40,7 +45,7 @@ export async function storeObject(
     "https://api.pinata.cloud/pinning/pinFileToIPFS",
     {
       method: "POST",
-      headers: { Authorization: `Bearer ${jwt}` },
+      headers: { Authorization: `Bearer ${process.env.PINATA_JWT}` },
       body: form,
     },
   );

@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { network } from "hardhat";
 import {
   HEDERA_TESTNET_CHAIN_ID,
-  OUT_DIR,
+  outDirFor,
   writeJson,
 } from "./lib/deployment.js";
 
@@ -112,7 +112,7 @@ async function main(): Promise<void> {
     balanceDeltaWeibar: (after - before).toString(), // net of gas; positive means payout > gas
   };
 
-  const outPath = resolve(OUT_DIR, `probe-hedera.${chainId}.json`);
+  const outPath = resolve(outDirFor(chainId), "probe-hedera.json");
   writeJson(outPath, result);
   console.log(JSON.stringify(result, null, 2));
   console.log(`wrote ${outPath}`);

@@ -1,11 +1,12 @@
 import { network } from "hardhat";
 import {
+  applyWrites,
   type DeploymentRecord,
   deploymentPath,
   HEDERA_TESTNET_CHAIN_ID,
   hasFlag,
-  writeBackSharedAddresses,
-  writeBackSubgraphConfig,
+  prepareSharedAddressesWriteBack,
+  prepareSubgraphConfigWriteBack,
   writeJson,
 } from "./lib/deployment.js";
 
@@ -76,8 +77,12 @@ async function main(): Promise<void> {
   const shouldWriteBack =
     !hasFlag("--no-writeback") && (isTestnet || hasFlag("--writeback"));
   if (shouldWriteBack) {
-    console.log(`wrote ${writeBackSharedAddresses(record)}`);
-    console.log(`wrote ${writeBackSubgraphConfig(record)}`);
+    // prepare both destinations first so a failure cannot leave a half-applied write-back
+    const written = applyWrites([
+      prepareSharedAddressesWriteBack(record),
+      prepareSubgraphConfigWriteBack(record),
+    ]);
+    for (const path of written) console.log(`wrote ${path}`);
   } else {
     console.log(
       "write-back skipped (not Hedera testnet; pass --writeback to force)",
