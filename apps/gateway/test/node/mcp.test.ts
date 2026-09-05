@@ -7,9 +7,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Db } from "../../src/db/types";
 import type { Env } from "../../src/env";
 import { handleError } from "../../src/errors";
+import { verifySessionId } from "../../src/mcp/session";
 import { type AppEnv, registerRoutes } from "../../src/routes";
 import type { Services } from "../../src/services";
-import { buildServices, createFake, type Fake } from "./fakeServices";
+import { parseSpendCap } from "../../src/services";
+import { buildServices, createFake, type Fake, NOW } from "./fakeServices";
 import {
   buildAsset,
   createTestDb,
@@ -61,6 +63,13 @@ async function encryptWithKey(
 }
 
 async function connect(): Promise<Client> {
+  return (await connectWithTransport()).mcp;
+}
+
+async function connectWithTransport(): Promise<{
+  mcp: Client;
+  transport: StreamableHTTPClientTransport;
+}> {
   const transport = new StreamableHTTPClientTransport(
     new URL("http://gateway.test/mcp"),
     {
@@ -69,7 +78,37 @@ async function connect(): Promise<Client> {
   );
   const mcp = new Client({ name: "mcp-test", version: "0.0.0" });
   await mcp.connect(transport);
-  return mcp;
+  return { mcp, transport };
+}
+
+async function rawToolCall(
+  name: string,
+  args: Record<string, unknown>,
+  sessionId?: string,
+): Promise<Record<string, unknown>> {
+  const res = await app.request("http://gateway.test/mcp", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      ...(sessionId === undefined ? {} : { "mcp-session-id": sessionId }),
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name, arguments: args },
+    }),
+  });
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as {
+    result: { isError?: boolean; content: Array<{ text: string }> };
+  };
+  expect(body.result.isError).toBe(true);
+  return JSON.parse(body.result.content[0]?.text ?? "{}") as Record<
+    string,
+    unknown
+  >;
 }
 
 type ToolAnswer = { isError: boolean; body: Record<string, unknown> };
@@ -114,8 +153,11 @@ afterEach(async () => {
 });
 
 describe("MCP server (T096)", () => {
-  it("should expose the three tools and mint a session id on initialize", async () => {
-    const mcp = await connect();
+  it("should expose the three tools and mint a server-signed session id on initialize", async () => {
+    const { mcp, transport } = await connectWithTransport();
+    const sessionId = transport.sessionId;
+    expect(sessionId).toBeDefined();
+    expect(await verifySessionId(env, sessionId, NOW)).toBe(sessionId);
     const tools = (await mcp.listTools()).tools.map((t) => t.name).sort();
     expect(tools).toEqual(["buy_access", "decrypt_content", "discover_assets"]);
     const discovered = await call(mcp, "discover_assets", {});
@@ -123,28 +165,25 @@ describe("MCP server (T096)", () => {
     await mcp.close();
   });
 
-  it("should answer a tools/call without a session with MCP_SESSION_MISMATCH", async () => {
-    const res = await app.request("http://gateway.test/mcp", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json, text/event-stream",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: { name: "buy_access", arguments: { assetId: asset.assetId } },
-      }),
-    });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      result: { isError?: boolean; content: Array<{ text: string }> };
-    };
-    expect(body.result.isError).toBe(true);
-    expect(JSON.parse(body.result.content[0]?.text ?? "{}")).toMatchObject({
-      code: "MCP_SESSION_MISMATCH",
-    });
+  it("should refuse tools/call without a session, with a forged id and with an expired id", async () => {
+    expect(
+      await rawToolCall("buy_access", { assetId: asset.assetId }),
+    ).toMatchObject({ code: "MCP_SESSION_MISMATCH" });
+    expect(
+      await rawToolCall(
+        "buy_access",
+        { assetId: asset.assetId },
+        crypto.randomUUID(),
+      ),
+    ).toMatchObject({ code: "MCP_SESSION_MISMATCH" });
+    const { transport } = await connectWithTransport();
+    const real = transport.sessionId as string;
+    fake.now = new Date(NOW.getTime() + 25 * 60 * 60 * 1000); // past the 24 h lifetime
+    expect(
+      await rawToolCall("buy_access", { assetId: asset.assetId }, real),
+    ).toMatchObject({ code: "MCP_SESSION_MISMATCH" });
+    expect(fake.settleCalls).toBe(0);
+    expect(fake.signCalls).toBe(0);
   });
 });
 
@@ -210,16 +249,20 @@ describe("spend policy (T092, SC-011 positive control)", () => {
     const refused = await call(mcp, "buy_access", { assetId: asset.assetId });
     expect(refused.isError).toBe(true);
     expect(refused.body).toMatchObject({ code: "SPEND_LIMIT_EXCEEDED" });
+    expect(fake.signCalls).toBe(0); // refused before the wallet was asked for anything
     expect(fake.settleCalls).toBe(0);
     expect(fake.operatorJobs).toHaveLength(0);
     // exactly the cap: allowed once, then the session is spent
     fake.spendCap = price;
     const first = await call(mcp, "buy_access", { assetId: asset.assetId });
     expect(first.isError).toBe(false);
+    expect(fake.signCalls).toBeGreaterThan(0);
     expect(fake.settleCalls).toBe(1);
+    const signed = fake.signCalls;
     const second = await call(mcp, "buy_access", { assetId: asset.assetId });
     expect(second.isError).toBe(true);
     expect(second.body).toMatchObject({ code: "SPEND_LIMIT_EXCEEDED" });
+    expect(fake.signCalls).toBe(signed);
     expect(fake.settleCalls).toBe(1);
     // a fresh session has its own budget
     const other = await connect();
@@ -228,6 +271,56 @@ describe("spend policy (T092, SC-011 positive control)", () => {
     expect(fake.settleCalls).toBe(2);
     await other.close();
     await mcp.close();
+  });
+
+  it("should let exactly one of two concurrent purchases through the cap", async () => {
+    const mcp = await connect();
+    fake.spendCap = 500_000_000n; // one purchase
+    fake.settleDelayMs = 30;
+    const [a, b] = await Promise.all([
+      call(mcp, "buy_access", { assetId: asset.assetId }),
+      call(mcp, "buy_access", { assetId: asset.assetId }),
+    ]);
+    const outcomes = [a, b].map((r) => r.isError).sort();
+    expect(outcomes).toEqual([false, true]);
+    const loser = a.isError ? a : b;
+    expect(loser.body).toMatchObject({ code: "SPEND_LIMIT_EXCEEDED" });
+    expect(fake.settleCalls).toBe(1);
+    expect(fake.operatorJobs).toHaveLength(1);
+    await mcp.close();
+  });
+
+  it("should keep the reservation when the outcome is unknown and give it back on a rejection", async () => {
+    const mcp = await connect();
+    const price = 500_000_000n;
+    fake.spendCap = 2n * price - 1n; // room for one purchase plus a partial second
+    fake.settleThrows = true; // facilitator outcome unknown: budget stays reserved
+    const unknown = await call(mcp, "buy_access", { assetId: asset.assetId });
+    expect(unknown.isError).toBe(true);
+    fake.settleThrows = false;
+    const blocked = await call(mcp, "buy_access", { assetId: asset.assetId });
+    expect(blocked.body).toMatchObject({ code: "SPEND_LIMIT_EXCEEDED" });
+    expect(fake.settleCalls).toBe(1);
+    // a fresh session: a definitive facilitator rejection releases the reservation
+    const other = await connect();
+    fake.verifyOk = false;
+    const rejected = await call(other, "buy_access", {
+      assetId: asset.assetId,
+    });
+    expect(rejected.body).toMatchObject({ code: "UNDERPAYMENT" });
+    fake.verifyOk = true;
+    const retried = await call(other, "buy_access", { assetId: asset.assetId });
+    expect(retried.isError).toBe(false);
+    await other.close();
+    await mcp.close();
+  });
+
+  it("should treat an unset or malformed cap as zero", () => {
+    expect(parseSpendCap(undefined)).toBe(0n);
+    expect(parseSpendCap("")).toBe(0n);
+    expect(parseSpendCap("12x")).toBe(0n);
+    expect(parseSpendCap("-5")).toBe(0n);
+    expect(parseSpendCap("2000000000")).toBe(2_000_000_000n);
   });
 
   it("should fail closed when the facilitator advertises no fee payer", async () => {

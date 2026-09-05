@@ -98,12 +98,18 @@ or in `mcp.json`:
 Trust model (R-9 / R-9a, disclosed in the README):
 
 - **Session identity.** The transport is stateless on Workers, so the gateway mints
-  `Mcp-Session-Id` on `initialize` and the client echoes it (MCP spec). `buy_access` binds each
-  receiptHash to that id (`mcp_session_binding`); `decrypt_content` refuses a receipt bought
-  from another session (`MCP_SESSION_MISMATCH`) even though the hash is public on chain.
-- **Spend policy.** `MCP_SESSION_SPEND_CAP_TINYBAR` is a hard cap per session: settled tinybar
-  of the receipts bound to the session plus the next price must not exceed it, checked before
-  any signature is requested (`SPEND_LIMIT_EXCEEDED`). An unset / malformed cap allows nothing.
+  `Mcp-Session-Id` on `initialize` and the client echoes it (MCP spec). The id is an
+  HMAC-signed, 24 h token (MAC root = `RECEIPT_SIGNER_KEY`, purpose `mcp-session`): a client
+  cannot invent one - and with it a fresh spend budget - by skipping `initialize`; a missing,
+  forged or expired id is `MCP_SESSION_MISMATCH`. `buy_access` binds each receiptHash to the
+  session (`mcp_session_binding`); `decrypt_content` refuses a receipt bought from another
+  session even though the hash is public on chain.
+- **Spend policy.** `MCP_SESSION_SPEND_CAP_TINYBAR` is a hard cap per session enforced through
+  the `mcp_session_spend` ledger: the price is RESERVED with one conditional UPDATE before any
+  signature is requested (`SPEND_LIMIT_EXCEEDED` when it would exceed the cap; two concurrent
+  purchases cannot both pass), and given back only when no value can have moved (nothing
+  submitted, or `payment_binding` says the facilitator rejected it). An unknown outcome keeps
+  the reservation. An unset / malformed cap allows nothing.
   The cap lives in the gateway because the x402 payment is a raw-hash signature over a HAPI
   transaction that Privy cannot interpret structurally (research.md R-9 item 3): a Privy
   policy can restrict the wallet to `eth_signTypedData_v4` + `secp256k1_sign` (block

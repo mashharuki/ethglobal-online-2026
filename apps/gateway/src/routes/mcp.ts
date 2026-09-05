@@ -2,9 +2,9 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { Hono } from "hono";
 import { createMcpServer } from "../mcp/server";
 import {
+  issueSessionId,
   MCP_SESSION_HEADER,
-  newSessionId,
-  sessionIdFromHeader,
+  verifySessionId,
 } from "../mcp/session";
 import { type AppEnv, badRequest } from "./schemas";
 
@@ -36,9 +36,14 @@ export function registerMcpRoutes(app: Hono<AppEnv>): void {
       }
       initialize = isInitialize(parsedBody);
     }
+    const now = services.now();
     const sessionId = initialize
-      ? newSessionId()
-      : sessionIdFromHeader(c.req.header(MCP_SESSION_HEADER));
+      ? await issueSessionId(services.env, now)
+      : await verifySessionId(
+          services.env,
+          c.req.header(MCP_SESSION_HEADER),
+          now,
+        );
     const server = createMcpServer({ services, sessionId });
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,

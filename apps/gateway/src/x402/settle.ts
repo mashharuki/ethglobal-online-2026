@@ -427,6 +427,15 @@ async function readBinding(
   return row;
 }
 
+/** Binding status for a paymentId ("absent" when nothing was ever claimed). */
+export async function readBindingStatus(
+  db: Db,
+  paymentId: Hex,
+): Promise<BindingRow["status"] | "absent"> {
+  const row = await readBinding(db, paymentId);
+  return row === undefined ? "absent" : row.status;
+}
+
 /** A lifecycle write only the current claim holder may make (ownership token CAS). */
 async function updateOwned(
   db: Db,

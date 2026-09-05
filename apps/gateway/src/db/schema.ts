@@ -183,6 +183,27 @@ export const mcpSessionBinding = pgTable("mcp_session_binding", {
     .notNull(),
 });
 
+// MCP spend policy ledger (R-9): tinybar reserved per Mcp-Session-Id, added atomically before
+// a purchase signs anything and only given back when no value can have moved.
+export const mcpSessionSpend = pgTable(
+  "mcp_session_spend",
+  {
+    sessionKey: bytea("session_key").primaryKey(),
+    spentTinybar: numeric("spent_tinybar", { mode: "bigint" })
+      .default(sql`0`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    check(
+      "mcp_session_spend_amount_check",
+      sql`${t.spentTinybar} >= 0 AND ${t.spentTinybar} < 1e30 AND ${t.spentTinybar} = trunc(${t.spentTinybar})`,
+    ),
+  ],
+);
+
 export const AUDIT_ACTIONS = [
   "owner_keygate",
   "x402_settle",

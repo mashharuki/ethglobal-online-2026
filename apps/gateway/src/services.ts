@@ -67,7 +67,7 @@ export type Services = {
 };
 
 /** fail closed: an unset / malformed cap allows nothing */
-function parseSpendCap(raw: string | undefined): bigint {
+export function parseSpendCap(raw: string | undefined): bigint {
   return typeof raw === "string" && /^\d{1,30}$/.test(raw) ? BigInt(raw) : 0n;
 }
 

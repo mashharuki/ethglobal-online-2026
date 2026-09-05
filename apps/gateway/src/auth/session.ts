@@ -11,7 +11,7 @@ import { bytesToHex, type Hex, hexToBytes } from "viem";
  * gateway signing secret with an HKDF info per purpose, so an owner-session token can never
  * be presented as a fallback grant.
  */
-export type ClaimsPurpose = "owner-session" | "fallback-grant";
+export type ClaimsPurpose = "owner-session" | "fallback-grant" | "mcp-session";
 
 const MAC_BYTES = 32;
 

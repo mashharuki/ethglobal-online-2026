@@ -78,6 +78,8 @@ export type Fake = {
   agentAccountId: string;
   /** MCP spend cap per session, tinybar */
   spendCap: bigint;
+  /** how many times the agent wallet was asked to sign (typed data or raw hash) */
+  signCalls: number;
   /** when set, the next facilitator /verify signals entry, then awaits `wait` before answering */
   verifyGate?: { entered: () => void; wait: Promise<void> };
 };
@@ -287,7 +289,17 @@ export function buildServices(w: World): Services {
     fetchManifest: async () => asset.manifest,
     fetchBytes: async () => fake.contentBlob,
     agent: {
-      wallet: () => fake.agentWallet,
+      wallet: () => ({
+        address: fake.agentWallet.address,
+        signTypedData: (td) => {
+          fake.signCalls += 1;
+          return fake.agentWallet.signTypedData(td);
+        },
+        signRawHash: (hash) => {
+          fake.signCalls += 1;
+          return fake.agentWallet.signRawHash(hash);
+        },
+      }),
       accountId: async () => fake.agentAccountId,
     },
     get mcpSpendCapTinybar() {
@@ -335,5 +347,6 @@ export function createFake(): Fake {
     agentWallet: createLocalAgentWallet(`0x${"b7".repeat(32)}`),
     agentAccountId: PAYER_ACCOUNT,
     spendCap: 100_000_000_000n,
+    signCalls: 0,
   };
 }
