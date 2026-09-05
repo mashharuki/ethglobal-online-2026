@@ -2,12 +2,16 @@
   "name": "cdk",
   "version": "0.1.0",
   "private": true,
+  "description": "AWS CDK stack for the self-hosted Graph Node (Rights Graph). Hackathon-duration-only infrastructure - cdk destroy after the event.",
   "type": "module",
   "scripts": {
     "cdk": "cdk",
     "synth": "cdk synth",
+    "deploy": "cdk deploy GraphNodeStack --require-approval never",
+    "destroy": "cdk destroy GraphNodeStack --force",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

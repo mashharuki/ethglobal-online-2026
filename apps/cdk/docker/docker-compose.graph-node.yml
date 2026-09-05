@@ -1,0 +1,46 @@
+# Self-hosted Graph Node for the TrueCollective Rights Graph (research.md R-5).
+# Shipped to the EC2 host by apps/cdk user-data and started with `docker compose up -d`.
+# Hackathon-duration-only infrastructure: destroyed with `cdk destroy` after the event.
+services:
+  graph-node:
+    image: graphprotocol/graph-node:v0.27.0
+    restart: unless-stopped
+    ports:
+      - "8000:8000" # GraphQL HTTP (public, SG-gated)
+      - "8001:8001" # GraphQL WS
+      - "8020:8020" # admin JSON-RPC (graph create/deploy) - SG restricted to allowedAdminCidr
+      - "8030:8030" # index-node status
+      - "8040:8040" # metrics
+    depends_on:
+      - ipfs
+      - postgres
+    environment:
+      postgres_host: postgres
+      postgres_user: graph-node
+      postgres_pass: let-me-in
+      postgres_db: graph-node
+      ipfs: ipfs:5001
+      # Hedera JSON-RPC relay as the "ethereum" provider (network name must match subgraph.yaml)
+      ethereum: "testnet:${HEDERA_RPC_URL}"
+      GRAPH_LOG: info
+      GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER: 1
+      ETHEREUM_POLLING_INTERVAL: 2000
+  ipfs:
+    image: ipfs/go-ipfs:v0.10.0
+    restart: unless-stopped
+    ports:
+      - "5001:5001" # SG restricted to allowedAdminCidr (graph deploy uploads here)
+    volumes:
+      - /opt/graph-node/data/ipfs:/data/ipfs
+  postgres:
+    image: postgres:14
+    restart: unless-stopped
+    command: ["postgres", "-cshared_preload_libraries=pg_stat_statements"]
+    environment:
+      POSTGRES_USER: graph-node
+      POSTGRES_PASSWORD: let-me-in
+      POSTGRES_DB: graph-node
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+      PGDATA: /var/lib/postgresql/data
+    volumes:
+      - /opt/graph-node/data/postgres:/var/lib/postgresql/data
