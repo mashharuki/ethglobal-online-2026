@@ -34,6 +34,7 @@ app.use("*", async (c, next) => {
 // wallet behind a 120/min per-IP brake (so wallet buckets cannot be minted without bound).
 const MINUTE = 60_000;
 app.use("/assets/*", rateLimit({ limit: 60, windowMs: MINUTE, key: clientIp }));
+app.use("/mcp", rateLimit({ limit: 60, windowMs: MINUTE, key: clientIp }));
 for (const prefix of ["/owner/*", "/keygate/*"]) {
   app.use(prefix, rateLimit({ limit: 120, windowMs: MINUTE, key: clientIp }));
   app.use(prefix, rateLimit({ limit: 30, windowMs: MINUTE, key: walletOrIp }));

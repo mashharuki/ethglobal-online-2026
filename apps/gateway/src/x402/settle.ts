@@ -85,6 +85,8 @@ type PaymentAccept = PaymentRequirements & {
     settlementMode: SettlementMode;
     contractCall?: string;
     value: string;
+    /** facilitator fee-payer account (transaction id of the buyer's transfer), when advertised */
+    feePayer?: string;
     receiptQuote: ReceiptQuote;
   };
 };
@@ -175,10 +177,14 @@ export async function buildPaymentRequired(
     nonce: ports.randomNonce(),
   };
   const value = asset.manifest.paidAccess.price; // weibar
+  const feePayer = await ports.facilitator
+    .feePayer(HEDERA_TESTNET_NETWORK)
+    .catch(() => undefined);
   const accept: PaymentAccept = {
     scheme: "exact",
     network: HEDERA_TESTNET_NETWORK,
     asset: HBAR_ASSET_ID,
+    amount: value,
     maxAmountRequired: value,
     payTo,
     resource: RESOURCE_PATH(assetId),
@@ -188,6 +194,7 @@ export async function buildPaymentRequired(
       settlementMode: ports.mode,
       ...(ports.mode === "primary" ? { contractCall: "settleAndIssue" } : {}),
       value,
+      ...(feePayer === undefined ? {} : { feePayer }),
       receiptQuote: quote,
     },
   };
@@ -202,6 +209,8 @@ export type SettleInput = {
   assetId: Hex;
   /** raw X-PAYMENT header (base64 JSON) */
   xPayment: string;
+  /** fee payer the buyer built its transaction id with (echoed from the accepted quote) */
+  feePayer?: string;
   /** EVM address of the buyer (must be the payer of the signed payload) */
   licensee: Address;
   /** the quote the client accepted (echoed from the 402) */
@@ -765,6 +774,7 @@ function requirementsFor(
     scheme: "exact",
     network: HEDERA_TESTNET_NETWORK,
     asset: HBAR_ASSET_ID,
+    amount: asset.manifest.paidAccess.price,
     maxAmountRequired: asset.manifest.paidAccess.price,
     payTo: settlementPayTo(ports),
     resource: RESOURCE_PATH(input.assetId),
@@ -772,6 +782,7 @@ function requirementsFor(
     extra: {
       settlementMode: ports.mode,
       value: asset.manifest.paidAccess.price,
+      ...(input.feePayer === undefined ? {} : { feePayer: input.feePayer }),
       receiptQuote: input.quote,
     },
   };

@@ -27,6 +27,13 @@ SUBGRAPH_URL = ""
 RIGHTS_NFT_ADDRESS = ""
 RIGHTS_REGISTRY_ADDRESS = ""
 IPFS_GATEWAY_URL = "https://ipfs.io"
+# MCP spend policy (research.md R-9): hard cap per Mcp-Session-Id in tinybar (20 HBAR).
+MCP_SESSION_SPEND_CAP_TINYBAR = "2000000000"
+
+# @hiero-ledger/sdk ships a gRPC-based node entry; the browser entry (offline transaction
+# building + signing, which is all the MCP wallet needs) is what runs in workerd.
+[alias]
+"@hiero-ledger/sdk" = "@hiero-ledger/sdk/lib/browser.js"
 
 # share_G ciphertext store (KEK-encrypted with packages/shared/src/kv-format.ts).
 # Replace `id` with the output of `wrangler kv namespace create SHARE_G`.

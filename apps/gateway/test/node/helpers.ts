@@ -64,11 +64,11 @@ export type TestAsset = {
 
 export function buildAsset(
   byte: string,
-  options: { tokenId?: bigint; maxUses?: number } = {},
+  options: { tokenId?: bigint; maxUses?: number; contentHash?: Hex } = {},
 ): TestAsset {
   const assetId = `0x${byte.repeat(32)}` as Hex;
   const tokenId = options.tokenId ?? 1n;
-  const contentHash = `0x${"c0".repeat(32)}` as Hex;
+  const contentHash = options.contentHash ?? (`0x${"c0".repeat(32)}` as Hex);
   const conditionsHash = computeConditionsHash({
     ownerCondition: "ownerOf(tokenId) == caller",
     licenseCondition: "hasValidConsumption(receiptHash, useIndex)",

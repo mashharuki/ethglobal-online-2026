@@ -113,12 +113,14 @@ export function registerX402Routes(app: Hono<AppEnv>): void {
         "payment payload does not carry the accepted receiptQuote",
       );
     }
+    const feePayer = payload.accepted?.extra?.feePayer;
     const settled = await withNotFound(() =>
       settlePayment(services.settle, {
         assetId,
         xPayment,
         licensee: body.licensee,
         quote: quote.data as ReceiptQuote,
+        ...(typeof feePayer === "string" ? { feePayer } : {}),
       }),
     );
     return c.json(jsonSafe(settled));

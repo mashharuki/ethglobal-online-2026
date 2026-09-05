@@ -16,6 +16,7 @@
     "@noble/curves": "^1.9.0",
     "@noble/hashes": "^1.8.0",
     "@privy-io/react-auth": "^3.38.0",
+    "@truenft/shared": "workspace:*",
     "@x402/core": "2.18.0",
     "@x402/fetch": "2.18.0",
     "@x402/hedera": "2.18.0",

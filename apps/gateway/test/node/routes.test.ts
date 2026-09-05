@@ -1,46 +1,46 @@
 import type { PGlite } from "@electric-sql/pglite";
 import {
-  buildDomain,
   computePurchaseRequestHash,
   computeReceiptHash,
   keyGateTypedData,
   manifestToPolicyInput,
-  type RightsReceipt,
   TransferMode,
 } from "@truenft/shared";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { type Address, type Hex, hexToBytes } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type PaymentStage, paymentBinding } from "../../src/db/schema";
 import type { Db } from "../../src/db/types";
-import type { ReceiptParamsJson } from "../../src/do/operatorQueueCore";
 import type { Env } from "../../src/env";
-import { AppError, handleError } from "../../src/errors";
-import type { GraphFetch } from "../../src/graph/cache";
-import type { ReleasePorts } from "../../src/keygate/release";
-import { AssetNotFoundError } from "../../src/manifest/resolver";
+import { handleError } from "../../src/errors";
 import { type AppEnv, registerRoutes } from "../../src/routes";
 import type { Services } from "../../src/services";
 import {
   derivePaymentId,
   PAID_ACCESS_PLAN_ID,
-  type PaymentPayload,
 } from "../../src/x402/facilitator";
+import { type ReceiptQuote, takeClaim } from "../../src/x402/settle";
 import {
-  type ReceiptQuote,
-  type SettlePorts,
-  takeClaim,
-} from "../../src/x402/settle";
+  buildServices,
+  buyer,
+  createFake,
+  creator,
+  domain,
+  type Fake,
+  NOW,
+  owner,
+  PAYER_ACCOUNT,
+  paymentHeader,
+  stranger,
+  ZERO32,
+} from "./fakeServices";
 import {
   buildAsset,
   CHAIN_ID,
   createTestDb,
   MemoryKv,
   makeEnv,
-  RIGHTS_NFT,
-  RIGHTS_REGISTRY,
   type TestAsset,
 } from "./helpers";
 
@@ -49,15 +49,6 @@ import {
  * injected chain / facilitator / operator fakes. Real Hedera + Blocky402 runs are the
  * Phase 8 E2E gate (BLOCKED until deploy + probe).
  */
-const owner = privateKeyToAccount(`0x${"a1".repeat(32)}`);
-const creator = privateKeyToAccount(`0x${"c0".repeat(32)}`);
-const buyer = privateKeyToAccount(`0x${"b7".repeat(32)}`);
-const stranger = privateKeyToAccount(`0x${"b2".repeat(32)}`);
-const NOW = new Date("2026-09-06T12:00:00Z");
-const domain = buildDomain(RIGHTS_REGISTRY, CHAIN_ID);
-const ZERO32 = `0x${"00".repeat(32)}` as Hex;
-const PAYER_ACCOUNT = "0.0.4242";
-
 let db: Db;
 let client: PGlite;
 let env: Env;
@@ -65,254 +56,6 @@ let asset: TestAsset;
 let app: Hono<AppEnv>;
 let fake: Fake;
 let services: Services;
-
-type Fake = {
-  licenseEpoch: bigint;
-  accessEpoch: bigint;
-  tokenOwner: Address;
-  creator: Address;
-  verifyOk: boolean;
-  payerAccount: string;
-  payerEvm: Address;
-  operatorJobs: unknown[];
-  bumps: unknown[];
-  graphResult: unknown;
-  graphThrows: boolean;
-  consumeCalls: number;
-  mode: "primary" | "fallback" | "custodial";
-  settlementAccountId: string;
-  settleCalls: number;
-  /** operator rejects with the ReceiptAlreadyIssued mapping (retry after broadcast crash) */
-  operatorConflict: boolean;
-  /** receipt hashes RightsRegistry.receiptStatus(hash).issued answers true for */
-  issuedOnChain: Set<Hex>;
-  /** the "mined" tx emits a foreign receipt instead of ours */
-  minesWrongHash: boolean;
-  /** facilitator /settle: throws (outcome unknown), throws an AppError, or answers success=false */
-  settleThrows: boolean;
-  settleThrowsAppError: boolean;
-  settleRejects: boolean;
-  settleDelayMs: number;
-  /** the receipt wait (tx confirmation) blows up */
-  receiptWaitThrows: boolean;
-  /** injected clock (lease expiry) */
-  now: Date;
-  /** when set, the next facilitator /verify signals entry, then awaits `wait` before answering */
-  verifyGate?: { entered: () => void; wait: Promise<void> };
-};
-
-function paymentHeader(quote: ReceiptQuote, salt = "tx-1"): string {
-  const payload: PaymentPayload = {
-    x402Version: 2,
-    scheme: "exact",
-    network: "hedera:testnet",
-    payload: { transaction: `base64:${salt}` },
-    accepted: {
-      scheme: "exact",
-      network: "hedera:testnet",
-      asset: "0.0.0",
-      maxAmountRequired: asset.manifest.paidAccess.price,
-      payTo: "0.0.9999",
-      resource: `/assets/${asset.assetId}/paid`,
-      extra: {
-        settlementMode: "custodial",
-        value: asset.manifest.paidAccess.price,
-        receiptQuote: quote,
-      },
-    },
-  };
-  return btoa(JSON.stringify(payload));
-}
-
-function receiptFromParams(p: ReceiptParamsJson): RightsReceipt {
-  return {
-    chainId: BigInt(CHAIN_ID),
-    verifyingContract: RIGHTS_REGISTRY,
-    nftContract: p.nftContract,
-    tokenId: BigInt(p.tokenId),
-    resourceHash: p.resourceHash,
-    policyHash: p.policyHash,
-    licenseEpoch: BigInt(p.licenseEpoch),
-    ownerEpochAtIssue: BigInt(p.ownerEpochAtIssue),
-    licensee: p.licensee,
-    permittedAction: p.permittedAction,
-    transferMode:
-      p.transferMode === 1
-        ? TransferMode.INVALIDATE_ON_TRANSFER
-        : TransferMode.SURVIVE_TRANSFER,
-    maxUses: p.maxUses,
-    expiresAt: BigInt(p.expiresAt),
-    purchaseRequestHash: p.purchaseRequestHash,
-    paymentId: p.paymentId,
-    nonce: p.nonce,
-    issuedAt: BigInt(p.issuedAt),
-  };
-}
-
-function buildServices(): Services {
-  const deployment = {
-    chainId: CHAIN_ID,
-    rightsNFT: RIGHTS_NFT,
-    rightsRegistry: RIGHTS_REGISTRY,
-  };
-  const resolveAsset = async (assetId: Hex) => {
-    if (assetId.toLowerCase() !== asset.assetId.toLowerCase())
-      throw new AssetNotFoundError(assetId);
-    return {
-      assetId: asset.assetId,
-      tokenId: asset.tokenId,
-      nftContract: RIGHTS_NFT,
-      manifest: asset.manifest,
-    };
-  };
-  const release: ReleasePorts = {
-    env,
-    db,
-    deployment,
-    chain: {
-      ownerSnapshot: async () => ({
-        owner: fake.tokenOwner,
-        accessEpoch: fake.accessEpoch,
-        policyHash: asset.policyHash,
-        resourceHash: asset.resourceHash,
-      }),
-      tokenHashes: async () => ({
-        policyHash: asset.policyHash,
-        resourceHash: asset.resourceHash,
-      }),
-      receiptStatus: async () => ({
-        issued: true,
-        tokenId: asset.tokenId,
-        licensee: buyer.address,
-        maxUses: 5,
-        usedCount: 0,
-        expiresAt: BigInt(Math.floor(NOW.getTime() / 1000) + 300),
-      }),
-      hasValidConsumption: async () => true,
-      getCode: async () => "0x",
-    },
-    resolveAsset,
-    consume: async () => {
-      fake.consumeCalls += 1;
-      return {
-        useIndex: 0,
-        onchainTx: `0x${"77".repeat(32)}`,
-        redelivered: false,
-      };
-    },
-    now: () => fake.now,
-  };
-  // the operator "mines" settleAndIssue: the tx hash encodes the params so receiptHashFromTx
-  // can recompute exactly what the contract would have emitted
-  const mined = new Map<string, Hex>();
-  const settle: SettlePorts = {
-    env,
-    db,
-    deployment,
-    get mode() {
-      return fake.mode;
-    },
-    get settlementAccountId() {
-      return fake.settlementAccountId;
-    },
-    facilitator: {
-      supported: async () => ({ kinds: [] }),
-      verify: async () => {
-        // one-shot barrier so a test can park a request inside its claim
-        const gate = fake.verifyGate;
-        fake.verifyGate = undefined;
-        if (gate !== undefined) {
-          gate.entered();
-          await gate.wait;
-        }
-        return {
-          isValid: fake.verifyOk,
-          invalidReason: fake.verifyOk ? undefined : "bad",
-          payer: fake.payerAccount === "" ? undefined : fake.payerAccount,
-        };
-      },
-      settle: async () => {
-        fake.settleCalls += 1;
-        if (fake.settleDelayMs > 0) {
-          await new Promise((r) => setTimeout(r, fake.settleDelayMs));
-        }
-        if (fake.settleThrows) throw new Error("facilitator timeout");
-        if (fake.settleThrowsAppError) {
-          throw new AppError(
-            "UNDERPAYMENT",
-            "facilitator answered 402 mid-flight",
-          );
-        }
-        return {
-          success: !fake.settleRejects,
-          errorReason: fake.settleRejects ? "insufficient" : undefined,
-          transaction: "0.0.4242@1700000000.000000001",
-          network: "hedera:testnet",
-          payer: fake.payerAccount,
-        };
-      },
-    },
-    resolveAsset,
-    quoteReads: async () => ({
-      licenseEpoch: fake.licenseEpoch,
-      accessEpoch: fake.accessEpoch,
-      policyHash: asset.policyHash,
-      resourceHash: asset.resourceHash,
-    }),
-    operator: async (job) => {
-      if (fake.operatorConflict) {
-        throw new AppError(
-          "PAYMENT_ID_PAYLOAD_CONFLICT",
-          "ReceiptAlreadyIssued",
-        );
-      }
-      fake.operatorJobs.push(job);
-      const txHash =
-        `0x${fake.operatorJobs.length.toString(16).padStart(64, "0")}` as Hex;
-      mined.set(
-        txHash,
-        fake.minesWrongHash
-          ? (`0x${"f0".repeat(32)}` as Hex)
-          : computeReceiptHash(receiptFromParams(job.params)),
-      );
-      return txHash;
-    },
-    receiptHashesFromTx: async (txHash) => {
-      if (fake.receiptWaitThrows) throw new Error("receipt wait timed out");
-      const hash = mined.get(txHash);
-      if (hash === undefined) throw new Error("unknown tx");
-      return [hash];
-    },
-    receiptIssued: async (hash) => fake.issuedOnChain.has(hash),
-    pendingWaitMs: 20,
-    payerEvmAddress: async (accountId) =>
-      accountId === fake.payerAccount ? fake.payerEvm : undefined,
-    now: () => fake.now,
-    randomNonce: () => `0x${"51".repeat(32)}`,
-  };
-  const graph: GraphFetch = async () => {
-    if (fake.graphThrows) throw new Error("boom");
-    return fake.graphResult as never;
-  };
-  return {
-    env,
-    db,
-    release,
-    settle,
-    graph,
-    ipfsGateway: "https://ipfs.invalid",
-    resolveAsset,
-    fetchManifest: async () => asset.manifest,
-    creatorOf: async () => fake.creator,
-    licenseEpoch: async () => fake.licenseEpoch,
-    bumpLicenseEpoch: async (input) => {
-      fake.bumps.push(input);
-      return `0x${"b1".repeat(32)}`;
-    },
-    waitForTx: async () => {},
-    now: () => fake.now,
-  };
-}
 
 async function post(
   path: string,
@@ -420,33 +163,8 @@ beforeEach(async () => {
   ({ db, client } = await createTestDb());
   asset = buildAsset("a5");
   env = await makeEnv(new MemoryKv(), [asset]);
-  fake = {
-    licenseEpoch: 0n,
-    accessEpoch: 1n,
-    tokenOwner: owner.address,
-    creator: creator.address,
-    verifyOk: true,
-    payerAccount: PAYER_ACCOUNT,
-    payerEvm: buyer.address,
-    operatorJobs: [],
-    bumps: [],
-    graphResult: { data: { rightsTokens: [] } },
-    graphThrows: false,
-    consumeCalls: 0,
-    mode: "custodial",
-    settlementAccountId: "0.0.9999",
-    settleCalls: 0,
-    operatorConflict: false,
-    issuedOnChain: new Set(),
-    minesWrongHash: false,
-    settleThrows: false,
-    settleThrowsAppError: false,
-    settleRejects: false,
-    settleDelayMs: 0,
-    receiptWaitThrows: false,
-    now: NOW,
-  };
-  services = buildServices();
+  fake = createFake();
+  services = buildServices({ db, env, asset, fake });
   app = new Hono<AppEnv>();
   app.onError(handleError);
   app.use("*", async (c, next) => {
@@ -632,7 +350,7 @@ describe("x402 (T088 / T063)", () => {
 
   it("should settle on the custodial rail, bind the payment, and replay idempotently", async () => {
     const quote = await quoteFor();
-    const header = paymentHeader(quote);
+    const header = paymentHeader(asset, quote);
     const first = await post(
       `/assets/${asset.assetId}/paid`,
       { licensee: buyer.address },
@@ -684,7 +402,7 @@ describe("x402 (T088 / T063)", () => {
 
   it("should keep a paid binding resumable and recover only the exact receipt from the registry", async () => {
     const quote = await quoteFor();
-    const header = paymentHeader(quote, "dup");
+    const header = paymentHeader(asset, quote, "dup");
     const ours = expectedReceiptHash(quote, header, buyer.address);
     const pay = () =>
       post(
@@ -730,7 +448,7 @@ describe("x402 (T088 / T063)", () => {
     // 4. a fresh payment whose tx issued a foreign receipt is a params mismatch, still paid
     fake.operatorConflict = false;
     fake.minesWrongHash = true;
-    const other = paymentHeader(quote, "foreign");
+    const other = paymentHeader(asset, quote, "foreign");
     const foreign = await post(
       `/assets/${asset.assetId}/paid`,
       { licensee: buyer.address },
@@ -755,7 +473,7 @@ describe("x402 (T088 / T063)", () => {
 
   it("should map settlement stages onto the binding: rejected -> failed, unknown -> pending", async () => {
     const quote = await quoteFor();
-    const header = paymentHeader(quote, "stages");
+    const header = paymentHeader(asset, quote, "stages");
     const pay = () =>
       post(
         `/assets/${asset.assetId}/paid`,
@@ -795,7 +513,7 @@ describe("x402 (T088 / T063)", () => {
 
   it("should treat an AppError thrown mid-settlement as unknown, not as a rejection", async () => {
     const quote = await quoteFor();
-    const header = paymentHeader(quote, "midflight");
+    const header = paymentHeader(asset, quote, "midflight");
     fake.settleThrowsAppError = true;
     const res = await post(
       `/assets/${asset.assetId}/paid`,
@@ -821,7 +539,7 @@ describe("x402 (T088 / T063)", () => {
 
   it("should let exactly one of two concurrent identical payments settle", async () => {
     const quote = await quoteFor();
-    const header = paymentHeader(quote, "race");
+    const header = paymentHeader(asset, quote, "race");
     fake.settleDelayMs = 60; // longer than the replay wait budget (pendingWaitMs)
     const pay = () =>
       post(
@@ -858,19 +576,19 @@ describe("x402 (T088 / T063)", () => {
       );
     const expired = new Date(NOW.getTime() - 10 * 60_000);
     // a holder that died during verify: nothing moved, taken over and paid once
-    const verify = paymentHeader(quote, "dead-verify");
+    const verify = paymentHeader(asset, quote, "dead-verify");
     await seedBinding(verify, quote, { stage: "verify", claimedAt: expired });
     expect((await pay(verify)).status).toBe(200);
     expect(fake.settleCalls).toBe(1);
     // a holder that died while /settle was in flight: blocked, never re-submitted
-    const settle = paymentHeader(quote, "dead-settle");
+    const settle = paymentHeader(asset, quote, "dead-settle");
     await seedBinding(settle, quote, { stage: "settle", claimedAt: expired });
     expect(await (await pay(settle)).json()).toMatchObject({
       code: "SETTLEMENT_IN_PROGRESS",
     });
     expect(fake.settleCalls).toBe(1);
     // a holder that died after paying: resumed at anchoring without paying again
-    const anchor = paymentHeader(quote, "dead-anchor");
+    const anchor = paymentHeader(asset, quote, "dead-anchor");
     await seedBinding(anchor, quote, {
       stage: "anchor",
       claimedAt: expired,
@@ -881,7 +599,7 @@ describe("x402 (T088 / T063)", () => {
     expect(fake.operatorJobs).toHaveLength(2);
     // a stale takeover: the taker observed (verify, expired) but the holder advanced the
     // stage before the CAS -> production takeClaim refuses, the row is untouched
-    const moved = paymentHeader(quote, "moved-on");
+    const moved = paymentHeader(asset, quote, "moved-on");
     await seedBinding(moved, quote, { stage: "verify", claimedAt: expired });
     const paymentId = derivePaymentId(new TextEncoder().encode(atob(moved)));
     const rowOf = async () => {
@@ -953,7 +671,7 @@ describe("x402 (T088 / T063)", () => {
 
   it("should make a holder whose lease was taken over lose its claim instead of paying", async () => {
     const quote = await quoteFor();
-    const header = paymentHeader(quote, "takeover");
+    const header = paymentHeader(asset, quote, "takeover");
     const pay = () =>
       post(
         `/assets/${asset.assetId}/paid`,
@@ -1001,7 +719,7 @@ describe("x402 (T088 / T063)", () => {
   it("should resume a primary-rail payment only once the facilitator tx is visible", async () => {
     fake.mode = "primary";
     const quote = await quoteFor();
-    const header = paymentHeader(quote, "primary");
+    const header = paymentHeader(asset, quote, "primary");
     const ours = expectedReceiptHash(quote, header, buyer.address);
     const pay = () =>
       post(
@@ -1041,7 +759,7 @@ describe("x402 (T088 / T063)", () => {
     const noPayer = await post(
       `/assets/${asset.assetId}/paid`,
       { licensee: buyer.address },
-      { "X-PAYMENT": paymentHeader(quote, "m0") },
+      { "X-PAYMENT": paymentHeader(asset, quote, "m0") },
     );
     expect(noPayer.status).toBe(403);
     expect(await noPayer.json()).toMatchObject({ code: "LICENSEE_MISMATCH" });
@@ -1050,7 +768,7 @@ describe("x402 (T088 / T063)", () => {
     const mismatch = await post(
       `/assets/${asset.assetId}/paid`,
       { licensee: buyer.address },
-      { "X-PAYMENT": paymentHeader(quote, "m1") },
+      { "X-PAYMENT": paymentHeader(asset, quote, "m1") },
     );
     expect(mismatch.status).toBe(403);
     expect(await mismatch.json()).toMatchObject({ code: "LICENSEE_MISMATCH" });
@@ -1059,7 +777,7 @@ describe("x402 (T088 / T063)", () => {
     const rejected = await post(
       `/assets/${asset.assetId}/paid`,
       { licensee: buyer.address },
-      { "X-PAYMENT": paymentHeader(quote, "m2") },
+      { "X-PAYMENT": paymentHeader(asset, quote, "m2") },
     );
     expect(rejected.status).toBe(402);
     expect(await rejected.json()).toMatchObject({ code: "UNDERPAYMENT" });
@@ -1068,7 +786,7 @@ describe("x402 (T088 / T063)", () => {
     const stale = await post(
       `/assets/${asset.assetId}/paid`,
       { licensee: buyer.address },
-      { "X-PAYMENT": paymentHeader(quote, "m3") },
+      { "X-PAYMENT": paymentHeader(asset, quote, "m3") },
     );
     expect(await stale.json()).toMatchObject({ code: "OWNER_EPOCH_MISMATCH" });
     expect(fake.operatorJobs).toHaveLength(0);
@@ -1092,7 +810,7 @@ describe("x402 (T088 / T063)", () => {
     const paid = await post(
       `/assets/${asset.assetId}/paid`,
       { licensee: buyer.address },
-      { "X-PAYMENT": paymentHeader(quote) },
+      { "X-PAYMENT": paymentHeader(asset, quote) },
     );
     expect(await paid.json()).toMatchObject({
       code: "SETTLEMENT_NOT_FINALIZED",

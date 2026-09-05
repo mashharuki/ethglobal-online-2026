@@ -5,9 +5,9 @@ import {
   TransactionId,
   TransferTransaction,
 } from "@hiero-ledger/sdk";
-import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
+import { bytesToHex } from "@noble/hashes/utils";
+import { toCompactLowSSignature } from "@truenft/shared";
 import type { PaymentRequirements } from "@x402/core/types";
 import type { ClientHederaSigner } from "@x402/hedera";
 import { isSupportedHederaNetwork } from "@x402/hedera";
@@ -32,19 +32,8 @@ export type PrivyHederaSignerOptions = {
   nodeAccountIds?: string[];
 };
 
-/** Normalizes a hex signature (0x-prefixed or not, 64 or 65 bytes) to 64-byte r||s. */
-export function toCompactSignature(sigHex: string): Uint8Array {
-  const bytes = hexToBytes(sigHex.startsWith("0x") ? sigHex.slice(2) : sigHex);
-  if (bytes.length !== 64 && bytes.length !== 65) {
-    throw new Error(`unexpected signature length: ${bytes.length}`);
-  }
-  // Hedera verifies with noble-curves `secp256k1.verify`, which defaults to
-  // `lowS: true`; canonicalize to low-S so a high-S Privy signature is accepted.
-  const compact = bytes.length === 65 ? bytes.slice(0, 64) : bytes;
-  return secp256k1.Signature.fromCompact(compact)
-    .normalizeS()
-    .toCompactRawBytes();
-}
+/** Normalizes a hex signature (0x-prefixed or not, 64 or 65 bytes) to 64-byte low-S r||s. */
+export const toCompactSignature = toCompactLowSSignature;
 
 /**
  * Builds a `Transaction.signWith` callback that signs `keccak256(bodyBytes)`

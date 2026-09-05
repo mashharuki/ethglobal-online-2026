@@ -28,12 +28,17 @@ export type Env = {
   RIGHTS_REGISTRY_ADDRESS: string;
   /** HTTP gateway used to fetch ipfs:// manifests / content. */
   IPFS_GATEWAY_URL: string;
+  /** MCP spend policy (R-9): hard cap per Mcp-Session-Id, tinybar */
+  MCP_SESSION_SPEND_CAP_TINYBAR: string;
   // secrets (wrangler secret put / .dev.vars)
   HEDERA_OPERATOR_KEY?: string;
   RECEIPT_SIGNER_KEY?: string;
   KV_KEK?: string;
   PRIVY_APP_ID?: string;
   PRIVY_APP_SECRET?: string;
+  /** Privy server wallet used by the MCP tools (id + EVM address; the key stays in Privy) */
+  PRIVY_WALLET_ID?: string;
+  PRIVY_WALLET_ADDRESS?: string;
   /** Per-asset share_U (owner path), loaded by scripts/load-shares.ts. */
   [shareU: `SHARE_U_${string}`]: string | undefined;
   // bindings

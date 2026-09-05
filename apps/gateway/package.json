@@ -20,6 +20,10 @@
     "probe:workerd": "tsx scripts/probe-workerd.ts"
   },
   "dependencies": {
+    "@hiero-ledger/sdk": "2.85.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@noble/hashes": "^1.8.0",
+    "@privy-io/node": "0.34.0",
     "@truenft/openapi": "workspace:*",
     "@truenft/shared": "workspace:*",
     "drizzle-orm": "^0.45.2",

@@ -24,6 +24,8 @@ export type PaymentRequirements = {
   scheme: "exact";
   network: string;
   asset: string;
+  /** x402 v2 name of the amount (weibar); `maxAmountRequired` is the v1 alias kept in parallel */
+  amount: string;
   maxAmountRequired: string;
   payTo: string;
   resource: string;
@@ -65,6 +67,8 @@ type SupportedResponse = {
 
 export type FacilitatorClient = {
   supported(): Promise<SupportedResponse>;
+  /** fee-payer account the facilitator advertises for `network` in /supported (undefined = none) */
+  feePayer(network: string): Promise<string | undefined>;
   verify(
     payload: PaymentPayload,
     requirements: PaymentRequirements,
@@ -98,13 +102,24 @@ export function createFacilitatorClient(
   fetchImpl: typeof fetch = fetch,
 ): FacilitatorClient {
   const base = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+  const supported = async (): Promise<SupportedResponse> => {
+    const response = await fetchImpl(`${base}/supported`);
+    if (!response.ok) {
+      throw new Error(`facilitator /supported answered ${response.status}`);
+    }
+    return (await response.json()) as SupportedResponse;
+  };
   return {
-    supported: async () => {
-      const response = await fetchImpl(`${base}/supported`);
-      if (!response.ok) {
-        throw new Error(`facilitator /supported answered ${response.status}`);
-      }
-      return (await response.json()) as SupportedResponse;
+    supported,
+    feePayer: async (network) => {
+      const kinds = (await supported()).kinds;
+      const kind = kinds.find(
+        (k) => k.network === network && k.scheme === "exact",
+      );
+      const feePayer = kind?.extra?.feePayer;
+      return typeof feePayer === "string" && feePayer !== ""
+        ? feePayer
+        : undefined;
     },
     verify: (paymentPayload, paymentRequirements) =>
       postJson<VerifyResponse>(fetchImpl, `${base}/verify`, {

@@ -3,6 +3,7 @@ import { registerAdminRoutes } from "./admin";
 import { registerAuditRoutes } from "./audit";
 import { registerGraphRoutes } from "./graph";
 import { registerKeygateRoutes } from "./keygate";
+import { registerMcpRoutes } from "./mcp";
 import { registerOwnerRoutes } from "./ownerAccess";
 import { registerPreviewRoutes } from "./preview";
 import type { AppEnv } from "./schemas";
@@ -17,6 +18,7 @@ export function registerRoutes(app: Hono<AppEnv>): void {
   registerGraphRoutes(app);
   registerAuditRoutes(app);
   registerAdminRoutes(app);
+  registerMcpRoutes(app);
 }
 
 export type { AppEnv } from "./schemas";
