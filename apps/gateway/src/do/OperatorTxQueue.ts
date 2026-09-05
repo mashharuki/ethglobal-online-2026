@@ -8,6 +8,7 @@ import {
 } from "../chain/writes";
 import type { Env } from "../env";
 import {
+  type JobRecord,
   type OperatorJob,
   OperatorQueueCore,
   type QueuePorts,
@@ -17,14 +18,23 @@ import { doErrorResponse, doFailure } from "./respond";
 /**
  * OperatorTxQueue Durable Object (tasks.md T083, R-3a): the single instance
  * (`idFromName("operator")`) through which every operator-key transaction is sent. Nonce
- * allocation is serialised by OperatorQueueCore and persisted in DO storage.
+ * reservation and job records are persisted in DO storage (see operatorQueueCore.ts).
  */
 const NONCE_KEY = "operator-nonce";
+const JOB_PREFIX = "job:";
 const HEX32 = /^0x[0-9a-fA-F]{64}$/;
+const KEY_RE = /^[A-Za-z0-9:_.-]{1,200}$/;
 
 function parseJob(value: unknown): OperatorJob | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const v = value as Record<string, unknown>;
+  const idempotencyKey =
+    v.idempotencyKey === undefined
+      ? undefined
+      : typeof v.idempotencyKey === "string" && KEY_RE.test(v.idempotencyKey)
+        ? v.idempotencyKey
+        : null;
+  if (idempotencyKey === null) return undefined;
   if (v.kind === "consume") {
     if (typeof v.receiptHash !== "string" || !HEX32.test(v.receiptHash))
       return undefined;
@@ -38,12 +48,17 @@ function parseJob(value: unknown): OperatorJob | undefined {
       kind: "consume",
       receiptHash: v.receiptHash as Hex,
       useIndex: v.useIndex,
+      idempotencyKey,
     };
   }
   if (v.kind === "bumpLicenseEpoch") {
     if (typeof v.tokenId !== "string" || !/^\d+$/.test(v.tokenId))
       return undefined;
-    return { kind: "bumpLicenseEpoch", tokenId: BigInt(v.tokenId) };
+    return {
+      kind: "bumpLicenseEpoch",
+      tokenId: BigInt(v.tokenId),
+      idempotencyKey,
+    };
   }
   return undefined;
 }
@@ -67,6 +82,8 @@ function createQueuePorts(env: Env, storage: DurableObjectStorage): QueuePorts {
     },
     loadNonce: () => storage.get<number>(NONCE_KEY),
     saveNonce: (nonce) => storage.put(NONCE_KEY, nonce),
+    loadJob: (key) => storage.get<JobRecord>(`${JOB_PREFIX}${key}`),
+    saveJob: (key, record) => storage.put(`${JOB_PREFIX}${key}`, record),
     submit: (job, nonce) =>
       job.kind === "consume"
         ? submitConsume(ctx(), job.receiptHash, job.useIndex, { nonce })

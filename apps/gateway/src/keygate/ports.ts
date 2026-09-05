@@ -2,6 +2,7 @@ import type { Address, Hex } from "viem";
 import { type ChainContext, createChainContext } from "../chain/clients";
 import {
   readAssetId,
+  readHasValidConsumption,
   readManifestURI,
   readOwnerSnapshot,
   readPolicyHash,
@@ -80,21 +81,21 @@ export function createReleasePorts(env: Env, db: Db): ReleasePorts {
           expiresAt: s.expiresAt,
         };
       },
+      hasValidConsumption: (receiptHash: Hex, useIndex: number) =>
+        readHasValidConsumption(ctx, receiptHash, useIndex),
       getCode: (address: Address) => ctx.publicClient.getCode({ address }),
     },
     resolveAsset: (assetId) =>
       resolveAsset(manifestPorts, ctx.deployment, assetId),
     consume: async (input) => {
       const outcome = await consumeViaReceiptLock(env, input);
-      if (outcome.onchainTx === undefined) {
+      return {
+        useIndex: outcome.useIndex,
         // recovered from a crash before the tx hash was recorded: the consumption is
         // confirmed on chain (consumed[receipt][idx] == true) but the hash is unknown
-        return {
-          useIndex: outcome.useIndex,
-          onchainTx: `0x${"00".repeat(32)}`,
-        };
-      }
-      return { useIndex: outcome.useIndex, onchainTx: outcome.onchainTx };
+        onchainTx: outcome.onchainTx ?? `0x${"00".repeat(32)}`,
+        redelivered: outcome.redelivered,
+      };
     },
     now: () => new Date(),
   };

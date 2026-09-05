@@ -59,10 +59,17 @@ export type ChainPorts = {
   /** current on-chain policyHash / resourceHash for the licensee manifest check */
   tokenHashes(tokenId: bigint): Promise<{ policyHash: Hex; resourceHash: Hex }>;
   receiptStatus(receiptHash: Hex): Promise<ReceiptView>;
+  /** RightsRegistry.hasValidConsumption - the licensee-path authority predicate */
+  hasValidConsumption(receiptHash: Hex, useIndex: number): Promise<boolean>;
   getCode(address: Address): Promise<Hex | undefined>;
 };
 
-type ConsumeResult = { useIndex: number; onchainTx: Hex };
+type ConsumeResult = {
+  useIndex: number;
+  onchainTx: Hex;
+  /** true = an earlier settled consumption was re-delivered (no new consume tx) */
+  redelivered: boolean;
+};
 
 export type ReleasePorts = {
   env: Env;
@@ -121,8 +128,6 @@ function authContext(ports: ReleasePorts): AuthContext {
   };
 }
 
-const signerSecret = readReceiptSignerSecret;
-
 /** Manifest integrity vs chain (R-6): policy / resource / conditions must all re-derive. */
 function assertManifestMatchesChain(
   asset: ResolvedAsset,
@@ -154,7 +159,8 @@ function assertManifestMatchesChain(
 /**
  * The request carries no nonce: try the wallet's open challenges (newest first) and consume
  * the one this signature was made over. No open challenge -> NONCE_INVALID_OR_EXPIRED; open
- * challenges but none match -> the verifier's error (SIGNATURE_INVALID / CHAIN_ID_MISMATCH).
+ * challenges but none match -> the verifier's error (SIGNATURE_INVALID / CHAIN_ID_MISMATCH /
+ * LICENSEE_MISMATCH). Nothing is consumed until a challenge matches.
  */
 async function matchChallenge<T>(
   ports: ReleasePorts,
@@ -221,6 +227,25 @@ async function audited<T>(
   }
 }
 
+async function withSignerSecret<T>(
+  env: Env,
+  use: (secret: Uint8Array) => Promise<T>,
+): Promise<T> {
+  const secret = readReceiptSignerSecret(env);
+  try {
+    return await use(secret);
+  } finally {
+    wipe(secret);
+  }
+}
+
+async function releaseShareG(env: Env, assetId: Hex): Promise<Hex> {
+  const shareG = await loadShareG(env, assetId);
+  const hex = bytesToHex(shareG);
+  wipe(shareG);
+  return hex;
+}
+
 /** gateway-api.md POST /owner/keygate steps 1-9 (R-1a auth split, R-11 assetId->tokenId). */
 export async function releaseToOwner(
   ports: ReleasePorts,
@@ -256,18 +281,14 @@ export async function releaseToOwner(
       // ownerSession precedence (Fable H-3): a stale session answers OWNER_EPOCH_MISMATCH
       // before ownerOf is consulted; the chain reads above still ran regardless.
       if (req.ownerSession !== undefined) {
-        const secret = signerSecret(ports.env);
-        let claims: OwnerSessionClaims | undefined;
-        try {
-          claims = await verifyClaims<OwnerSessionClaims>(
+        const claims = await withSignerSecret(ports.env, (secret) =>
+          verifyClaims<OwnerSessionClaims>(
             secret,
             "owner-session",
-            req.ownerSession,
+            req.ownerSession as string,
             Number(ctx.nowSec),
-          );
-        } finally {
-          wipe(secret);
-        }
+          ),
+        );
         if (
           claims !== undefined &&
           claims.assetId.toLowerCase() === req.assetId.toLowerCase() &&
@@ -301,25 +322,19 @@ export async function releaseToOwner(
           accessEpochAtGrant: snapshot.accessEpoch,
         },
       ); // step 7
-      const shareG = await loadShareG(ports.env, req.assetId); // step 8
-      const shareGHex = bytesToHex(shareG);
-      wipe(shareG);
+      const shareG = await releaseShareG(ports.env, req.assetId); // step 8
       const expiresAt =
         Number(ctx.nowSec) + asset.manifest.ownerAccess.durationSec;
-      const secret = signerSecret(ports.env);
-      let token: Hex;
-      try {
-        token = await signClaims<OwnerSessionClaims>(secret, "owner-session", {
+      const token = await withSignerSecret(ports.env, (secret) =>
+        signClaims<OwnerSessionClaims>(secret, "owner-session", {
           assetId: req.assetId,
           wallet: req.wallet,
           accessEpochAtGrant: snapshot.accessEpoch.toString(),
           expiresAt,
-        });
-      } finally {
-        wipe(secret);
-      }
+        }),
+      );
       return {
-        shareG: shareGHex,
+        shareG,
         blindedU: blinded.blindedU,
         accessEpochAtGrant: Number(snapshot.accessEpoch),
         ownerSession: { token, expiresAt },
@@ -330,7 +345,14 @@ export async function releaseToOwner(
   );
 }
 
-/** gateway-api.md POST /keygate/share (licensee) steps 1-9; consume runs inside ReceiptLock. */
+/**
+ * gateway-api.md POST /keygate/share (licensee) steps 1-9; consume runs inside ReceiptLock.
+ * Order matters: everything that can fail for reasons unrelated to the chain (auth, manifest,
+ * key material) happens BEFORE a paid use is consumed. A fresh consume is authorised by the
+ * consume transaction itself (the contract reverts on an invalid receipt); a re-delivered
+ * consumption is re-checked with `hasValidConsumption` so a receipt revoked after the
+ * original consume (licenseEpoch bump, INVALIDATE_ON_TRANSFER) can no longer release shares.
+ */
 export async function releaseToLicensee(
   ports: ReleasePorts,
   req: LicenseeReleaseRequest,
@@ -391,19 +413,11 @@ export async function releaseToLicensee(
         await ports.chain.tokenHashes(asset.tokenId),
         ports.deployment.rightsRegistry,
       ); // step 2 hash checks
-      if (receipt.expiresAt <= ctx.nowSec)
+      if (receipt.expiresAt <= ctx.nowSec) {
         throw new AppError("RECEIPT_EXPIRED");
-      if (
-        req.retryUseIndex === undefined &&
-        receipt.usedCount >= receipt.maxUses
-      ) {
-        throw new AppError("USE_LIMIT_EXCEEDED");
       }
-      const consumed = await ports.consume({
-        receiptHash: req.receiptHash,
-        wallet: receipt.licensee,
-        retryUseIndex: req.retryUseIndex,
-      }); // steps 3-8 (DO)
+      // key material is validated / stored BEFORE a paid use is consumed (first access
+      // without keyGateSig must not spend a use)
       const blinded = await getOrCreateBlindedShare(
         ports.db,
         ports.env,
@@ -416,11 +430,26 @@ export async function releaseToLicensee(
           receiptHash: req.receiptHash,
         },
       );
-      const shareG = await loadShareG(ports.env, req.assetId);
-      const shareGHex = bytesToHex(shareG);
-      wipe(shareG);
+      const consumed = await ports.consume({
+        receiptHash: req.receiptHash,
+        wallet: receipt.licensee,
+        retryUseIndex: req.retryUseIndex,
+      }); // steps 3-8 (DO; USE_LIMIT / recovery decided there)
+      if (consumed.redelivered) {
+        const stillValid = await ports.chain.hasValidConsumption(
+          req.receiptHash,
+          consumed.useIndex,
+        );
+        if (!stillValid) {
+          throw new AppError(
+            "NOT_AUTHORIZED",
+            "consumption is no longer valid on chain (receipt revoked or invalidated)",
+          );
+        }
+      }
+      const shareG = await releaseShareG(ports.env, req.assetId);
       return {
-        shareG: shareGHex,
+        shareG,
         blindedU: blinded.blindedU,
         useIndex: consumed.useIndex,
         onchainTx: consumed.onchainTx,

@@ -10,6 +10,7 @@ import {
   createTransfer,
   mockAccessEpoch,
   mockAccessEpochReverts,
+  mockAssetIdReverts,
   mockNftViews,
   mockNftViewsRevert,
   OWNER_A,
@@ -105,6 +106,23 @@ describe("RightsNFT mappings", () => {
     assert.fieldEquals("TransferEvent", hopId, "accessEpoch", "2");
     assert.fieldEquals("TransferEvent", hopId, "from", OWNER_A.toHex());
     assert.fieldEquals("TransferEvent", hopId, "to", OWNER_B.toHex());
+  });
+
+  test("an assetId-only revert keeps the token un-hydrated until the read succeeds", () => {
+    mockAssetIdReverts(1); // creator / policyHash / manifestURI succeed, assetId does not
+    handleTransfer(createTransfer(ZERO, OWNER_A, 1, 100));
+    assert.fieldEquals("RightsToken", "1", "hydrated", "false");
+    assert.fieldEquals("RightsToken", "1", "assetId", ZERO_HASH);
+    assert.fieldEquals("RightsToken", "1", "creator", ZERO.toHex());
+    assert.fieldEquals("RightsToken", "1", "accessEpoch", "1");
+
+    mockNftViews(1, "ipfs://manifest-1"); // assetId now answers
+    handleTransfer(createTransfer(OWNER_A, OWNER_B, 1, 101));
+    assert.fieldEquals("RightsToken", "1", "hydrated", "true");
+    assert.fieldEquals("RightsToken", "1", "assetId", ASSET_ID.toHex());
+    assert.fieldEquals("RightsToken", "1", "creator", CREATOR.toHex());
+    assert.fieldEquals("RightsToken", "1", "manifestURI", "ipfs://manifest-1");
+    assert.fieldEquals("RightsToken", "1", "accessEpoch", "2");
   });
 
   test("PolicyUpdated changes policyHash but neither epoch", () => {

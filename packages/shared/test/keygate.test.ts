@@ -33,11 +33,17 @@ describe("KeyGate share arithmetic (R-1 / R-1a)", () => {
         "sha256",
         Buffer.from(hexToBytes(sig)),
         Buffer.alloc(0),
-        Buffer.from(deriveShareUInfo(ASSET), "utf8"),
+        Buffer.from(`truenft/keygate/v1/0x${"a7".repeat(32)}`, "utf8"), // literal protocol info, not the production helper
         32,
       ),
     );
     expect(await deriveBlindingMask(sig, ASSET)).toEqual(expected);
+  });
+
+  it("should build the info string the client will use", () => {
+    expect(deriveShareUInfo(ASSET)).toBe(
+      `truenft/keygate/v1/0x${"a7".repeat(32)}`,
+    );
   });
 
   it("should be deterministic for the same wallet + asset (fixed challenge => stable share_U')", async () => {

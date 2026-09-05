@@ -30,17 +30,14 @@ app.use("*", async (c, next) => {
   }
 });
 
-// Rate limits (spec 9.2, tasks.md T080): preview 60/min per IP, owner + keygate 30/min per wallet.
+// Rate limits (spec 9.2, tasks.md T080): preview 60/min per IP; owner + keygate 30/min per
+// wallet behind a 120/min per-IP brake (so wallet buckets cannot be minted without bound).
 const MINUTE = 60_000;
 app.use("/assets/*", rateLimit({ limit: 60, windowMs: MINUTE, key: clientIp }));
-app.use(
-  "/owner/*",
-  rateLimit({ limit: 30, windowMs: MINUTE, key: walletOrIp }),
-);
-app.use(
-  "/keygate/*",
-  rateLimit({ limit: 30, windowMs: MINUTE, key: walletOrIp }),
-);
+for (const prefix of ["/owner/*", "/keygate/*"]) {
+  app.use(prefix, rateLimit({ limit: 120, windowMs: MINUTE, key: clientIp }));
+  app.use(prefix, rateLimit({ limit: 30, windowMs: MINUTE, key: walletOrIp }));
+}
 
 app.get("/healthz", (c) => {
   const body: JsonResponse<"/healthz", "get"> = {

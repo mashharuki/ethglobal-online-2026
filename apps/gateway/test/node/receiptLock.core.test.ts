@@ -22,6 +22,7 @@ type Harness = {
   ports: LockPorts;
   rows: ConsumptionRow[];
   submits: number[];
+  inserts: number;
   clock: { now: number };
   chain: {
     maxUses: number;
@@ -32,12 +33,16 @@ type Harness = {
   };
   submitDelayMs: number;
   submitError?: () => Error;
+  /** resolves when the next submitConsume has started (to interleave requests) */
+  submitStarted: () => Promise<void>;
+  releaseSubmit: () => void;
 };
 
 function harness(
   options: Partial<Pick<Harness, "submitDelayMs" | "submitError">> & {
     maxUses?: number;
     usedCount?: number;
+    manualSubmit?: boolean;
   } = {},
 ): Harness {
   const clock = { now: Date.parse("2026-09-06T12:00:00Z") };
@@ -50,13 +55,24 @@ function harness(
     expiresAt: BigInt(Math.floor(clock.now / 1000) + 300),
     issued: true,
   };
+  let started: (() => void) | undefined;
+  let release: (() => void) | undefined;
+  const startedPromise = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   const h: Harness = {
     rows,
     submits,
+    inserts: 0,
     clock,
     chain,
     submitDelayMs: options.submitDelayMs ?? 5,
     submitError: options.submitError,
+    submitStarted: () => startedPromise,
+    releaseSubmit: () => release?.(),
     ports: {
       now: () => new Date(clock.now),
       readReceipt: async () => ({
@@ -68,6 +84,7 @@ function harness(
       readIsConsumed: async (_r, idx) => chain.consumed.has(idx),
       listRows: async () => rows.map((r) => ({ ...r })),
       insertLocked: async (receiptHash, useIndex, wallet) => {
+        h.inserts += 1;
         if (rows.some((r) => r.useIndex === useIndex)) return false;
         rows.push({
           receiptHash,
@@ -83,6 +100,9 @@ function harness(
       updateStatus: async (_r, useIndex, patch) => {
         const row = rows.find((x) => x.useIndex === useIndex);
         if (row === undefined) throw new Error("row missing");
+        if (patch.ifStatus !== undefined && row.status !== patch.ifStatus) {
+          return false;
+        }
         row.status = patch.status;
         if (patch.onchainTx !== undefined) row.onchainTx = patch.onchainTx;
         if (patch.settledAt !== undefined) row.settledAt = patch.settledAt;
@@ -90,11 +110,15 @@ function harness(
           row.wallet = patch.relock.wallet;
           row.createdAt = patch.relock.createdAt;
         }
+        return true;
       },
       submitConsume: async (_r, useIndex) => {
         submits.push(useIndex);
+        started?.();
         if (h.submitError !== undefined) throw h.submitError();
-        await new Promise((resolve) => setTimeout(resolve, h.submitDelayMs));
+        if (options.manualSubmit) await gate;
+        else
+          await new Promise((resolve) => setTimeout(resolve, h.submitDelayMs));
         chain.consumed.add(useIndex);
         chain.usedCount += 1;
         return `0x${useIndex.toString(16).padStart(64, "0")}` as Hex;
@@ -114,6 +138,23 @@ async function codeOf(run: Promise<unknown>): Promise<string | undefined> {
       ? error.code
       : `unexpected:${String(error)}`;
   }
+}
+
+function settledRow(
+  h: Harness,
+  useIndex: number,
+  wallet: Address,
+  ageMs: number,
+): void {
+  h.rows.push({
+    receiptHash: RECEIPT,
+    useIndex,
+    wallet,
+    status: "settled",
+    onchainTx: `0x${"aa".repeat(32)}`,
+    settledAt: new Date(h.clock.now - ageMs),
+    createdAt: new Date(h.clock.now - ageMs - 1000),
+  });
 }
 
 describe("ReceiptLockCore (R-3 / R-3a)", () => {
@@ -158,6 +199,22 @@ describe("ReceiptLockCore (R-3 / R-3a)", () => {
     expect(h.submits).toEqual([0, 1, 2]);
   });
 
+  it("should start from the on-chain usedCount on a cold start with no stored rows", async () => {
+    const h = harness({ usedCount: 2 });
+    const core = new ReceiptLockCore(h.ports);
+    const out = await core.consume({ receiptHash: RECEIPT, wallet: BUYER });
+    expect(out.useIndex).toBe(2);
+    expect(h.submits).toEqual([2]);
+  });
+
+  it("should initialise the counter from max(on-chain usedCount, stored rows) when the mirror lags", async () => {
+    const h = harness({ usedCount: 1 });
+    for (const idx of [0, 1, 2]) settledRow(h, idx, BUYER, 10 * 60_000);
+    const core = new ReceiptLockCore(h.ports);
+    const out = await core.consume({ receiptHash: RECEIPT, wallet: BUYER });
+    expect(out.useIndex).toBe(3);
+  });
+
   it("should re-deliver a settled useIndex to the same wallet within 5 min without a new consume (FR-007)", async () => {
     const h = harness();
     const core = new ReceiptLockCore(h.ports);
@@ -187,8 +244,25 @@ describe("ReceiptLockCore (R-3 / R-3a)", () => {
     expect(h.submits).toEqual([0]);
   });
 
+  it("should never recover a row whose settle is still in flight, even after the stale window", async () => {
+    const h = harness({ manualSubmit: true });
+    const core = new ReceiptLockCore(h.ports);
+    const inflight = core.consume({ receiptHash: RECEIPT, wallet: BUYER });
+    await h.submitStarted();
+    h.clock.now += LOCK_STALE_MS + 5_000; // looks stale from the outside
+    expect(
+      await codeOf(core.consume({ receiptHash: RECEIPT, wallet: OTHER })),
+    ).toBe("RECEIPT_ALREADY_CONSUMED");
+    expect(h.rows[0]?.status).toBe("locked");
+    expect(h.rows[0]?.wallet).toBe(BUYER);
+    h.releaseSubmit();
+    const out = await inflight;
+    expect(out.useIndex).toBe(0);
+    expect(h.rows[0]?.status).toBe("settled");
+    expect(h.submits).toEqual([0]);
+  });
+
   it("should recover a stale locked row: consumed on chain -> settled + redelivered, else resend the SAME index", async () => {
-    // crashed instance left useIndex 0 locked 2 minutes ago and the tx did land
     const h = harness();
     h.rows.push({
       receiptHash: RECEIPT,
@@ -211,7 +285,6 @@ describe("ReceiptLockCore (R-3 / R-3a)", () => {
     expect(h.rows[0]?.status).toBe("settled");
     expect(h.submits).toEqual([]);
 
-    // crashed before sending: not consumed -> failed -> resent with the same index 1
     const g = harness({ maxUses: 2 });
     g.rows.push({
       receiptHash: RECEIPT,
@@ -229,22 +302,28 @@ describe("ReceiptLockCore (R-3 / R-3a)", () => {
     expect(g.rows.find((r) => r.useIndex === 1)?.status).toBe("settled");
   });
 
-  it("should initialise the counter from max(on-chain usedCount, stored rows) on cold start (mirror lag)", async () => {
-    const h = harness({ usedCount: 1 }); // mirror node lags: chain says 1 but 3 are settled locally
-    for (const idx of [0, 1, 2]) {
-      h.rows.push({
-        receiptHash: RECEIPT,
-        useIndex: idx,
-        wallet: BUYER,
-        status: "settled",
-        onchainTx: `0x${"aa".repeat(32)}`,
-        settledAt: new Date(h.clock.now - 10 * 60_000),
-        createdAt: new Date(h.clock.now - 11 * 60_000),
-      });
-    }
+  it("should deliver a failed row that turns out consumed instead of allocating a new index", async () => {
+    const h = harness({ maxUses: 1 });
+    h.rows.push({
+      receiptHash: RECEIPT,
+      useIndex: 0,
+      wallet: BUYER,
+      status: "failed",
+      onchainTx: null,
+      settledAt: null,
+      createdAt: new Date(h.clock.now - 5_000),
+    });
+    h.chain.consumed.add(0);
+    h.chain.usedCount = 1;
     const core = new ReceiptLockCore(h.ports);
     const out = await core.consume({ receiptHash: RECEIPT, wallet: BUYER });
-    expect(out.useIndex).toBe(3);
+    expect(out).toEqual({
+      useIndex: 0,
+      onchainTx: undefined,
+      redelivered: true,
+    });
+    expect(h.submits).toEqual([]);
+    expect(h.inserts).toBe(0);
   });
 
   it("should mark the row failed and propagate the mapped revert, then reuse the same index next time", async () => {
@@ -262,7 +341,20 @@ describe("ReceiptLockCore (R-3 / R-3a)", () => {
     expect(h.submits).toEqual([0, 0]);
   });
 
-  it("should refuse expired or unissued receipts before touching the database", async () => {
+  it("should not let a late revert overwrite a settlement recorded by recovery (conditional transition)", async () => {
+    const h = harness();
+    const core = new ReceiptLockCore(h.ports);
+    await core.consume({ receiptHash: RECEIPT, wallet: BUYER });
+    // simulate a lost race: the row is already settled; a stale failed transition must be a no-op
+    const applied = await h.ports.updateStatus(RECEIPT, 0, {
+      status: "failed",
+      ifStatus: "locked",
+    });
+    expect(applied).toBe(false);
+    expect(h.rows[0]?.status).toBe("settled");
+  });
+
+  it("should refuse expired or unissued receipts without inserting a row", async () => {
     const h = harness();
     h.chain.expiresAt = BigInt(Math.floor(h.clock.now / 1000) - 1);
     const core = new ReceiptLockCore(h.ports);
@@ -274,6 +366,7 @@ describe("ReceiptLockCore (R-3 / R-3a)", () => {
     expect(
       await codeOf(core.consume({ receiptHash: RECEIPT, wallet: BUYER })),
     ).toBe("NOT_AUTHORIZED");
+    expect(h.inserts).toBe(0);
     expect(h.rows).toHaveLength(0);
   });
 });

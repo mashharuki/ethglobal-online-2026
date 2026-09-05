@@ -18,6 +18,10 @@ import { readShareU, wipe } from "./vault";
  * share_U is read from the secrets store, used for one XOR and wiped. The blinded value is
  * computed ONCE per (asset, wallet, path) and reused from wallet_blinded_shares afterwards, so
  * the KeyGateChallenge signature only ever travels on first access.
+ *
+ * Licensee binding: the licensee KeyGateChallenge includes the receiptHash, so the stored
+ * share is only reusable for the SAME receipt. A second receipt for the same asset + wallet
+ * is a new first access (keyGateSig required) and replaces the stored row.
  */
 export type BlindedShareRow = {
   blindedU: Hex;
@@ -25,9 +29,12 @@ export type BlindedShareRow = {
   createdNow: boolean;
 };
 
+const ZERO32 = `0x${"00".repeat(32)}` as Hex;
+
 async function findBlindedShare(
   db: Db,
   key: { assetId: Hex; wallet: Address; path: BlindedSharePath },
+  receiptHash: Hex,
 ): Promise<BlindedShareRow | undefined> {
   const [row] = await db
     .select()
@@ -41,6 +48,12 @@ async function findBlindedShare(
     )
     .limit(1);
   if (row === undefined) return undefined;
+  if (
+    key.path === "licensee" &&
+    (row.receiptHash ?? ZERO32).toLowerCase() !== receiptHash.toLowerCase()
+  ) {
+    return undefined; // bound to another receipt: treat as absent
+  }
   return {
     blindedU: row.blindedU,
     accessEpochAtGrant: row.accessEpochAtGrant,
@@ -54,7 +67,7 @@ async function findBlindedShare(
  * wallet. This check only protects the wallet from a garbage first-access request.
  */
 async function assertKeyGateSigBelongsTo(
-  env: Pick<Env, "HEDERA_CHAIN_ID" | "RIGHTS_REGISTRY_ADDRESS">,
+  env: Pick<Env, "HEDERA_CHAIN_ID">,
   registry: Address,
   input: {
     assetId: Hex;
@@ -104,15 +117,15 @@ export async function getOrCreateBlindedShare(
   registry: Address,
   input: GetOrCreateInput,
 ): Promise<BlindedShareRow> {
-  const existing = await findBlindedShare(db, input);
+  const receiptHash = input.receiptHash ?? ZERO32;
+  const existing = await findBlindedShare(db, input, receiptHash);
   if (existing !== undefined) return existing;
   if (input.keyGateSig === undefined) {
     throw new AppError(
       "SIGNATURE_INVALID",
-      "keyGateSig is required on first access (no blinded share stored yet)",
+      "keyGateSig is required on first access (no blinded share stored for this receipt yet)",
     );
   }
-  const receiptHash = input.receiptHash ?? `0x${"00".repeat(32)}`;
   await assertKeyGateSigBelongsTo(env, registry, {
     assetId: input.assetId,
     wallet: input.wallet,
@@ -139,9 +152,21 @@ export async function getOrCreateBlindedShare(
       accessEpochAtGrant: input.accessEpochAtGrant,
       receiptHash: input.receiptHash,
     })
-    .onConflictDoNothing();
-  // a concurrent first access may have won the insert; the stored row is authoritative
-  const stored = await findBlindedShare(db, input);
-  if (stored === undefined) throw new Error("blinded share insert vanished");
-  return { ...stored, createdNow: stored.blindedU === blindedU };
+    .onConflictDoUpdate({
+      target: [
+        walletBlindedShares.assetId,
+        walletBlindedShares.wallet,
+        walletBlindedShares.path,
+      ],
+      set: {
+        blindedU,
+        accessEpochAtGrant: input.accessEpochAtGrant,
+        receiptHash: input.receiptHash,
+      },
+    });
+  return {
+    blindedU,
+    accessEpochAtGrant: input.accessEpochAtGrant ?? null,
+    createdNow: true,
+  };
 }

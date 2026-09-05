@@ -103,7 +103,7 @@ function createLockPorts(env: Env, handle: DbHandle): LockPorts {
       }
     },
     updateStatus: async (receiptHash, useIndex, patch) => {
-      await db
+      const updated = await db
         .update(receiptConsumption)
         .set({
           status: patch.status,
@@ -120,11 +120,21 @@ function createLockPorts(env: Env, handle: DbHandle): LockPorts {
           and(
             eq(receiptConsumption.receiptHash, receiptHash),
             eq(receiptConsumption.useIndex, useIndex),
+            ...(patch.ifStatus === undefined
+              ? []
+              : [eq(receiptConsumption.status, patch.ifStatus)]),
           ),
-        );
+        )
+        .returning({ useIndex: receiptConsumption.useIndex });
+      return updated.length > 0;
     },
     submitConsume: (receiptHash, useIndex) =>
-      submitViaOperatorQueue(env, { kind: "consume", receiptHash, useIndex }),
+      submitViaOperatorQueue(env, {
+        kind: "consume",
+        receiptHash,
+        useIndex,
+        idempotencyKey: `consume:${receiptHash.toLowerCase()}:${useIndex}`,
+      }),
     waitForTx: async (txHash) => {
       await waitForTx(ctx, txHash, "consume");
     },

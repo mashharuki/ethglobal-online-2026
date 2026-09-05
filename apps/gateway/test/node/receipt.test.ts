@@ -71,8 +71,13 @@ describe("receipt issuance (T082)", () => {
         address: receiptSignerAddress(env),
       }),
     ).toBe(true);
-    // the signature is a convenience credential; the receiptHash itself is deterministic
-    expect(computeReceiptHash(receipt)).toMatch(/^0x[0-9a-f]{64}$/);
+    // the receiptHash is deterministic over the 17 bound fields and moves with any of them
+    const hash = computeReceiptHash(receipt);
+    expect(computeReceiptHash({ ...receipt })).toBe(hash);
+    expect(computeReceiptHash({ ...receipt, maxUses: 6 })).not.toBe(hash);
+    expect(
+      computeReceiptHash({ ...receipt, licensee: receiptSignerAddress(env) }),
+    ).not.toBe(hash);
   });
 
   it("should store the licensee blinded share idempotently", async () => {

@@ -156,10 +156,7 @@ export async function readReceiptStatus(
   };
 }
 
-/**
- * Authority predicate for the licensee path (all validity branches live in the contract).
- * @lintignore consumed by the licensee route (tasks.md T089)
- */
+/** Authority predicate for the licensee path (all validity branches live in the contract). */
 export async function readHasValidConsumption(
   ctx: ChainContext,
   receiptHash: Hex,

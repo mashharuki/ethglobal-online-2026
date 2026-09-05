@@ -13,11 +13,16 @@ import { AppError } from "../errors";
  * - cold start: reconcile stale `locked` rows (> 60 s) via consumed[receipt][idx] BEFORE the
  *   counter is initialised; counter = max(on-chain usedCount, highest stored useIndex + 1);
  *   a consumption that turns out settled is delivered to its wallet on that first request
- * - `locked` row younger than 60 s -> RECEIPT_ALREADY_CONSUMED (in progress)
- * - `locked` row older than 60 s: consumed on chain -> settled (redelivered to the same
- *   wallet), else -> the SAME useIndex is resent (never a fresh index: maxUses boundary)
+ * - `locked` row younger than 60 s, or whose settle is still in flight in this instance ->
+ *   RECEIPT_ALREADY_CONSUMED (in progress). In-flight rows are never "recovered".
+ * - `locked` row older than 60 s (left by a previous instance): consumed on chain -> settled
+ *   (redelivered to the same wallet), else -> the SAME useIndex is resent (never a fresh
+ *   index: maxUses boundary)
+ * - `failed` row that turns out consumed -> settled and delivered to its wallet
  * - `settled` within 5 min + retryUseIndex from the same wallet -> re-deliver, no new consume
  * - counter >= maxUses -> USE_LIMIT_EXCEEDED before any transaction is sent
+ * - status transitions from a settle attempt are conditional on the row still being `locked`
+ *   (`ifStatus`), so a late revert can never overwrite a settlement recorded by recovery
  */
 export const LOCK_STALE_MS = 60_000;
 export const REDELIVERY_TTL_MS = 5 * 60_000;
@@ -46,6 +51,8 @@ type StatusPatch = {
   settledAt?: Date;
   /** re-arm a recovered row for a new attempt */
   relock?: { wallet: Address; createdAt: Date };
+  /** apply only when the row currently has this status (compare-and-set) */
+  ifStatus?: ConsumptionStatus;
 };
 
 export type LockPorts = {
@@ -59,11 +66,12 @@ export type LockPorts = {
     useIndex: number,
     wallet: Address,
   ): Promise<boolean>;
+  /** returns false when `ifStatus` was given and did not match */
   updateStatus(
     receiptHash: Hex,
     useIndex: number,
     patch: StatusPatch,
-  ): Promise<void>;
+  ): Promise<boolean>;
   /** OperatorTxQueue: returns the tx hash; throws the mapped AppError on revert */
   submitConsume(receiptHash: Hex, useIndex: number): Promise<Hex>;
   waitForTx(txHash: Hex): Promise<void>;
@@ -93,8 +101,13 @@ function redeliver(row: ConsumptionRow): Plan {
   };
 }
 
+function rowKey(receiptHash: Hex, useIndex: number): string {
+  return `${receiptHash.toLowerCase()}:${useIndex}`;
+}
+
 export class ReceiptLockCore {
   private readonly counters = new Map<string, number>();
+  private readonly inflight = new Set<string>();
   private tail: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly ports: LockPorts) {}
@@ -133,7 +146,10 @@ export class ReceiptLockCore {
 
     for (const row of rows) {
       if (row.status !== "locked") continue;
-      if (now.getTime() - row.createdAt.getTime() <= LOCK_STALE_MS) {
+      const active =
+        this.inflight.has(rowKey(receiptHash, row.useIndex)) ||
+        now.getTime() - row.createdAt.getTime() <= LOCK_STALE_MS;
+      if (active) {
         throw new AppError("RECEIPT_ALREADY_CONSUMED", "consume in progress");
       }
       const recovered = await this.recoverStale(row, now);
@@ -153,6 +169,9 @@ export class ReceiptLockCore {
           status: "settled",
           settledAt: now,
         });
+        row.status = "settled";
+        row.settledAt = now;
+        if (isAddressEqual(row.wallet, wallet)) return redeliver(row);
         continue;
       }
       await this.relock(receiptHash, row.useIndex, wallet, now);
@@ -263,29 +282,38 @@ export class ReceiptLockCore {
     receiptHash: Hex,
     useIndex: number,
   ): Promise<ConsumeOutcome> {
-    let txHash: Hex;
+    const key = rowKey(receiptHash, useIndex);
+    this.inflight.add(key);
     try {
-      txHash = await this.ports.submitConsume(receiptHash, useIndex);
-    } catch (error) {
+      let txHash: Hex;
+      try {
+        txHash = await this.ports.submitConsume(receiptHash, useIndex);
+      } catch (error) {
+        await this.ports.updateStatus(receiptHash, useIndex, {
+          status: "failed",
+          ifStatus: "locked",
+        });
+        throw error;
+      }
+      try {
+        await this.ports.waitForTx(txHash);
+      } catch (error) {
+        await this.ports.updateStatus(receiptHash, useIndex, {
+          status: "failed",
+          onchainTx: txHash,
+          ifStatus: "locked",
+        });
+        throw error;
+      }
       await this.ports.updateStatus(receiptHash, useIndex, {
-        status: "failed",
-      });
-      throw error;
-    }
-    try {
-      await this.ports.waitForTx(txHash);
-    } catch (error) {
-      await this.ports.updateStatus(receiptHash, useIndex, {
-        status: "failed",
+        status: "settled",
         onchainTx: txHash,
+        settledAt: this.ports.now(),
+        ifStatus: "locked",
       });
-      throw error;
+      return { useIndex, onchainTx: txHash, redelivered: false };
+    } finally {
+      this.inflight.delete(key);
     }
-    await this.ports.updateStatus(receiptHash, useIndex, {
-      status: "settled",
-      onchainTx: txHash,
-      settledAt: this.ports.now(),
-    });
-    return { useIndex, onchainTx: txHash, redelivered: false };
   }
 }

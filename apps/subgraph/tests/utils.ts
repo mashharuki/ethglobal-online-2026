@@ -73,6 +73,13 @@ export function mockAccessEpochReverts(tokenId: i32): void {
     .reverts();
 }
 
+/** assetId(tokenId) alone reverts (the other views succeed): hydration must still wait. */
+export function mockAssetIdReverts(tokenId: i32): void {
+  createMockedFunction(NFT, "assetId", "assetId(uint256):(bytes32)")
+    .withArgs([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(tokenId))])
+    .reverts();
+}
+
 /** Every metadata view reverts (hydration must be retried later, never invented). */
 export function mockNftViewsRevert(tokenId: i32): void {
   let arg = [ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(tokenId))];
