@@ -6,9 +6,7 @@
   "scripts": {
     "compile": "bunx hardhat build",
     "test": "bunx hardhat test",
-    "deploy:Counter": "bunx hardhat ignition deploy ignition/modules/Counter.ts",
-    "deploy:MyToken": "bunx hardhat run scripts/deploy.ts",
-    "mint": "bunx hardhat run scripts/mint.ts",
+    "typecheck": "bunx hardhat build && tsc --noEmit",
     "console": "bunx hardhat console"
   },
   "devDependencies": {

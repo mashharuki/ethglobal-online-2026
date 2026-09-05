@@ -91,6 +91,7 @@ export const SOLIDITY_ERROR_TO_CODE: Readonly<Record<string, ErrorCode>> = {
   ContractWalletUnsupported: ErrorCode.CONTRACT_WALLET_UNSUPPORTED,
   NotAuthorized: ErrorCode.NOT_AUTHORIZED,
   CommittedParamsMismatch: ErrorCode.COMMITTED_PARAMS_MISMATCH,
+  OwnerEpochMismatch: ErrorCode.OWNER_EPOCH_MISMATCH,
 };
 
 export function isErrorCode(value: unknown): value is ErrorCode {

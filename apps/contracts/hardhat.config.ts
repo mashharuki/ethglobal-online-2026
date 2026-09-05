@@ -37,8 +37,10 @@ const config: HardhatUserConfig = {
       accounts: [configVariable("HEDERA_OPERATOR_KEY")],
     },
   },
-  sourcify: {
-    enabled: true,
+  verify: {
+    sourcify: {
+      enabled: true,
+    },
   },
 };
 

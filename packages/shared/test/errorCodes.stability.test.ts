@@ -20,6 +20,13 @@ const specDir = resolve(
   "../../../specs/001-rights-runtime-mvp/contracts",
 );
 const errorCodesMd = readFileSync(resolve(specDir, "error-codes.md"), "utf8");
+const registryInterfaceSol = readFileSync(
+  resolve(
+    import.meta.dirname,
+    "../../../apps/contracts/contracts/interfaces/IRightsRegistry.sol",
+  ),
+  "utf8",
+);
 const solidityInterfacesMd = readFileSync(
   resolve(specDir, "solidity-interfaces.md"),
   "utf8",
@@ -84,6 +91,22 @@ describe("ErrorCode stability against the spec", () => {
         SOLIDITY_ERROR_TO_CODE[solidityName as string],
         `mapping for ${solidityName}`,
       ).toBe(code);
+    }
+  });
+
+  it("should map every annotated custom error in apps/contracts IRightsRegistry.sol", () => {
+    const annotated = [
+      ...registryInterfaceSol.matchAll(
+        /error\s+([A-Za-z]+)\(\);\s*\/\/\s*->\s*([A-Z_]+)/g,
+      ),
+    ];
+    expect(annotated.length).toBeGreaterThanOrEqual(13);
+    for (const [, solidityName, code] of annotated) {
+      expect(
+        SOLIDITY_ERROR_TO_CODE[solidityName as string],
+        `mapping for ${solidityName}`,
+      ).toBe(code);
+      expect(ErrorCode, `code ${code} exists`).toHaveProperty(code as string);
     }
   });
 });
