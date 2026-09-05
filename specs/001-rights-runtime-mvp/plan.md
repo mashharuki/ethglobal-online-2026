@@ -357,6 +357,20 @@ truenft/
 
 （記録）monorepo のワークスペース分割（`apps/` に 7 成果物：contracts / gateway / web / agent / subgraph / e2e / cdk ＋ `packages/shared`〔ドメイン型〕＋ `packages/openapi`〔HTTP API 契約〕）は「レイヤー分離 = 責務分離」であり過剰分割ではない。単一パッケージに畳むと `apps/contracts` のビルド成果物（ABI・型）と `apps/gateway` `apps/web` `apps/agent` の依存が循環し、`packages/shared` の役割（ハッシュ計算の単一定義）が果たせない。`apps/cdk` は Hedera が Subgraph Studio 非対応（R-5）という外部制約に由来する一時インフラであり、ハッカソン終了後は `cdk destroy` で撤去する前提（恒久設計ではない）。
 
+### マルチモデル設計レビュー対応（2026-09-05・Codex GPT-6-Astra × Fable 5.1）
+
+実装着手前に、独立した2つのモデルによる設計レビューを実施した。両モデルが独立に一致して発見した Critical 指摘（`settleAndIssue` の policy 内容未検証・決済レール前提の共有リスク・KeyGate 認証と鍵導出の混在）と、Fable のみが発見した Critical 相当の指摘（MCP `decrypt_content` の無認証共有ウォレット問題）は、`research.md` に R-1a / R-2a / R-3a / R-6a / R-9a / R-10 / R-11 として決定を記録し、対応する `contracts/*.md` / `data-model.md` を修正済み。要点：
+
+| 逸脱・修正 | 内容 | 発見元 |
+|---|---|---|
+| `settleAndIssue` の policy content 未検証 | `p.policyHash` を price/maxUses/transferMode 等から再導出して照合する require を追加（フィールド追加なし、`expiresAt - issuedAt` から duration を逆算） | Codex #1・Fable C-1（独立一致） |
+| KeyGate 認証と鍵導出の混在 | `KeyGateChallenge`（固定・鍵導出専用）と `OwnerAuthChallenge`/`LicenseeAuthChallenge`（nonce 付き・認証専用）を分離。`blindedU` は初回のみ計算 | Codex #6（High）・Fable C-3（Critical、独立一致） |
+| 決済レール（primary/fallback）が同一未検証仮定を共有 | T020 probe を primary・fallback 両方の ContractCall 対応確認に拡張。第 3 案（非原子カストディ型）を day1 に文書化済み | Codex #4（High）・Fable C-2（Critical、独立一致） |
+| MCP `decrypt_content` が無認証共有ウォレットで他人の購入済みコンテンツを読める | `mcp_session_binding` で `receiptHash` を MCP セッションに束縛 | **Fable H-1 のみが発見**（Codex 未指摘） |
+| fallback 採用時、permissionless `finalize` が収益転用可能 | `payFor`/`finalize` に `committedParamsHash` を導入し購入内容を入金時点に固定 | **Codex #2 のみが発見**（Fable 未指摘） |
+
+この対応により、`plan.md` の Complexity Tracking に新たな恒久的な逸脱は増えていない（いずれも「実装がまだ存在しない段階での設計修正」であり、既存の逸脱記録〔owner パスの `share_U` 残存信頼点／settlement 原子性フォールバック／KeyGate fallback〕とは独立）。詳細な問題内容・失敗シナリオ・推奨対応は各 R 節（`research.md`）を参照。
+
 ---
 
 ## 実行モデルとスコープ規律（2 人 + Claude Code / Codex）

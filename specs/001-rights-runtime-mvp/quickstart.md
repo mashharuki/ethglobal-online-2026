@@ -37,9 +37,16 @@ pnpm --filter subgraph deploy             # apps/subgraph を GraphNodeStack の
 
 # gateway（apps/gateway、Cloudflare Workers）
 pnpm --filter gateway db:migrate          # Hyperdrive 経由 Postgres にマイグレーション
-pnpm --filter gateway secrets:put         # share_U / RECEIPT_SIGNER_KEY / KV_KEK / HEDERA_OPERATOR_KEY / PRIVY_APP_ID / PRIVY_APP_SECRET を wrangler secret put（MCP 決済の生鍵は置かない ＝ Privy server wallet 管理）
-pnpm --filter gateway dev                 # wrangler dev（miniflare、:8787。DO / KV / Hyperdrive をローカルエミュレート）
-# 本番: pnpm --filter gateway deploy       # wrangler deploy
+pnpm --filter gateway secrets:put         # RECEIPT_SIGNER_KEY / KV_KEK / HEDERA_OPERATOR_KEY / PRIVY_APP_ID / PRIVY_APP_SECRET を wrangler secret put（MCP 決済の生鍵は置かない ＝ Privy server wallet 管理。share_U は下記 load-shares で asset ごとに投入）
+pnpm --filter gateway dev                 # wrangler dev（miniflare、:8787。DO / KV / Hyperdrive をローカルエミュレート、share_U は .dev.vars で代替）
+# 本番: pnpm --filter gateway deploy       # wrangler deploy（空実装でも一度デプロイし、Worker を Cloudflare 上に存在させる）
+# ⚠ 2026-09-05 追加（Codex #21 対応）：デプロイ済み Worker が無いと `wrangler secret put` は投入先が無く失敗する。
+#   このため share_G / share_U の投入は必ず「初回 deploy の後」に行う：
+pnpm --filter gateway load-shares         # apps/contracts/out/seed-artifacts.json（T048 の seed 出力）を読み、
+                                           # share_G を KEK 暗号化して wrangler kv key put、share_U を wrangler secret put（asset ごと）
+pnpm --filter gateway deploy              # 投入したシークレットを反映するため再デプロイ
+# ⚠ 上記 3 行（初回 deploy → load-shares → 再 deploy）を飛ばすと、web/agent から復号可能な状態にならない
+#   （share_G/share_U が存在しないため KeyGate が常に失敗する）。審査員が手順を追う際もこの順序を厳守すること。
 
 # web（apps/web、Vite + Tailwind、Cloudflare Pages）
 pnpm --filter web dev                     # :5173

@@ -45,9 +45,9 @@
       "additionalProperties": false,
       "required": ["price", "durationSec", "maxUses"],
       "properties": {
-        "price": { "type": "string", "pattern": "^[1-9][0-9]*$", "description": "ネイティブ HBAR の weibar（10^18 = 1 HBAR）整数文字列。native 精度下限 tinybar のため 10^10 の倍数であること" },
+        "price": { "type": "string", "pattern": "^[1-9][0-9]*$", "description": "ネイティブ HBAR の weibar（10^18 = 1 HBAR）整数文字列（人間可読・UI 表示用）。native 精度下限 tinybar のため 10^10 の倍数であること。**2026-09-05 R-4 改訂**：コントラクト内部の会計は tinybar 単位（`price / 1e10`）で行うため、ここでの weibar 表現はアプリ層の zod refine で 10^10 の倍数チェックのみ行い、`RightsRegistry.settleAndIssue` へ渡す前に tinybar へ変換する" },
         "durationSec": { "type": "integer", "minimum": 1 },
-        "maxUses": { "type": "integer", "minimum": 1 }
+        "maxUses": { "type": "integer", "minimum": 1, "maximum": 4294967295, "description": "uint32 の範囲に制約（2026-09-05 M-5 対応：Solidity/DB/GraphQL 側の型上限とスキーマの不整合を防ぐ）" }
       }
     },
     "permissions": {
