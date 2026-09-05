@@ -269,6 +269,16 @@ table mcp_session_binding                     -- 2026-09-05 新設（R-9a・Fabl
   -- （不一致は MCP_SESSION_MISMATCH）。receiptHash は subgraph/HashScan で公開されるため、この束縛が無いと
   -- 第三者が他人の購入済み Receipt で decrypt_content を呼び平文を取得できてしまう。
 
+table mcp_session_spend                       -- 2026-09-06 新設（R-9 の支出上限を Gateway 側で強制する台帳・T092）
+  session_key         bytea PRIMARY KEY       -- keccak256(Mcp-Session-Id)。Mcp-Session-Id 自体は Gateway が initialize 時に
+                                              -- 発行する HMAC 署名付き・24h 有効のトークン（クライアントは偽造できない）
+  spent_tinybar       numeric NOT NULL DEFAULT 0  -- CHECK: 0 以上・整数・< 1e30
+  updated_at          timestamptz
+  -- buy_access は署名を要求する前に「spent + price <= cap」を 1 回の条件付き UPDATE で予約する
+  -- （超過は SPEND_LIMIT_EXCEEDED、並行 2 件が同時に通ることはない）。予約を戻すのは value が動いていないと
+  -- 確定できる場合（送信前の失敗、または payment_binding が failed）だけで、結果不明（pending）は保持する。
+  -- Privy 側の policy は raw-hash 署名の中身（宛先・金額）を解釈できないため、この台帳が SC-011 の実効ゲート。
+
 table audit_log
   id                  bigserial PRIMARY KEY
   ts                  timestamptz

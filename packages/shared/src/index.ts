@@ -9,3 +9,4 @@ export * from "./hashing";
 export * from "./keygate";
 export * from "./kv-format";
 export * from "./manifest";
+export * from "./secp256k1";

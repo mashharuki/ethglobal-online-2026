@@ -10,7 +10,8 @@ Values below are **never** placed in `wrangler.toml` or committed. For local `wr
 | `RECEIPT_SIGNER_KEY` | Key that server-signs EIP-712 Rights Receipts after settlement (convenience credential, not the authorization authority). | `wrangler secret put RECEIPT_SIGNER_KEY` |
 | `KV_KEK` | 32-byte hex key encrypting `share_G` blobs in the `SHARE_G` KV namespace (`packages/shared/src/kv-format.ts`). | `wrangler secret put KV_KEK` |
 | `SHARE_U_<assetId hex, no 0x>` | Per-asset `share_U` for the owner path (residual trust point, disclosed in README). Loaded by `scripts/load-shares.ts` from `apps/contracts/out/<chainId>/seed-artifacts.json`. | `scripts/load-shares.ts` |
-| `PRIVY_APP_ID` / `PRIVY_APP_SECRET` | Privy server wallet (session signer + spend policy) used by the MCP `buy_access` tool. The raw payment key is never held here. | `wrangler secret put ...` |
+| `PRIVY_APP_ID` / `PRIVY_APP_SECRET` | Privy app credentials for the server wallet the MCP tools sign with (R-9). The raw payment key is never held here. | `wrangler secret put ...` |
+| `PRIVY_WALLET_ID` / `PRIVY_WALLET_ADDRESS` | The Privy server wallet (`privy.wallets().create({ chain_type: "ethereum" })`) the MCP `buy_access` / `decrypt_content` tools use; its EVM address is the licensee on every receipt the agent buys. Fund the address on Hedera Testnet and activate the account by signing once (a hollow account cannot pay). | `wrangler secret put ...` |
 
 `ANTHROPIC_API_KEY` is not needed by the gateway; only `apps/agent` (CI harness) uses it.
 
@@ -20,8 +21,9 @@ return fresh byte copies and never memoise.
 
 ## Non-secret vars (`wrangler.toml [vars]`)
 
-`HEDERA_CHAIN_ID`, `HEDERA_RPC_URL`, `X402_FACILITATOR_URL`, `PAYMENT_ASSET`, `SETTLEMENT_MODE`,
-`SUBGRAPH_URL`, `RIGHTS_NFT_ADDRESS`, `RIGHTS_REGISTRY_ADDRESS`, `IPFS_GATEWAY_URL`. Empty contract
+`HEDERA_CHAIN_ID`, `HEDERA_RPC_URL`, `HEDERA_MIRROR_URL`, `X402_FACILITATOR_URL`, `PAYMENT_ASSET`,
+`SETTLEMENT_MODE`, `SETTLEMENT_ACCOUNT_ID`, `SUBGRAPH_URL`, `RIGHTS_NFT_ADDRESS`,
+`RIGHTS_REGISTRY_ADDRESS`, `IPFS_GATEWAY_URL`, `MCP_SESSION_SPEND_CAP_TINYBAR`. Empty contract
 addresses fall back to `packages/shared` `DEFAULT_DEPLOYMENT` (written by `apps/contracts` deploy,
 T047). `SUBGRAPH_URL` is only a discovery hint for the assetId -> tokenId lookup
 (`src/graph/lookup.ts`); the mapping is proven on chain before anything is released (R-11).
@@ -77,6 +79,53 @@ before it demands current issuance terms.
 reads via viem, Durable Objects, the facilitator client. Non-domain failures (malformed body
 400, unknown asset 404, subgraph down 502, internal 500) answer `{ error, message? }`; every
 domain rejection is the openapi `Error` body from `AppError`.
+
+## MCP server (tasks.md T092-T096, contracts/mcp-tools.md)
+
+`POST /mcp` is a Streamable HTTP MCP endpoint (JSON responses, no SSE) exposing
+`discover_assets` / `buy_access` / `decrypt_content`. Connect from Claude Code or any MCP client:
+
+```bash
+claude mcp add --transport http rights-runtime https://<gateway-host>/mcp
+```
+
+or in `mcp.json`:
+
+```json
+{ "mcpServers": { "rights-runtime": { "type": "http", "url": "https://<gateway-host>/mcp" } } }
+```
+
+Trust model (R-9 / R-9a, disclosed in the README):
+
+- **Session identity.** The transport is stateless on Workers, so the gateway mints
+  `Mcp-Session-Id` on `initialize` and the client echoes it (MCP spec). The id is an
+  HMAC-signed, 24 h token (MAC root = `RECEIPT_SIGNER_KEY`, purpose `mcp-session`): a client
+  cannot invent one - and with it a fresh spend budget - by skipping `initialize`; a missing,
+  forged or expired id is `MCP_SESSION_MISMATCH`. `buy_access` binds each receiptHash to the
+  session (`mcp_session_binding`); `decrypt_content` refuses a receipt bought from another
+  session even though the hash is public on chain.
+- **Spend policy.** `MCP_SESSION_SPEND_CAP_TINYBAR` is a hard cap per session enforced through
+  the `mcp_session_spend` ledger: the price is RESERVED with one conditional UPDATE before any
+  signature is requested (`SPEND_LIMIT_EXCEEDED` when it would exceed the cap; two concurrent
+  purchases cannot both pass), and given back only when no value can have moved (no payment
+  payload was built, or `payment_binding` says the facilitator rejected it). An unknown
+  outcome - and a payload whose binding is absent - keeps the reservation. An unset /
+  malformed cap allows nothing.
+  The cap lives in the gateway because the x402 payment is a raw-hash signature over a HAPI
+  transaction that Privy cannot interpret structurally (research.md R-9 item 3): a Privy
+  policy can restrict the wallet to `eth_signTypedData_v4` + `secp256k1_sign` (block
+  `eth_sendTransaction` / exports in the dashboard), not the amount. Whether Privy rejects an
+  over-cap request is therefore NOT claimed; the positive control is `test/node/mcp.test.ts`
+  "spend policy".
+- **Key material.** `decrypt_content` signs `KeyGateChallenge` through the Privy wallet on every
+  call and relies on deterministic ECDSA (RFC 6979) so `blindedU` stays stable; the MCP server
+  process reconstructs K and decrypts (mcp-tools.md 9.1: it is the client on this path).
+- **Tool errors** carry `code` = a domain ErrorCode or one of `SPEND_LIMIT_EXCEEDED`,
+  `AGENT_WALLET_UNAVAILABLE`, `INSUFFICIENT_AGENT_BALANCE`, `FACILITATOR_UNAVAILABLE`,
+  `NO_PAYMENT_OPTION`, `CONTENT_HASH_MISMATCH`, `ASSET_NOT_FOUND`, `INTERNAL`.
+
+`@hiero-ledger/sdk` is aliased to its browser entry in `wrangler.toml` (the node entry pulls
+gRPC); the MCP wallet only builds and signs `TransferTransaction`s offline.
 
 ## KeyGate / auth modules (tasks.md T077-T083)
 

@@ -15,7 +15,14 @@ import type { Env } from "./env";
 import { createGraphFetch, type GraphFetch } from "./graph/cache";
 import { createManifestPorts, createReleasePorts } from "./keygate/ports";
 import type { ReleasePorts } from "./keygate/release";
-import { type ResolvedAsset, resolveAsset } from "./manifest/resolver";
+import {
+  manifestHttpUrl,
+  type ResolvedAsset,
+  resolveAsset,
+} from "./manifest/resolver";
+import { resolveHederaAccount } from "./mcp/hedera";
+import { McpToolError } from "./mcp/toolError";
+import { type AgentWallet, createPrivyAgentWallet } from "./mcp/wallet";
 import {
   createFacilitatorClient,
   resolvePayerEvmAddress,
@@ -37,6 +44,15 @@ export type Services = {
   resolveAsset(assetId: Hex): Promise<ResolvedAsset>;
   /** discovery only: manifest JSON at an ipfs:// / https:// URI */
   fetchManifest(uri: string): Promise<unknown>;
+  /** encrypted content bytes at an ipfs:// / https:// URI (MCP decrypt_content) */
+  fetchBytes(uri: string): Promise<Uint8Array>;
+  /** MCP payment wallet (Privy server wallet) and its Hedera account */
+  agent: {
+    wallet(): AgentWallet;
+    accountId(): Promise<string>;
+  };
+  /** MCP spend policy: hard cap per Mcp-Session-Id, tinybar */
+  mcpSpendCapTinybar: bigint;
   /** admin: creator of a token (RightsNFT.creatorOf) */
   creatorOf(tokenId: bigint): Promise<Address>;
   licenseEpoch(tokenId: bigint): Promise<bigint>;
@@ -49,6 +65,11 @@ export type Services = {
   waitForTx(txHash: Hex): Promise<void>;
   now(): Date;
 };
+
+/** fail closed: an unset / malformed cap allows nothing */
+export function parseSpendCap(raw: string | undefined): bigint {
+  return typeof raw === "string" && /^\d{1,30}$/.test(raw) ? BigInt(raw) : 0n;
+}
 
 export function createServices(env: Env, db: Db): Services {
   const ctx: ChainContext = createChainContext(env);
@@ -95,6 +116,37 @@ export function createServices(env: Env, db: Db): Services {
     ipfsGateway: env.IPFS_GATEWAY_URL,
     resolveAsset: resolve,
     fetchManifest: (uri) => manifestPorts.fetchManifest(uri),
+    fetchBytes: async (uri) => {
+      const response = await fetch(manifestHttpUrl(uri, env.IPFS_GATEWAY_URL));
+      if (!response.ok) {
+        throw new Error(`content fetch failed (${response.status})`);
+      }
+      return new Uint8Array(await response.arrayBuffer());
+    },
+    agent: {
+      wallet: () => createPrivyAgentWallet(env),
+      accountId: async () => {
+        const wallet = createPrivyAgentWallet(env);
+        const account = await resolveHederaAccount(
+          env.HEDERA_MIRROR_URL,
+          wallet.address,
+        );
+        if (account === undefined) {
+          throw new McpToolError(
+            "INSUFFICIENT_AGENT_BALANCE",
+            "the agent wallet has no Hedera account yet: fund its EVM address first",
+          );
+        }
+        if (!account.hasKey) {
+          throw new McpToolError(
+            "INSUFFICIENT_AGENT_BALANCE",
+            "the agent account is hollow (no key): activate it by signing one transaction",
+          );
+        }
+        return account.accountId;
+      },
+    },
+    mcpSpendCapTinybar: parseSpendCap(env.MCP_SESSION_SPEND_CAP_TINYBAR),
     creatorOf: (tokenId) => readCreatorOf(ctx, tokenId),
     licenseEpoch: (tokenId) => readLicenseEpoch(ctx, tokenId),
     bumpLicenseEpoch: (input) =>

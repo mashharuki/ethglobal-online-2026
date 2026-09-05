@@ -53,7 +53,7 @@ afterAll(async () => {
 });
 
 describe("migrations", () => {
-  it("should create all seven gateway tables from data-model.md 2.3", async () => {
+  it("should create the eight gateway tables from data-model.md 2.3", async () => {
     const rows = await client.query<{ table_name: string }>(
       "select table_name from information_schema.tables where table_schema = 'public' and table_name not like '__drizzle%' order by table_name",
     );
@@ -61,6 +61,7 @@ describe("migrations", () => {
       "audit_log",
       "auth_nonce",
       "mcp_session_binding",
+      "mcp_session_spend",
       "payment_binding",
       "receipt_consumption",
       "subgraph_cache",
