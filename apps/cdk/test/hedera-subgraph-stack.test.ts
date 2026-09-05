@@ -53,7 +53,11 @@ describe("HederaSubgraphStack networking & compute", () => {
     const t = synth({ allowedSshCidr: "203.0.113.4/32" });
     t.hasResourceProperties("AWS::EC2::SecurityGroup", {
       SecurityGroupIngress: Match.arrayWith([
-        Match.objectLike({ CidrIp: "203.0.113.4/32", FromPort: 22, ToPort: 22 }),
+        Match.objectLike({
+          CidrIp: "203.0.113.4/32",
+          FromPort: 22,
+          ToPort: 22,
+        }),
       ]),
     });
   });

@@ -7,7 +7,17 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!**/cdk.out", "!**/dist", "!**/build"]
+    "includes": [
+      "**",
+      "!**/cdk.out",
+      "!**/dist",
+      "!**/build",
+      "!**/.claude",
+      "!**/.codegraph",
+      "!**/.serena",
+      "!**/.specify",
+      "!**/.agents"
+    ]
   },
   "formatter": {
     "enabled": true,
