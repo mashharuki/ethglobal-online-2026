@@ -45,7 +45,15 @@ export type BlindedSharePath = (typeof BLINDED_SHARE_PATHS)[number];
 export const CONSUMPTION_STATUSES = ["locked", "settled", "failed"] as const;
 export type ConsumptionStatus = (typeof CONSUMPTION_STATUSES)[number];
 
-export const PAYMENT_STATUSES = ["pending", "settled", "failed"] as const;
+// pending: claim in flight (or outcome unknown) | paid: HBAR received, receipt not yet
+// anchored (resumable without paying again) | settled: receipt on chain | failed: rejected
+// before any value moved (the same payload may be retried)
+export const PAYMENT_STATUSES = [
+  "pending",
+  "paid",
+  "settled",
+  "failed",
+] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 export const NONCE_PURPOSES = ["owner-access", "keygate-challenge"] as const;
@@ -128,7 +136,7 @@ export const paymentBinding = pgTable(
   (t) => [
     check(
       "payment_binding_status_check",
-      sql`${t.status} IN ('pending', 'settled', 'failed')`,
+      sql`${t.status} IN ('pending', 'paid', 'settled', 'failed')`,
     ),
     // tinybar amount: non-negative finite integer (numeric would otherwise accept
     // 1.5 / -1 / NaN / Infinity; `< 1e30` rejects the last two)

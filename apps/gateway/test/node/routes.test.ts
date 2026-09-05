@@ -8,10 +8,12 @@ import {
   type RightsReceipt,
   TransferMode,
 } from "@truenft/shared";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { type Address, type Hex, hexToBytes } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { paymentBinding } from "../../src/db/schema";
 import type { Db } from "../../src/db/types";
 import type { ReceiptParamsJson } from "../../src/do/operatorQueueCore";
 import type { Env } from "../../src/env";
@@ -22,6 +24,7 @@ import { AssetNotFoundError } from "../../src/manifest/resolver";
 import { type AppEnv, registerRoutes } from "../../src/routes";
 import type { Services } from "../../src/services";
 import {
+  derivePaymentId,
   PAID_ACCESS_PLAN_ID,
   type PaymentPayload,
 } from "../../src/x402/facilitator";
@@ -76,10 +79,13 @@ type Fake = {
   settleCalls: number;
   /** operator rejects with the ReceiptAlreadyIssued mapping (retry after broadcast crash) */
   operatorConflict: boolean;
-  /** what RightsRegistry.receiptStatus(hash).issued answers */
-  issuedOnChain: boolean;
+  /** receipt hashes RightsRegistry.receiptStatus(hash).issued answers true for */
+  issuedOnChain: Set<Hex>;
   /** the "mined" tx emits a foreign receipt instead of ours */
   minesWrongHash: boolean;
+  /** facilitator /settle: throws (outcome unknown) or answers success=false */
+  settleThrows: boolean;
+  settleRejects: boolean;
 };
 
 function paymentHeader(quote: ReceiptQuote, salt = "tx-1"): string {
@@ -205,8 +211,10 @@ function buildServices(): Services {
       }),
       settle: async () => {
         fake.settleCalls += 1;
+        if (fake.settleThrows) throw new Error("facilitator timeout");
         return {
-          success: true,
+          success: !fake.settleRejects,
+          errorReason: fake.settleRejects ? "insufficient" : undefined,
           transaction: "0.0.4242@1700000000.000000001",
           network: "hedera:testnet",
           payer: fake.payerAccount,
@@ -243,7 +251,8 @@ function buildServices(): Services {
       if (hash === undefined) throw new Error("unknown tx");
       return [hash];
     },
-    receiptIssued: async () => fake.issuedOnChain,
+    receiptIssued: async (hash) => fake.issuedOnChain.has(hash),
+    pendingWaitMs: 20,
     payerEvmAddress: async (accountId) =>
       accountId === fake.payerAccount ? fake.payerEvm : undefined,
     now: () => NOW,
@@ -285,6 +294,51 @@ async function post(
   });
 }
 
+/** what the gateway will anchor for this payload: receipt = f(quote, licensee, paymentId) */
+function expectedReceiptHash(
+  quote: ReceiptQuote,
+  header: string,
+  licensee: Address,
+): Hex {
+  return computeReceiptHash({
+    chainId: BigInt(quote.chainId),
+    verifyingContract: quote.verifyingContract,
+    nftContract: quote.nftContract,
+    tokenId: BigInt(quote.tokenId),
+    resourceHash: quote.resourceHash,
+    policyHash: quote.policyHash,
+    licenseEpoch: BigInt(quote.licenseEpoch),
+    ownerEpochAtIssue: BigInt(quote.ownerEpochAtIssue),
+    licensee,
+    permittedAction: quote.permittedAction,
+    transferMode:
+      quote.transferMode === 1
+        ? TransferMode.INVALIDATE_ON_TRANSFER
+        : TransferMode.SURVIVE_TRANSFER,
+    maxUses: quote.maxUses,
+    expiresAt: BigInt(quote.expiresAt),
+    purchaseRequestHash: computePurchaseRequestHash({
+      httpMethod: "POST",
+      path: `/assets/${asset.assetId}/paid`,
+      planId: PAID_ACCESS_PLAN_ID,
+      resourceHash: quote.resourceHash,
+      policyHash: quote.policyHash,
+    }),
+    paymentId: derivePaymentId(new TextEncoder().encode(atob(header))),
+    nonce: quote.nonce,
+    issuedAt: BigInt(quote.issuedAt),
+  });
+}
+
+async function bindingStatus(header: string): Promise<string | undefined> {
+  const paymentId = derivePaymentId(new TextEncoder().encode(atob(header)));
+  const [row] = await db
+    .select({ status: paymentBinding.status })
+    .from(paymentBinding)
+    .where(eq(paymentBinding.paymentId, paymentId));
+  return row?.status;
+}
+
 async function quoteFor(): Promise<ReceiptQuote> {
   const res = await app.request(`/assets/${asset.assetId}/paid`);
   const body = (await res.json()) as {
@@ -314,8 +368,10 @@ beforeEach(async () => {
     settlementAccountId: "0.0.9999",
     settleCalls: 0,
     operatorConflict: false,
-    issuedOnChain: false,
+    issuedOnChain: new Set(),
     minesWrongHash: false,
+    settleThrows: false,
+    settleRejects: false,
   };
   const services = buildServices();
   app = new Hono<AppEnv>();
@@ -553,40 +609,93 @@ describe("x402 (T088 / T063)", () => {
     expect(fake.settleCalls).toBe(1);
   });
 
-  it("should recover a duplicate anchoring only when the registry holds our receipt", async () => {
+  it("should keep a paid binding resumable and recover only the exact receipt from the registry", async () => {
     const quote = await quoteFor();
+    const header = paymentHeader(quote, "dup");
+    const ours = expectedReceiptHash(quote, header, buyer.address);
+    const pay = () =>
+      post(
+        `/assets/${asset.assetId}/paid`,
+        { licensee: buyer.address },
+        { "X-PAYMENT": header },
+      );
+    // 1. the operator refuses (ReceiptAlreadyIssued) but the registry has no such receipt
     fake.operatorConflict = true;
-    const stuck = await post(
-      `/assets/${asset.assetId}/paid`,
-      { licensee: buyer.address },
-      { "X-PAYMENT": paymentHeader(quote, "dup-1") },
-    );
+    const stuck = await pay();
     expect(stuck.status).toBe(409);
     expect(await stuck.json()).toMatchObject({
       code: "PAYMENT_ID_PAYLOAD_CONFLICT",
     });
-    fake.issuedOnChain = true;
-    const recovered = await post(
-      `/assets/${asset.assetId}/paid`,
-      { licensee: buyer.address },
-      { "X-PAYMENT": paymentHeader(quote, "dup-2") },
-    );
+    expect(await bindingStatus(header)).toBe("paid");
+    expect(fake.settleCalls).toBe(1);
+    // 2. some other receipt being issued does not count
+    fake.issuedOnChain.add(`0x${"f0".repeat(32)}`);
+    expect((await pay()).status).toBe(409);
+    expect(fake.settleCalls).toBe(1); // resumed at anchoring, never paid again
+    // 3. the registry holds exactly our receipt: recovered without a second payment
+    fake.issuedOnChain.add(ours);
+    const recovered = await pay();
     expect(recovered.status).toBe(200);
     expect(await recovered.json()).toMatchObject({
+      receiptHash: ours,
       onchainTx: "already-issued",
     });
-    // a tx that issued some other receipt is not ours
+    expect(await bindingStatus(header)).toBe("settled");
+    expect(fake.settleCalls).toBe(1);
+    // 4. a fresh payment whose tx issued a foreign receipt is a params mismatch, still paid
     fake.operatorConflict = false;
     fake.minesWrongHash = true;
+    const other = paymentHeader(quote, "foreign");
     const foreign = await post(
       `/assets/${asset.assetId}/paid`,
       { licensee: buyer.address },
-      { "X-PAYMENT": paymentHeader(quote, "dup-3") },
+      { "X-PAYMENT": other },
     );
     expect(foreign.status).toBe(409);
     expect(await foreign.json()).toMatchObject({
       code: "COMMITTED_PARAMS_MISMATCH",
     });
+    expect(await bindingStatus(other)).toBe("paid");
+    // ... and resumes to success once the operator anchors the right receipt
+    fake.minesWrongHash = false;
+    const resumed = await post(
+      `/assets/${asset.assetId}/paid`,
+      { licensee: buyer.address },
+      { "X-PAYMENT": other },
+    );
+    expect(resumed.status).toBe(200);
+    expect(fake.settleCalls).toBe(2);
+    expect(fake.operatorJobs).toHaveLength(2);
+  });
+
+  it("should map settlement stages onto the binding: rejected -> failed, unknown -> pending", async () => {
+    const quote = await quoteFor();
+    const header = paymentHeader(quote, "stages");
+    const pay = () =>
+      post(
+        `/assets/${asset.assetId}/paid`,
+        { licensee: buyer.address },
+        { "X-PAYMENT": header },
+      );
+    fake.settleRejects = true;
+    const rejected = await pay();
+    expect(rejected.status).toBe(402);
+    expect(await bindingStatus(header)).toBe("failed");
+    fake.settleRejects = false;
+    fake.settleThrows = true;
+    const unknown = await pay();
+    expect(unknown.status).toBe(500);
+    expect(await bindingStatus(header)).toBe("pending");
+    expect(fake.settleCalls).toBe(2);
+    fake.settleThrows = false;
+    // the outcome is unknown: nobody re-submits the payment
+    const blocked = await pay();
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({
+      code: "SETTLEMENT_IN_PROGRESS",
+    });
+    expect(fake.settleCalls).toBe(2);
+    expect(fake.operatorJobs).toHaveLength(0);
   });
 
   it("should reject a payer / licensee mismatch, a facilitator rejection and a stale quote before anchoring", async () => {
@@ -698,11 +807,22 @@ describe("x402 (T088 / T063)", () => {
     expect(fake.operatorJobs).toHaveLength(0);
     const ok = await post(`/assets/${asset.assetId}/finalize`, body);
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toMatchObject({
+    const issued = (await ok.json()) as { receiptHash: Hex };
+    expect(issued).toMatchObject({
       settlementMode: "fallback",
       receipt: { paymentId, nonce, licensee: buyer.address },
     });
     expect(fake.operatorJobs[0]).toMatchObject({ kind: "finalize", paymentId });
+    // already anchored: handed out again even after the NFT moved (no fresh issuance needed)
+    fake.issuedOnChain.add(issued.receiptHash);
+    fake.accessEpoch = 2n;
+    const again = await post(`/assets/${asset.assetId}/finalize`, body);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({
+      receiptHash: issued.receiptHash,
+      onchainTx: "already-issued",
+    });
+    expect(fake.operatorJobs).toHaveLength(1);
   });
 });
 

@@ -46,15 +46,18 @@ against fresh chain reads before the facilitator is called and again right befor
 
 `payment_binding.status` after a failure depends on the stage reached:
 
-| stage | failure -> status | why |
+| stage | failure -> status | what a retry of the same payload does |
 |---|---|---|
-| verify (facilitator `/verify`, payer check) | `failed` | nothing moved; the same payload may be retried |
-| settle (`/settle` in flight) | unexpected error: stays `pending` (SETTLEMENT_IN_PROGRESS); definitive rejection: `failed` | outcome unknown - do not re-submit blindly; needs reconciliation against the facilitator / mirror node |
-| anchor (custodial `settleAndIssue`, quote re-check) | `failed` + deny audit | HBAR already reached `SETTLEMENT_ACCOUNT_ID` but no receipt exists: the transfer stays there (no refund path, constitution non-goal) |
-| settled (receipt on chain) | stays `settled` | signing / audit errors are recoverable by replaying the payload |
+| verify (facilitator `/verify`, payer check) | `failed` | runs the whole settlement again (nothing moved) |
+| settle (`/settle` in flight) | any error: stays `pending` | SETTLEMENT_IN_PROGRESS - outcome unknown, reconcile against the facilitator / mirror node before touching the row |
+| rejected (`/settle` answered `success=false`) | `failed` | runs the whole settlement again |
+| anchor (HBAR received; quote re-check, operator `settleAndIssue`, log match) | `paid` + deny audit | resumes at anchoring - the facilitator is never called again for this payload. A stale quote keeps failing here: the HBAR stays on `SETTLEMENT_ACCOUNT_ID` (no refund path, constitution non-goal) |
+| settled (receipt on chain) | stays `settled` | replays the receipt + signature |
 
-A retried anchoring that reverts with `ReceiptAlreadyIssued` is recovered when
-`RightsRegistry.receiptStatus(expectedHash).issued` is true (`onchainTx: "already-issued"`).
+Anchoring treats the registry as the authority: whatever the operator call or the receipt
+wait threw, `RightsRegistry.receiptStatus(expectedHash).issued === true` means it succeeded
+(`onchainTx: "already-issued"`). `/finalize` recovers an already-issued receipt the same way
+before it demands current issuance terms.
 
 ## HTTP routes (tasks.md T086-T091)
 

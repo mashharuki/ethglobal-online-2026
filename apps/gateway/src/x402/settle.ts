@@ -76,6 +76,8 @@ export type SettlePorts = {
   payerEvmAddress(accountId: string): Promise<Hex | undefined>;
   now(): Date;
   randomNonce(): Hex;
+  /** how long a replay waits for an in-flight claim before SETTLEMENT_IN_PROGRESS (default 10 s) */
+  pendingWaitMs?: number;
 };
 
 type PaymentAccept = PaymentRequirements & {
@@ -274,29 +276,23 @@ async function assertAnchored(
 
 /**
  * Operator anchoring with duplicate recovery: a retry after a broadcast-then-crash reverts
- * with ReceiptAlreadyIssued (mapped to PAYMENT_ID_PAYLOAD_CONFLICT); when the registry
- * already holds exactly our receipt that is a success whose tx hash we no longer know.
+ * with ReceiptAlreadyIssued (at simulation, or on chain while we wait for the receipt).
+ * Whatever failed, the registry is the authority: if it already holds exactly our receipt
+ * the anchoring succeeded and only the tx hash is unknown.
  */
 async function anchorViaOperator(
   ports: SettlePorts,
   job: OperatorSettleJob | OperatorFinalizeJob,
   expectedHash: Hex,
 ): Promise<string> {
-  let txHash: Hex;
   try {
-    txHash = await ports.operator(job);
+    const txHash = await ports.operator(job);
+    await assertAnchored(ports, txHash, expectedHash);
+    return txHash;
   } catch (error) {
-    if (
-      error instanceof AppError &&
-      error.code === "PAYMENT_ID_PAYLOAD_CONFLICT" &&
-      (await ports.receiptIssued(expectedHash))
-    ) {
-      return "already-issued";
-    }
+    if (await ports.receiptIssued(expectedHash)) return "already-issued";
     throw error;
   }
-  await assertAnchored(ports, txHash, expectedHash);
-  return txHash;
 }
 
 function toParams(
@@ -412,13 +408,19 @@ async function setBinding(
     .where(eq(paymentBinding.paymentId, paymentId));
 }
 
-/** R-10 / gateway-api.md step 1: claim the paymentId or answer from the existing binding. */
+type Claim = "claimed" | "resume" | { settled: Hex };
+
+/**
+ * R-10 / gateway-api.md step 1: claim the paymentId or answer from the existing binding.
+ * `failed` rows are re-claimed (nothing moved), `paid` rows resume at anchoring (the buyer
+ * must not pay twice), `pending` rows are waited on briefly, `settled` rows replay.
+ */
 async function claimPayment(
   ports: SettlePorts,
   paymentId: Hex,
   purchaseRequestHash: Hex,
   amountTinybar: bigint,
-): Promise<"claimed" | { settled: Hex }> {
+): Promise<Claim> {
   try {
     await ports.db.insert(paymentBinding).values({
       paymentId,
@@ -439,22 +441,25 @@ async function claimPayment(
     if (row.status === "settled" && row.receiptHash !== null) {
       return { settled: row.receiptHash };
     }
-    if (row.status === "failed") {
-      // previous attempt failed definitively: this request re-tries the settlement
+    if (row.status === "failed" || row.status === "paid") {
+      const from = row.status;
       const [reclaimed] = await ports.db
         .update(paymentBinding)
         .set({ status: "pending" })
         .where(
           and(
             eq(paymentBinding.paymentId, paymentId),
-            eq(paymentBinding.status, "failed"),
+            eq(paymentBinding.status, from),
           ),
         )
         .returning({ paymentId: paymentBinding.paymentId });
-      if (reclaimed !== undefined) return "claimed";
+      if (reclaimed !== undefined)
+        return from === "paid" ? "resume" : "claimed";
       continue;
     }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) =>
+      setTimeout(resolve, (ports.pendingWaitMs ?? 10_000) / 10),
+    );
   }
   throw new AppError("SETTLEMENT_IN_PROGRESS");
 }
@@ -513,53 +518,69 @@ export async function settlePayment(
     receipt.purchaseRequestHash,
     priceTinybar,
   );
-  if (claim !== "claimed") {
+  if (typeof claim === "object") {
     // idempotent replay of a settled payment: the receipt was already issued for this payload
     return replaySettled(ports, claim.settled, receipt, expectedHash);
   }
+  const resuming = claim === "resume";
 
-  // Stages decide what a failure means for the binding (R-10):
-  //   verify  : nothing moved -> failed (a retry re-runs settlement)
-  //   settle  : facilitator call in flight -> an unexpected error is AMBIGUOUS: the row stays
-  //             pending (SETTLEMENT_IN_PROGRESS) until reconciled; a definitive rejection is failed
-  //   anchor  : HBAR moved, receipt not yet on chain -> failed + deny (custodial: the transfer
-  //             stays on the settlement account, disclosed in CONFIG.md)
-  //   settled : receipt on chain -> never downgraded, even if signing / audit fails afterwards
-  let stage: "verify" | "settle" | "anchor" | "settled" = "verify";
+  // Stages decide what a failure means for the binding (R-10, CONFIG.md "Settlement rail"):
+  //   verify   : nothing moved -> failed (the same payload may be retried)
+  //   settle   : facilitator /settle in flight -> ANY error is ambiguous: the row stays pending
+  //   rejected : the facilitator answered success=false -> failed
+  //   anchor   : HBAR received -> paid: a retry resumes here, never pays again
+  //   settled  : receipt on chain -> never downgraded (signing / audit are recoverable by replay)
+  let stage: "verify" | "settle" | "rejected" | "anchor" | "settled" = resuming
+    ? "anchor"
+    : "verify";
   try {
-    const requirements = requirementsFor(ports, input, asset);
-    const verified = await ports.facilitator.verify(payload, requirements);
-    if (!verified.isValid) {
-      throw new AppError(
-        "UNDERPAYMENT",
-        `facilitator rejected the payment: ${verified.invalidReason ?? "invalid"}`,
-      );
+    let onchainTx = "resumed";
+    if (!resuming) {
+      const requirements = requirementsFor(ports, input, asset);
+      const verified = await ports.facilitator.verify(payload, requirements);
+      if (!verified.isValid) {
+        throw new AppError(
+          "UNDERPAYMENT",
+          `facilitator rejected the payment: ${verified.invalidReason ?? "invalid"}`,
+        );
+      }
+      // fail closed: no verified payer means the licensee cannot be proven to have paid
+      const payerEvm =
+        verified.payer === undefined
+          ? undefined
+          : await ports.payerEvmAddress(verified.payer);
+      if (payerEvm === undefined || !isAddressEqual(payerEvm, input.licensee)) {
+        throw new AppError(
+          "LICENSEE_MISMATCH",
+          "licensee is not the verified payer of the signed payment",
+        );
+      }
+      stage = "settle";
+      const settled = await ports.facilitator.settle(payload, requirements);
+      if (!settled.success) {
+        stage = "rejected";
+        throw new AppError(
+          "UNDERPAYMENT",
+          `facilitator could not settle: ${settled.errorReason ?? "failed"}`,
+        );
+      }
+      // value moved: record it before anything else can fail
+      await setBinding(ports.db, paymentId, "paid");
+      stage = "anchor";
+      onchainTx = settled.transaction;
     }
-    // fail closed: no verified payer means the licensee cannot be proven to have paid
-    const payerEvm =
-      verified.payer === undefined
-        ? undefined
-        : await ports.payerEvmAddress(verified.payer);
-    if (payerEvm === undefined || !isAddressEqual(payerEvm, input.licensee)) {
-      throw new AppError(
-        "LICENSEE_MISMATCH",
-        "licensee is not the verified payer of the signed payment",
-      );
-    }
-    stage = "settle";
-    const settled = await ports.facilitator.settle(payload, requirements);
-    if (!settled.success) {
-      stage = "verify";
-      throw new AppError(
-        "UNDERPAYMENT",
-        `facilitator could not settle: ${settled.errorReason ?? "failed"}`,
-      );
-    }
-    stage = "anchor";
-    let onchainTx: string = settled.transaction;
-    if (ports.mode === "primary") {
+    if (await ports.receiptIssued(expectedHash)) {
+      // anchored by an earlier attempt (or by the facilitator tx already mined)
+      if (resuming) onchainTx = "already-issued";
+    } else if (ports.mode === "primary") {
       // the facilitator submitted settleAndIssue{value}; its ReceiptIssued must be our receipt
-      await assertAnchored(ports, settled.transaction as Hex, expectedHash);
+      if (resuming) {
+        throw new AppError(
+          "SETTLEMENT_IN_PROGRESS",
+          "facilitator settlement not yet visible on chain",
+        );
+      }
+      await assertAnchored(ports, onchainTx as Hex, expectedHash);
     } else {
       // custodial: HBAR landed on the settlement account; re-check the quote against the
       // chain right before anchoring, then the operator submits settleAndIssue{value}
@@ -603,17 +624,23 @@ export async function settlePayment(
       settlementMode: ports.mode,
     };
   } catch (error) {
-    const definitive = error instanceof AppError;
-    if (stage === "settled") {
-      // receipt anchored + bound; the client can replay the same payload to get its signature
-    } else if (stage === "settle" && !definitive) {
-      console.error("x402 settlement outcome unknown; binding left pending", {
-        paymentId,
-      });
-    } else {
-      await setBinding(ports.db, paymentId, "failed");
+    switch (stage) {
+      case "verify":
+      case "rejected":
+        await setBinding(ports.db, paymentId, "failed");
+        break;
+      case "settle":
+        console.error("x402 settlement outcome unknown; binding left pending", {
+          paymentId,
+        });
+        break;
+      case "anchor":
+        await setBinding(ports.db, paymentId, "paid");
+        break;
+      case "settled":
+        break; // the client replays the same payload to obtain its signature
     }
-    if (definitive) await deny(error.code);
+    if (error instanceof AppError) await deny(error.code);
     throw error;
   }
 }
@@ -686,9 +713,8 @@ export async function finalizeDeposit(
     );
   }
   const asset = await ports.resolveAsset(input.assetId);
-  // the quote must still describe the asset, and the receipt must be exactly the one the
-  // quote + paymentId + licensee determine (caller cannot smuggle other terms to the operator)
-  await assertQuoteCurrent(ports, asset, input.quote);
+  // the receipt must be exactly the one the quote + paymentId + licensee determine (the
+  // caller cannot smuggle other terms to the operator) ...
   const expected = receiptFromQuote(
     input.quote,
     input.receipt.licensee,
@@ -705,16 +731,24 @@ export async function finalizeDeposit(
       "receipt does not match the quote / paymentId",
     );
   }
-  const txHash = await anchorViaOperator(
-    ports,
-    {
-      kind: "finalize",
-      paymentId: input.paymentId,
-      params: toParams(expected, input.quote),
-      idempotencyKey: `finalize:${input.paymentId}`,
-    },
-    receiptHash,
-  );
+  let txHash: string;
+  if (await ports.receiptIssued(receiptHash)) {
+    // an earlier finalize anchored it (only signing / audit failed): hand out the receipt
+    txHash = "already-issued";
+  } else {
+    // ... and, for a fresh anchoring, the quote must still describe the asset
+    await assertQuoteCurrent(ports, asset, input.quote);
+    txHash = await anchorViaOperator(
+      ports,
+      {
+        kind: "finalize",
+        paymentId: input.paymentId,
+        params: toParams(expected, input.quote),
+        idempotencyKey: `finalize:${input.paymentId}`,
+      },
+      receiptHash,
+    );
+  }
   const serverSignature = await signReceipt(
     ports.env,
     buildDomain(ports.deployment.rightsRegistry, ports.deployment.chainId),
