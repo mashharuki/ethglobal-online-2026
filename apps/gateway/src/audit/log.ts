@@ -23,8 +23,12 @@ export function denyOutcome(code: ErrorCode): AuditOutcome {
   return `deny:${code}`;
 }
 
-/** authSig, keyGateSig, serverSignature, signatures, signatureHex, sig, ... */
-const SIGNATURE_KEY_RE = /sig|signature/i;
+/**
+ * Keys that name a signature: sig, authSig, keyGateSig, serverSignature, signatures,
+ * signatureHex, server_signature, ... - the token must END the key (camelCase or snake_case),
+ * so `design`, `assignment`, `resign` are kept.
+ */
+const SIGNATURE_KEY_RE = /(?:^|_|[a-z0-9])(?:sig|signature)s?(?:hex|_hex)?$/i;
 /** 65-byte (r,s,v) signature as 0x hex - dropped wherever it appears, whatever the key. */
 const SIGNATURE_VALUE_RE = /^0x[0-9a-fA-F]{130}$/;
 

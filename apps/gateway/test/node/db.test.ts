@@ -86,13 +86,20 @@ describe("receipt_consumption", () => {
   });
 
   it("should accept the same use_index for a different receipt and the next use_index for the same receipt", async () => {
-    await insert(H("a1"), 1, W("01"));
-    await insert(H("a9"), 0, W("01"));
+    // self-contained baseline (does not depend on the previous test's rows)
+    await insert(H("a3"), 0, W("01"));
+    await insert(H("a3"), 1, W("01"));
+    await insert(H("a4"), 0, W("01"));
     const rows = await db
       .select()
       .from(schema.receiptConsumption)
-      .where(eq(schema.receiptConsumption.useIndex, 0));
-    expect(rows.map((r) => r.receiptHash).sort()).toEqual([H("a1"), H("a9")]);
+      .where(eq(schema.receiptConsumption.receiptHash, H("a3")));
+    expect(rows.map((r) => r.useIndex).sort()).toEqual([0, 1]);
+    const sameIndex = await db
+      .select()
+      .from(schema.receiptConsumption)
+      .where(eq(schema.receiptConsumption.receiptHash, H("a4")));
+    expect(sameIndex.map((r) => r.useIndex)).toEqual([0]);
   });
 
   it("should reject a status outside locked/settled/failed and a negative use_index", async () => {
@@ -110,15 +117,16 @@ describe("receipt_consumption", () => {
   });
 
   it("should round-trip bytea columns as 0x hex and accept FOR UPDATE inside a transaction (shape only)", async () => {
+    await insert(H("a5"), 0, W("07"));
     await db.transaction(async (tx) => {
       const rows = await tx
         .select()
         .from(schema.receiptConsumption)
-        .where(eq(schema.receiptConsumption.receiptHash, H("a1")))
+        .where(eq(schema.receiptConsumption.receiptHash, H("a5")))
         .for("update");
-      expect(rows.map((r) => r.useIndex).sort()).toEqual([0, 1]);
-      expect(rows[0]?.receiptHash).toBe(H("a1"));
-      expect(rows[0]?.wallet).toBe(W("01"));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.receiptHash).toBe(H("a5"));
+      expect(rows[0]?.wallet).toBe(W("07"));
     });
   });
 });
@@ -170,6 +178,22 @@ describe("payment_binding (R-10)", () => {
       }),
     );
     expect(pgErrorCode(negative)).toBe(PG_CHECK_VIOLATION);
+    // numeric NaN sorts above every value and Infinity = trunc(Infinity): both must be rejected
+    for (const [byte, literal] of [
+      ["c4", "'NaN'"],
+      ["c5", "'Infinity'"],
+    ] as const) {
+      const nonFinite = await failure(() =>
+        client.query(
+          `insert into payment_binding (payment_id, purchase_request_hash, amount) values ($1, $2, ${literal})`,
+          [
+            Buffer.from(byte.repeat(32), "hex"),
+            Buffer.from("c2".repeat(32), "hex"),
+          ],
+        ),
+      );
+      expect(pgErrorCode(nonFinite), literal).toBe(PG_CHECK_VIOLATION);
+    }
   });
 });
 

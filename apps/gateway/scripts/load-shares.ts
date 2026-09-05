@@ -9,11 +9,13 @@
 // `wrangler deploy` (T097) and re-deploy afterwards. Share values are never printed.
 import { execFileSync } from "node:child_process";
 import {
-  chmodSync,
-  lstatSync,
+  closeSync,
+  constants,
   mkdirSync,
+  openSync,
   readFileSync,
-  writeFileSync,
+  rmSync,
+  writeSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,21 +47,27 @@ function parseArgs(argv: string[]): {
   return { chainId, dryRun, local };
 }
 
-/** Owner-only file: refuses symlinks and forces 0600 even when the file already exists. */
+/**
+ * Owner-only file, created fresh: any existing file or symlink at the path is removed
+ * (the link itself, never its target), then the file is opened O_CREAT|O_EXCL|O_NOFOLLOW
+ * with mode 0600 so the permissions are restrictive before a single byte is written and a
+ * concurrently planted symlink makes the open fail instead of being followed.
+ */
 function writeOwnerOnlyFile(path: string, content: string): void {
-  let existing: ReturnType<typeof lstatSync> | undefined;
+  rmSync(path, { force: true });
+  const fd = openSync(
+    path,
+    constants.O_WRONLY |
+      constants.O_CREAT |
+      constants.O_EXCL |
+      constants.O_NOFOLLOW,
+    0o600,
+  );
   try {
-    existing = lstatSync(path);
-  } catch {
-    existing = undefined;
+    writeSync(fd, content);
+  } finally {
+    closeSync(fd);
   }
-  if (existing?.isSymbolicLink()) {
-    throw new Error(
-      `${path} is a symlink; refusing to write secrets through it`,
-    );
-  }
-  writeFileSync(path, content, { mode: 0o600, flag: "w" });
-  chmodSync(path, 0o600);
 }
 
 function wrangler(args: string[], input?: string): void {

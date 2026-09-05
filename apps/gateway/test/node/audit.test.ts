@@ -55,6 +55,19 @@ describe("audit_log writer (T079, FR-023, R-1a)", () => {
     });
   });
 
+  it("should keep legitimate keys that merely contain 'sig' (design, assignment, resign, sigma)", () => {
+    expect(
+      sanitizeAuditSubject({
+        design: "a",
+        assignment: "b",
+        resign: "c",
+        sigma: 1,
+        server_signature: SIG,
+        sig: SIG,
+      }),
+    ).toEqual({ design: "a", assignment: "b", resign: "c", sigma: 1 });
+  });
+
   it("should strip 65-byte signature values under any key (payload.proof, arrays)", () => {
     expect(
       sanitizeAuditSubject({

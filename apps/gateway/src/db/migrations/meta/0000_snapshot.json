@@ -1,5 +1,5 @@
 {
-  "id": "805419f6-9930-4a65-aaea-4fef7489fce2",
+  "id": "f6add503-7c8d-4187-99f3-0779ccad283e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -201,7 +201,7 @@
         },
         "payment_binding_amount_check": {
           "name": "payment_binding_amount_check",
-          "value": "\"payment_binding\".\"amount\" >= 0 AND \"payment_binding\".\"amount\" = trunc(\"payment_binding\".\"amount\")"
+          "value": "\"payment_binding\".\"amount\" >= 0 AND \"payment_binding\".\"amount\" < 1e30 AND \"payment_binding\".\"amount\" = trunc(\"payment_binding\".\"amount\")"
         }
       },
       "isRLSEnabled": false
@@ -374,7 +374,7 @@
         },
         "wallet_blinded_shares_epoch_check": {
           "name": "wallet_blinded_shares_epoch_check",
-          "value": "\"wallet_blinded_shares\".\"access_epoch_at_grant\" IS NULL OR (\"wallet_blinded_shares\".\"access_epoch_at_grant\" >= 0 AND \"wallet_blinded_shares\".\"access_epoch_at_grant\" = trunc(\"wallet_blinded_shares\".\"access_epoch_at_grant\"))"
+          "value": "\"wallet_blinded_shares\".\"access_epoch_at_grant\" IS NULL OR (\"wallet_blinded_shares\".\"access_epoch_at_grant\" >= 0 AND \"wallet_blinded_shares\".\"access_epoch_at_grant\" < 1e30 AND \"wallet_blinded_shares\".\"access_epoch_at_grant\" = trunc(\"wallet_blinded_shares\".\"access_epoch_at_grant\"))"
         }
       },
       "isRLSEnabled": false

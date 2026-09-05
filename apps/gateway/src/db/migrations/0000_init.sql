@@ -32,7 +32,7 @@ CREATE TABLE "payment_binding" (
 	"status" text DEFAULT 'pending' NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_binding_status_check" CHECK ("payment_binding"."status" IN ('pending', 'settled', 'failed')),
-	CONSTRAINT "payment_binding_amount_check" CHECK ("payment_binding"."amount" >= 0 AND "payment_binding"."amount" = trunc("payment_binding"."amount"))
+	CONSTRAINT "payment_binding_amount_check" CHECK ("payment_binding"."amount" >= 0 AND "payment_binding"."amount" < 1e30 AND "payment_binding"."amount" = trunc("payment_binding"."amount"))
 );
 --> statement-breakpoint
 CREATE TABLE "receipt_consumption" (
@@ -64,5 +64,5 @@ CREATE TABLE "wallet_blinded_shares" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "wallet_blinded_shares_asset_id_wallet_path_pk" PRIMARY KEY("asset_id","wallet","path"),
 	CONSTRAINT "wallet_blinded_shares_path_check" CHECK ("wallet_blinded_shares"."path" IN ('owner', 'licensee')),
-	CONSTRAINT "wallet_blinded_shares_epoch_check" CHECK ("wallet_blinded_shares"."access_epoch_at_grant" IS NULL OR ("wallet_blinded_shares"."access_epoch_at_grant" >= 0 AND "wallet_blinded_shares"."access_epoch_at_grant" = trunc("wallet_blinded_shares"."access_epoch_at_grant")))
+	CONSTRAINT "wallet_blinded_shares_epoch_check" CHECK ("wallet_blinded_shares"."access_epoch_at_grant" IS NULL OR ("wallet_blinded_shares"."access_epoch_at_grant" >= 0 AND "wallet_blinded_shares"."access_epoch_at_grant" < 1e30 AND "wallet_blinded_shares"."access_epoch_at_grant" = trunc("wallet_blinded_shares"."access_epoch_at_grant")))
 );

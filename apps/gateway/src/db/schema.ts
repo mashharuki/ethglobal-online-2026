@@ -73,10 +73,11 @@ export const walletBlindedShares = pgTable(
       "wallet_blinded_shares_path_check",
       sql`${t.path} IN ('owner', 'licensee')`,
     ),
-    // numeric is unconstrained in Postgres; epochs are non-negative integers
+    // numeric is unconstrained in Postgres (accepts 1.5, -1, NaN, Infinity); epochs are
+    // non-negative finite integers. `< 1e30` rejects NaN (sorts above everything) and Infinity.
     check(
       "wallet_blinded_shares_epoch_check",
-      sql`${t.accessEpochAtGrant} IS NULL OR (${t.accessEpochAtGrant} >= 0 AND ${t.accessEpochAtGrant} = trunc(${t.accessEpochAtGrant}))`,
+      sql`${t.accessEpochAtGrant} IS NULL OR (${t.accessEpochAtGrant} >= 0 AND ${t.accessEpochAtGrant} < 1e30 AND ${t.accessEpochAtGrant} = trunc(${t.accessEpochAtGrant}))`,
     ),
   ],
 );
@@ -129,10 +130,11 @@ export const paymentBinding = pgTable(
       "payment_binding_status_check",
       sql`${t.status} IN ('pending', 'settled', 'failed')`,
     ),
-    // tinybar amount: non-negative integer (numeric would otherwise accept 1.5 / -1)
+    // tinybar amount: non-negative finite integer (numeric would otherwise accept
+    // 1.5 / -1 / NaN / Infinity; `< 1e30` rejects the last two)
     check(
       "payment_binding_amount_check",
-      sql`${t.amount} >= 0 AND ${t.amount} = trunc(${t.amount})`,
+      sql`${t.amount} >= 0 AND ${t.amount} < 1e30 AND ${t.amount} = trunc(${t.amount})`,
     ),
   ],
 );

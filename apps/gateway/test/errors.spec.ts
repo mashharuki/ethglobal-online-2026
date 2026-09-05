@@ -2,12 +2,7 @@ import { ERROR_HTTP_STATUS, ErrorCode } from "@truenft/shared";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { describe, expect, it, vi } from "vitest";
-import {
-  AppError,
-  ERROR_MESSAGE,
-  handleError,
-  redactForLog,
-} from "../src/errors";
+import { AppError, ERROR_MESSAGE, handleError } from "../src/errors";
 
 function appThrowing(error: Error): Hono {
   const app = new Hono();
@@ -53,29 +48,39 @@ describe("AppError / handleError (T070)", () => {
     const text = await response.text();
     expect(text).not.toContain("hunter2");
     expect(text).not.toContain("db.internal");
-    expect(JSON.parse(text)).toEqual({ error: "internal_error" });
+    expect(JSON.parse(text)).toEqual({
+      error: "internal_error",
+      correlationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    });
   });
 
-  it("should redact long hex (keys, signatures, calldata) and URL credentials from the server log", async () => {
+  it("should log only allowlisted metadata (never the message) with a correlation id matching the response", async () => {
     const logged: unknown[] = [];
     const spy = vi.spyOn(console, "error").mockImplementation((...args) => {
       logged.push(...args);
     });
+    let body: { correlationId?: string } = {};
     try {
       const key = `0x${"5a".repeat(32)}`;
-      await appThrowing(
+      const cause = new TypeError("bearer sk-live-abcdef");
+      const response = await appThrowing(
         new Error(
-          `signer ${key} failed against https://user:hunter2@relay.example/api`,
+          `signer ${key} failed against https://user:hunter2@relay.example/api?apiKey=topsecret`,
+          { cause },
         ),
       ).request("/");
+      body = (await response.json()) as { correlationId?: string };
     } finally {
       spy.mockRestore();
     }
     const serialized = JSON.stringify(logged);
-    expect(serialized).not.toContain("5a".repeat(32));
-    expect(serialized).not.toContain("hunter2");
-    expect(serialized).toContain("[redacted]");
-    expect(redactForLog("x".repeat(500))).toHaveLength(200);
+    for (const secret of ["5a".repeat(32), "hunter2", "topsecret", "sk-live"]) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(serialized).not.toContain("failed against");
+    expect(body.correlationId).toBeDefined();
+    expect(serialized).toContain(body.correlationId);
+    expect(serialized).toContain('"causeName":"TypeError"');
   });
 
   it("should pass Hono HTTPException responses through unchanged", async () => {

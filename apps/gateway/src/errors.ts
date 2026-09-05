@@ -76,18 +76,12 @@ export class AppError extends Error {
   }
 }
 
-/** Long hex (keys, signatures, calldata) and URL userinfo are masked before logging. */
-const LOG_SECRET_RE = /0x[0-9a-fA-F]{64,}|:\/\/[^\s/@]+@/g;
-const LOG_MESSAGE_MAX = 200;
-
-export function redactForLog(message: string): string {
-  return message.replace(LOG_SECRET_RE, "[redacted]").slice(0, LOG_MESSAGE_MAX);
-}
-
 /**
  * Hono `onError`. `AppError` -> its status + openapi Error body. Anything else is an
- * operational failure: log name + a redacted, truncated message (never secrets) and answer
- * 500 with a generic body so stack traces and internal messages never reach clients.
+ * operational failure: the server log gets ALLOWLISTED metadata only (correlation id,
+ * route, error class names) - never the message, which may embed relay URLs with
+ * credentials, signed payloads or calldata - and the client gets a generic 500 carrying
+ * the same correlation id so the two can be matched.
  */
 export function handleError(err: Error, c: Context): Response {
   if (err instanceof AppError) {
@@ -96,10 +90,13 @@ export function handleError(err: Error, c: Context): Response {
   if (err instanceof HTTPException) {
     return err.getResponse();
   }
+  const correlationId = crypto.randomUUID();
   console.error("unhandled gateway error", {
+    correlationId,
+    method: c.req.method,
     path: c.req.path,
     name: err.name,
-    message: redactForLog(err.message),
+    causeName: err.cause instanceof Error ? err.cause.name : undefined,
   });
-  return c.json({ error: "internal_error" }, 500);
+  return c.json({ error: "internal_error", correlationId }, 500);
 }
