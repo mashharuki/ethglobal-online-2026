@@ -1,0 +1,104 @@
+import type { Address, Hex } from "viem";
+import { type ChainContext, createChainContext } from "./chain/clients";
+import {
+  readAccessEpoch,
+  readCreatorOf,
+  readLicenseEpoch,
+  readPolicyHash,
+  readResourceHash,
+} from "./chain/reads";
+import { receiptHashFromReceipt, waitForTx } from "./chain/writes";
+import type { Db } from "./db/types";
+import { submitViaOperatorQueue } from "./do/client";
+import type { Env } from "./env";
+import { createGraphFetch, type GraphFetch } from "./graph/cache";
+import { createManifestPorts, createReleasePorts } from "./keygate/ports";
+import type { ReleasePorts } from "./keygate/release";
+import { type ResolvedAsset, resolveAsset } from "./manifest/resolver";
+import {
+  createFacilitatorClient,
+  resolvePayerEvmAddress,
+} from "./x402/facilitator";
+import { randomNonce, type SettlePorts } from "./x402/settle";
+
+/**
+ * Everything the route handlers need, built once per request from the Worker env
+ * (production, `createServices`) or from fakes (tests). Routes only ever see this interface;
+ * chain access always goes through viem reads / the Durable Objects underneath.
+ */
+export type Services = {
+  env: Env;
+  db: Db;
+  release: ReleasePorts;
+  settle: SettlePorts;
+  graph: GraphFetch;
+  ipfsGateway: string;
+  resolveAsset(assetId: Hex): Promise<ResolvedAsset>;
+  /** discovery only: manifest JSON at an ipfs:// / https:// URI */
+  fetchManifest(uri: string): Promise<unknown>;
+  /** admin: creator of a token (RightsNFT.creatorOf) */
+  creatorOf(tokenId: bigint): Promise<Address>;
+  licenseEpoch(tokenId: bigint): Promise<bigint>;
+  /** admin: bumpLicenseEpoch through the operator queue, returns the tx hash */
+  bumpLicenseEpoch(input: {
+    tokenId: bigint;
+    fromEpoch: bigint;
+    idempotencyKey: string;
+  }): Promise<Hex>;
+  waitForTx(txHash: Hex): Promise<void>;
+  now(): Date;
+};
+
+export function createServices(env: Env, db: Db): Services {
+  const ctx: ChainContext = createChainContext(env);
+  const release = createReleasePorts(env, db);
+  const manifestPorts = createManifestPorts(env, ctx);
+  const graph = createGraphFetch(env.SUBGRAPH_URL);
+  const resolve = (assetId: Hex): Promise<ResolvedAsset> =>
+    resolveAsset(manifestPorts, ctx.deployment, assetId);
+  const settle: SettlePorts = {
+    env,
+    db,
+    deployment: ctx.deployment,
+    mode: env.SETTLEMENT_MODE,
+    settlementAccountId: env.SETTLEMENT_ACCOUNT_ID,
+    facilitator: createFacilitatorClient(env.X402_FACILITATOR_URL),
+    resolveAsset: resolve,
+    quoteReads: async (tokenId) => {
+      const blockNumber = await ctx.publicClient.getBlockNumber();
+      const at = { blockNumber };
+      const [licenseEpoch, accessEpoch, policyHash, resourceHash] =
+        await Promise.all([
+          readLicenseEpoch(ctx, tokenId, at),
+          readAccessEpoch(ctx, tokenId, at),
+          readPolicyHash(ctx, tokenId, at),
+          readResourceHash(ctx, tokenId, at),
+        ]);
+      return { licenseEpoch, accessEpoch, policyHash, resourceHash };
+    },
+    operator: (job) => submitViaOperatorQueue(env, job),
+    receiptHashFromTx: (txHash) => receiptHashFromReceipt(ctx, txHash),
+    payerEvmAddress: (accountId) =>
+      resolvePayerEvmAddress(env.HEDERA_MIRROR_URL, accountId),
+    now: () => new Date(),
+    randomNonce,
+  };
+  return {
+    env,
+    db,
+    release,
+    settle,
+    graph,
+    ipfsGateway: env.IPFS_GATEWAY_URL,
+    resolveAsset: resolve,
+    fetchManifest: (uri) => manifestPorts.fetchManifest(uri),
+    creatorOf: (tokenId) => readCreatorOf(ctx, tokenId),
+    licenseEpoch: (tokenId) => readLicenseEpoch(ctx, tokenId),
+    bumpLicenseEpoch: (input) =>
+      submitViaOperatorQueue(env, { kind: "bumpLicenseEpoch", ...input }),
+    waitForTx: async (txHash) => {
+      await waitForTx(ctx, txHash, "bumpLicenseEpoch");
+    },
+    now: () => new Date(),
+  };
+}

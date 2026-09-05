@@ -116,6 +116,8 @@ export type LicenseeRelease = {
   blindedU: Hex;
   useIndex: number;
   onchainTx: Hex;
+  encryptedContentURI: string;
+  contentHash: Hex;
 };
 
 function authContext(ports: ReleasePorts): AuthContext {
@@ -162,7 +164,7 @@ function assertManifestMatchesChain(
  * challenges but none match -> the verifier's error (SIGNATURE_INVALID / CHAIN_ID_MISMATCH /
  * LICENSEE_MISMATCH). Nothing is consumed until a challenge matches.
  */
-async function matchChallenge<T>(
+export async function matchChallenge<T>(
   ports: ReleasePorts,
   wallet: Address,
   purpose: NonceRow["purpose"],
@@ -453,6 +455,8 @@ export async function releaseToLicensee(
         blindedU: blinded.blindedU,
         useIndex: consumed.useIndex,
         onchainTx: consumed.onchainTx,
+        encryptedContentURI: asset.manifest.encryptedContentURI,
+        contentHash: asset.manifest.contentHash as Hex,
         onchainRef: consumed.onchainTx,
       };
     },

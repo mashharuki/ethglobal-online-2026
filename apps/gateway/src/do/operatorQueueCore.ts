@@ -1,4 +1,4 @@
-import type { Hex } from "viem";
+import type { Address, Hex } from "viem";
 import { AppError } from "../errors";
 
 /**
@@ -7,7 +7,7 @@ import { AppError } from "../errors";
  * receipts) can never race on the nonce.
  *
  * Every job carries a mandatory idempotency key (ReceiptLock: receipt + useIndex + attempt;
- * revocation route: token + challenge nonce) and a durable job record:
+ * settlement: paymentId; revocation route: token + challenge nonce) and a durable job record:
  * - the nonce is RESERVED (nonce + 1 saved, job record written) BEFORE the broadcast, so a
  *   crash between broadcast and return never lets another job reuse it
  * - a retried job whose record has a tx hash gets that hash back (no second broadcast)
@@ -23,11 +23,36 @@ import { AppError } from "../errors";
  *
  * Residual window: a crash after broadcast but before the hash was recorded means the retry
  * is broadcast again at a fresh nonce; a duplicate `consume` reverts harmlessly
- * (ReceiptAlreadyConsumed -> ReceiptLock recovery), a duplicate bump is blocked by fromEpoch.
+ * (ReceiptAlreadyConsumed -> ReceiptLock recovery), a duplicate bump is blocked by fromEpoch,
+ * a duplicate settleAndIssue / finalize reverts with ReceiptAlreadyIssued (same paymentId).
  */
+/** ReceiptParams (18 fields) as decimal strings / hex - JSON-safe across the DO boundary. */
+export type ReceiptParamsJson = {
+  nftContract: Address;
+  tokenId: string;
+  resourceHash: Hex;
+  policyHash: Hex;
+  licenseEpoch: string;
+  ownerEpochAtIssue: string;
+  licensee: Address;
+  permittedAction: number;
+  transferMode: number;
+  maxUses: number;
+  expiresAt: string;
+  purchaseRequestHash: Hex;
+  paymentId: Hex;
+  nonce: Hex;
+  issuedAt: string;
+  price: string;
+  creatorBps: number;
+  ownerBps: number;
+};
+
 export type OperatorJob = (
   | { kind: "consume"; receiptHash: Hex; useIndex: number }
   | { kind: "bumpLicenseEpoch"; tokenId: bigint; fromEpoch: bigint }
+  | { kind: "settleAndIssue"; params: ReceiptParamsJson; valueWeibar: string }
+  | { kind: "finalize"; paymentId: Hex; params: ReceiptParamsJson }
 ) & {
   /** stable identity of this logical attempt; enables the tx-hash replay on retries */
   idempotencyKey: string;

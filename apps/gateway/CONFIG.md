@@ -26,6 +26,29 @@ addresses fall back to `packages/shared` `DEFAULT_DEPLOYMENT` (written by `apps/
 T047). `SUBGRAPH_URL` is only a discovery hint for the assetId -> tokenId lookup
 (`src/graph/lookup.ts`); the mapping is proven on chain before anything is released (R-11).
 
+## Settlement rail (tasks.md T084 / T088, research.md R-2a)
+
+`SETTLEMENT_MODE` selects how an x402 payment becomes a Rights Receipt:
+
+| mode | who pays what | anchor | notes |
+|---|---|---|---|
+| `primary` | Blocky402 settles a value-attached `settleAndIssue` ContractCall | same tx | depends on the day1 probe T020; the `@x402/hedera` exact scheme only carries plain HBAR transfers, so this is NOT expected to work |
+| `custodial` (default) | buyer's x402 HBAR transfer to `SETTLEMENT_ACCOUNT_ID`, settled by Blocky402 | operator submits `settleAndIssue{value}` through OperatorTxQueue | non-atomic and the gateway account holds the HBAR briefly - both disclosed in the README (constitution "やむを得ず" clause) |
+| `fallback` | buyer calls `payFor{value}(paymentId, committedParamsHash)` on chain | `POST /assets/{assetId}/finalize` -> operator `finalize(paymentId, p)` | `/paid` answers SETTLEMENT_NOT_FINALIZED on this rail |
+
+`payment_id = keccak256(X-PAYMENT bytes)` (R-10). The licensee must be the payer of the signed
+payload: the facilitator's `payer` account is resolved through `HEDERA_MIRROR_URL` and compared
+with the `licensee` in the body (LICENSEE_MISMATCH otherwise). The 402 `receiptQuote` travels
+back inside `payload.accepted.extra` and is re-validated against fresh chain reads before
+anything is anchored.
+
+## HTTP routes (tasks.md T086-T091)
+
+`src/routes/*` only parse input (zod) and call the services bundle (`src/services.ts`): chain
+reads via viem, Durable Objects, the facilitator client. Non-domain failures (malformed body
+400, unknown asset 404, subgraph down 502, internal 500) answer `{ error, message? }`; every
+domain rejection is the openapi `Error` body from `AppError`.
+
 ## KeyGate / auth modules (tasks.md T077-T083)
 
 | Module | Role |

@@ -14,7 +14,6 @@ import { AppError } from "../errors";
  * the manifest from `manifestURI(tokenId)`. Everything the manifest claims about identity
  * (assetId, tokenId, nftContract) is checked against the chain before it is trusted.
  */
-/** @lintignore mapped to 404 by the routes (tasks.md T086/T087) */
 export class AssetNotFoundError extends Error {
   override readonly name = "AssetNotFoundError";
   constructor(readonly assetId: Hex) {
