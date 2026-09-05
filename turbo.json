@@ -1,9 +1,50 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
+    "compile": {
+      "inputs": ["contracts/**", "hardhat.config.ts"],
+      "outputs": ["artifacts/**", "cache/**"]
+    },
+    "generate": {
+      "inputs": ["openapi.yaml"],
+      "outputs": ["src/types.ts"]
+    },
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "^compile", "^generate"],
       "outputs": ["dist/**"]
+    },
+    "lint": {
+      "dependsOn": ["^generate"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build", "^compile", "^generate"]
+    },
+    "test": {
+      "dependsOn": ["^build", "^compile", "^generate"],
+      "env": [
+        "HEDERA_RPC_URL",
+        "HEDERA_OPERATOR_KEY",
+        "GATEWAY_URL",
+        "WEB_URL",
+        "SUBGRAPH_URL",
+        "X402_FACILITATOR_URL",
+        "ANTHROPIC_API_KEY",
+        "E2E_REQUIRED"
+      ]
+    },
+    "e2e#test": {
+      "cache": false,
+      "env": [
+        "GATEWAY_URL",
+        "WEB_URL",
+        "SUBGRAPH_URL",
+        "HEDERA_RPC_URL",
+        "E2E_REQUIRED"
+      ]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
     }
   }
 }

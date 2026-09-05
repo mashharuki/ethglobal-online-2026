@@ -1,0 +1,70 @@
+openapi: 3.1.0
+info:
+  title: TrueCollective Access Gateway API
+  version: 0.1.0
+  description: |
+    Access Gateway HTTP API for TrueCollective (transfer-coupled rights runtime on Hedera Testnet).
+    This file is the single source of truth (FR-029). Types are generated with `openapi-typescript`
+    into `src/types.ts` and imported by `apps/gateway`, `apps/web`, and `apps/agent`.
+    Endpoints are added in tasks.md T028 from `specs/001-rights-runtime-mvp/contracts/gateway-api.md`.
+servers:
+  - url: http://localhost:8787
+    description: wrangler dev
+  - url: "{gatewayUrl}"
+    description: Deployed Cloudflare Worker (set GATEWAY_URL)
+    variables:
+      gatewayUrl:
+        default: https://gateway.example.workers.dev
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Liveness probe
+      tags: [ops]
+      responses:
+        "200":
+          description: Gateway is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+components:
+  schemas:
+    Health:
+      type: object
+      required: [ok, chainId]
+      properties:
+        ok:
+          type: boolean
+        chainId:
+          type: integer
+          description: Hedera chainId the gateway authorizes against (296 = testnet)
+    ErrorCode:
+      type: string
+      description: |
+        Stable public contract. The canonical list lives in `packages/shared/src/errors.ts`;
+        this enum only mirrors it (T039 verifies the two stay identical). Do not rename values.
+      enum:
+        - RECEIPT_ALREADY_CONSUMED
+        - RESOURCE_HASH_MISMATCH
+        - POLICY_HASH_MISMATCH
+        - CHAIN_ID_MISMATCH
+        - LICENSEE_MISMATCH
+        - RECEIPT_EXPIRED
+        - USE_LIMIT_EXCEEDED
+        - UNDERPAYMENT
+        - PAYMENT_ID_PAYLOAD_CONFLICT
+        - OWNER_EPOCH_MISMATCH
+        - LICENSE_INVALIDATED_ON_TRANSFER
+        - LICENSE_EPOCH_MISMATCH
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        message:
+          type: string
+        detail:
+          type: object
+          additionalProperties: true

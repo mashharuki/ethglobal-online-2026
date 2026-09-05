@@ -1,0 +1,19 @@
+{
+  "name": "e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "End-to-end checks: Playwright browser flows / attack scenarios and Postman + Newman API contract tests against the deployed gateway and Hedera Testnet.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test --pass-with-no-tests",
+    "test:api": "newman run postman/gateway.postman_collection.json -e postman/hedera-testnet.postman_environment.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.20.1",
+    "newman": "^6.2.2",
+    "typescript": "~6.0.3"
+  }
+}

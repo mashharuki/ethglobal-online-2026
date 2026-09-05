@@ -1,9 +1,40 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "tags": ["-lintignore"],
+  "ignore": ["packages/openapi/src/types.ts"],
   "workspaces": {
     "apps/cdk": {
-      "entry": ["bin/*.ts", "scripts/*.ts", "test/**/*.test.ts"]
-    }
+      "entry": ["bin/*.ts", "test/**/*.test.ts"],
+      "ignoreDependencies": ["tsx"]
+    },
+    "apps/contracts": {
+      "entry": ["scripts/*.ts", "test/**/*.ts", "ignition/modules/*.ts"],
+      "ignoreDependencies": [
+        "forge-std",
+        "@types/chai-as-promised",
+        "@openzeppelin/contracts"
+      ]
+    },
+    "apps/gateway": {
+      "entry": ["test/**/*.ts"],
+      "ignoreDependencies": ["cloudflare"]
+    },
+    "apps/agent": {
+      "entry": ["test/**/*.ts"]
+    },
+    "apps/e2e": {
+      "entry": ["wallets.ts"]
+    },
+    "apps/web": {
+      "ignoreDependencies": ["dotenv"]
+    },
+    "apps/subgraph": {
+      "entry": ["src/**/*.ts"],
+      "ignoreDependencies": ["@protofire/subgraph-toolkit", "matchstick-as"]
+    },
+    "packages/shared": {
+      "entry": ["test/**/*.ts"]
+    },
+    "packages/openapi": {}
   }
 }

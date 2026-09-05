@@ -1,0 +1,8 @@
+extends:
+  - recommended
+rules:
+  no-unused-components: warn
+  operation-4xx-response: off
+  info-license: off
+  security-defined: off
+  no-server-example.com: off

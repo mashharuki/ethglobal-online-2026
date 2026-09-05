@@ -8,3 +8,12 @@ allowBuilds:
   keccak: true
   protobufjs: true
   utf-8-validate: true
+  workerd: true
+minimumReleaseAgeExclude:
+  - '@anthropic-ai/sdk@0.124.0'
+  - '@cloudflare/workers-types@5.20260905.1'
+  - '@playwright/test@1.63.0'
+  - '@redocly/cli@2.51.2'
+  - hono@4.13.7
+  - playwright-core@1.63.0
+  - playwright@1.63.0

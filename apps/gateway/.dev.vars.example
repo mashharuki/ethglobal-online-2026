@@ -1,0 +1,6 @@
+# Copy to apps/gateway/.dev.vars for `wrangler dev` (never commit .dev.vars)
+HEDERA_OPERATOR_KEY=
+RECEIPT_SIGNER_KEY=
+KV_KEK=
+PRIVY_APP_ID=
+PRIVY_APP_SECRET=

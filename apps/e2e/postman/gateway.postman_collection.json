@@ -1,0 +1,37 @@
+{
+  "info": {
+    "name": "TrueCollective Access Gateway",
+    "description": "API contract tests (tasks.md T059 / T098). Each response is asserted against packages/openapi/openapi.yaml.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "healthz",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/healthz",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["healthz"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('body matches Health schema', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.ok).to.eql(true);",
+              "  pm.expect(body.chainId).to.eql(296);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
