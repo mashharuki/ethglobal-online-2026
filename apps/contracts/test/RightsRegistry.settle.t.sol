@@ -169,6 +169,32 @@ contract RightsRegistrySettleTest is RegistryTestBase {
         reg.settleAndIssue{value: PRICE_WEIBAR}(q);
     }
 
+    function test_RevertsExpiryMismatchWhenReceiptAlreadyExpiredAtSettlement() public {
+        // quote is still inside ISSUANCE_WINDOW but the 300s license has already elapsed
+        IRightsRegistry.ReceiptParams memory p = _params(buyer, "x1");
+        vm.warp(block.timestamp + DURATION + 1);
+        vm.prank(buyer);
+        vm.expectRevert(IRightsRegistry.ExpiryMismatch.selector);
+        reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+    }
+
+    function test_RevertsWhenPaymentIdHasPendingFallbackDeposit() public {
+        // victim deposits on the fallback rail; attacker tries to burn the same paymentId via primary
+        IRightsRegistry.ReceiptParams memory victim = _params(buyer, "pend");
+        vm.prank(buyer);
+        reg.payFor{value: PRICE_WEIBAR}(victim.paymentId, keccak256(abi.encode(victim)));
+
+        IRightsRegistry.ReceiptParams memory attacker = _params(buyer2, "pend"); // same paymentId
+        vm.prank(buyer2);
+        vm.expectRevert(IRightsRegistry.ReceiptAlreadyIssued.selector);
+        reg.settleAndIssue{value: PRICE_WEIBAR}(attacker);
+
+        // the depositor can still finalize their own purchase
+        vm.prank(stranger);
+        bytes32 h = reg.finalize(victim.paymentId, victim);
+        assertTrue(reg.hasValidConsumption(h, 0));
+    }
+
     function test_PayerNeedNotBeLicensee() public {
         // a facilitator / feePayer may submit on the buyer's behalf; revenue and receipt are unaffected
         IRightsRegistry.ReceiptParams memory p = _params(buyer, "f1");

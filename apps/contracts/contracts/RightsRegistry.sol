@@ -116,6 +116,8 @@ contract RightsRegistry is IRightsRegistry, ReentrancyGuard {
         if (rightsNFT.policyHash(p.tokenId) != p.policyHash) revert PolicyHashMismatch();
         // 2b. issuedAt freshness / ordering (R-6a)
         if (p.expiresAt <= p.issuedAt) revert ExpiryMismatch();
+        // never sell a receipt that is already unusable (short durations + late finalize)
+        if (p.expiresAt <= block.timestamp) revert ExpiryMismatch();
         if (p.issuedAt > block.timestamp || block.timestamp - p.issuedAt > ISSUANCE_WINDOW) revert ExpiryMismatch();
         // 2a. policy content re-derivation (R-6a): the caller cannot reuse a genuine policyHash
         //     while changing price / maxUses / transferMode / duration / split.
@@ -130,6 +132,9 @@ contract RightsRegistry is IRightsRegistry, ReentrancyGuard {
         if (_receipts[receiptHash].issued) revert ReceiptAlreadyIssued();
         // paymentId is single-use across all receipts (PAYMENT_ID_PAYLOAD_CONFLICT on-chain side)
         if (_allocations[p.paymentId].blockNumber != 0) revert ReceiptAlreadyIssued();
+        // a paymentId with a live fallback deposit belongs to that depositor; the primary rail
+        // must not be able to burn it (finalize deletes the pending entry before calling _settle)
+        if (_pending[p.paymentId].payer != address(0)) revert ReceiptAlreadyIssued();
         // 8. EOA licensees only (FR-025)
         if (p.licensee == address(0) || p.licensee.code.length != 0) revert ContractWalletUnsupported();
 
