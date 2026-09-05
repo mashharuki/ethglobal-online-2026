@@ -1,5 +1,12 @@
-import { Bytes } from "@graphprotocol/graph-ts";
+import { Bytes, ValueKind } from "@graphprotocol/graph-ts";
 import { assert, beforeEach, clearStore, describe, test } from "matchstick-as/assembly/index";
+import { Receipt } from "../generated/schema";
+
+/** A nullable field is "null" when absent or stored as an explicit NULL value (after unset()). */
+function isNullField(entity: Receipt, key: string): boolean {
+  let value = entity.get(key);
+  return value == null || value!.kind == ValueKind.NULL;
+}
 import { handleTransfer } from "../src/mappings/rightsNft";
 import {
   handleClaimed,
@@ -17,8 +24,10 @@ import {
   createRevenueAllocated,
   createTransfer,
   CREATOR,
+  mockAccessEpochReverts,
   mockNftViews,
   mockReceiptStatus,
+  mockReceiptStatusReverts,
   OWNER_A,
   OWNER_B,
   PAYMENT_ID,
@@ -30,14 +39,16 @@ describe("RightsRegistry mappings", () => {
   beforeEach(() => {
     clearStore();
     mockNftViews(1, "ipfs://manifest-1");
+    mockAccessEpochReverts(1);
     handleTransfer(createTransfer(ZERO, OWNER_A, 1, 100));
   });
 
-  test("ReceiptIssued creates a Receipt with transferMode read back from receiptStatus", () => {
+  test("ReceiptIssued creates a complete Receipt with transferMode read back from receiptStatus", () => {
     mockReceiptStatus(RECEIPT_HASH, 1, 1, 3);
     handleReceiptIssued(createReceiptIssued(RECEIPT_HASH, 1, BUYER, 1800000300, 3, 110));
     let id = RECEIPT_HASH.toHex();
     assert.entityCount("Receipt", 1);
+    assert.fieldEquals("Receipt", id, "complete", "true");
     assert.fieldEquals("Receipt", id, "token", "1");
     assert.fieldEquals("Receipt", id, "licensee", BUYER.toHex());
     assert.fieldEquals("Receipt", id, "transferMode", "1");
@@ -45,6 +56,19 @@ describe("RightsRegistry mappings", () => {
     assert.fieldEquals("Receipt", id, "usedCount", "0");
     assert.fieldEquals("Receipt", id, "expiresAt", "1800000300");
     assert.fieldEquals("Receipt", id, "issuedAtBlock", "110");
+  });
+
+  test("ReceiptIssued keeps transferMode null when receiptStatus reverts (never invents SURVIVE)", () => {
+    // distinct hash: matchstick keeps the first mock registered for a given (function, args)
+    let reverting = Bytes.fromHexString(
+      "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    ) as Bytes;
+    mockReceiptStatusReverts(reverting);
+    handleReceiptIssued(createReceiptIssued(reverting, 1, BUYER, 1800000300, 3, 110));
+    let receipt = Receipt.load(reverting.toHex())!;
+    assert.assertTrue(isNullField(receipt, "transferMode"));
+    assert.fieldEquals("Receipt", reverting.toHex(), "complete", "true");
+    assert.fieldEquals("Receipt", reverting.toHex(), "maxUses", "3");
   });
 
   test("ReceiptConsumed appends a Consumption and increments usedCount", () => {
@@ -59,7 +83,29 @@ describe("RightsRegistry mappings", () => {
     assert.fieldEquals("Receipt", id, "usedCount", "2");
   });
 
-  test("SURVIVE receipt keeps accumulating consumptions after a transfer", () => {
+  test("a consume for an un-indexed receipt yields an incomplete stub, not an invented receipt", () => {
+    handleReceiptConsumed(createReceiptConsumed(RECEIPT_HASH, 4, 111));
+    let id = RECEIPT_HASH.toHex();
+    assert.entityCount("Receipt", 1);
+    assert.fieldEquals("Receipt", id, "complete", "false");
+    assert.fieldEquals("Receipt", id, "usedCount", "1");
+    let stub = Receipt.load(id)!;
+    assert.assertTrue(isNullField(stub, "token"));
+    assert.assertTrue(isNullField(stub, "licensee"));
+    assert.assertTrue(isNullField(stub, "maxUses"));
+    assert.fieldEquals("Consumption", id + "-4", "useIndex", "4");
+    // token 1 must not have gained a receipt it never issued
+    assert.entityCount("RightsToken", 1);
+
+    // a later ReceiptIssued (re-index) completes the stub without losing the consumption count
+    mockReceiptStatus(RECEIPT_HASH, 1, 0, 5);
+    handleReceiptIssued(createReceiptIssued(RECEIPT_HASH, 1, BUYER, 1800000300, 5, 90));
+    assert.fieldEquals("Receipt", id, "complete", "true");
+    assert.fieldEquals("Receipt", id, "token", "1");
+    assert.fieldEquals("Receipt", id, "usedCount", "1");
+  });
+
+  test("consumptions keep being recorded after a transfer (event recording, mode-agnostic)", () => {
     mockReceiptStatus(RECEIPT_HASH, 1, 0, 5);
     handleReceiptIssued(createReceiptIssued(RECEIPT_HASH, 1, BUYER, 1800000300, 5, 110));
     handleReceiptConsumed(createReceiptConsumed(RECEIPT_HASH, 0, 111));
@@ -67,6 +113,17 @@ describe("RightsRegistry mappings", () => {
     handleReceiptConsumed(createReceiptConsumed(RECEIPT_HASH, 1, 121));
     assert.fieldEquals("Receipt", RECEIPT_HASH.toHex(), "usedCount", "2");
     assert.fieldEquals("RightsToken", "1", "accessEpoch", "2");
+  });
+
+  test("uint32 maxUses / useIndex above int32 are preserved as BigInt", () => {
+    mockReceiptStatus(RECEIPT_HASH, 1, 0, 5);
+    handleReceiptIssued(createReceiptIssued(RECEIPT_HASH, 1, BUYER, 1800000300, 5, 110));
+    // 3_000_000_000 > 2^31-1: build the event with an explicit BigInt param
+    let big = createReceiptConsumed(RECEIPT_HASH, 0, 111);
+    let bigIndex = Bytes.fromHexString("0xb2d05e00") as Bytes; // 3_000_000_000 big-endian
+    big.parameters[1].value = ethereumValueFromBytes(bigIndex);
+    handleReceiptConsumed(big);
+    assert.fieldEquals("Consumption", RECEIPT_HASH.toHex() + "-3000000000", "useIndex", "3000000000");
   });
 
   test("RevenueAllocated records the owner at settlement time and sums totalRevenue", () => {
@@ -104,3 +161,9 @@ describe("RightsRegistry mappings", () => {
     assert.fieldEquals("Claim", id, "blockNumber", "150");
   });
 });
+
+import { BigInt, ethereum } from "@graphprotocol/graph-ts";
+
+function ethereumValueFromBytes(bytes: Bytes): ethereum.Value {
+  return ethereum.Value.fromUnsignedBigInt(BigInt.fromUnsignedBytes(Bytes.fromUint8Array(bytes.reverse()) as Bytes));
+}

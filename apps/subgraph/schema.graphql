@@ -1,13 +1,20 @@
 # Rights Graph - discovery / audit only. Never an authorization source (FR-020, constitution II).
 # Spec: specs/001-rights-runtime-mvp/contracts/subgraph-schema.md
+#
+# Counters that are uint32 / uint256 on-chain are BigInt here (GraphQL Int is signed 32-bit).
+# Entities observed before their originating event (startBlock after mint, consume before an
+# indexed issue) are stored with `hydrated` / `complete` = false instead of invented values.
 
 """
-One RightsNFT token. `accessEpoch` mirrors the on-chain Owner Epoch (1 at mint, +1 per transfer);
-`licenseEpoch` mirrors the latest LicenseEpochBumped. Both are informational here.
+One RightsNFT token. `accessEpoch` mirrors the on-chain Owner Epoch (read back via
+`accessEpoch(tokenId)` on every transfer, falling back to +1 arithmetic); `licenseEpoch`
+mirrors the latest LicenseEpochBumped. Both are informational here.
 """
 type RightsToken @entity(immutable: false) {
   "tokenId"
   id: ID!
+  "false until creator / policyHash / manifestURI were read from the contract"
+  hydrated: Boolean!
   owner: Owner!
   creator: Bytes!
   accessEpoch: BigInt!
@@ -42,16 +49,18 @@ type TransferEvent @entity(immutable: true) {
 type Receipt @entity(immutable: false) {
   "receiptHash"
   id: ID!
-  token: RightsToken!
-  licensee: Bytes!
-  policyHash: Bytes!
-  "0 SURVIVE_TRANSFER / 1 INVALIDATE_ON_TRANSFER"
-  transferMode: Int!
-  maxUses: Int!
-  expiresAt: BigInt!
+  "false when only consumptions were observed (issued before startBlock)"
+  complete: Boolean!
+  token: RightsToken
+  licensee: Bytes
+  policyHash: Bytes
+  "0 SURVIVE_TRANSFER / 1 INVALIDATE_ON_TRANSFER; null when receiptStatus() could not be read"
+  transferMode: Int
+  maxUses: BigInt
+  expiresAt: BigInt
   "Number of Consumption entities"
-  usedCount: Int!
-  issuedAtBlock: BigInt!
+  usedCount: BigInt!
+  issuedAtBlock: BigInt
   consumptions: [Consumption!]! @derivedFrom(field: "receipt")
 }
 
@@ -59,7 +68,7 @@ type Consumption @entity(immutable: true) {
   "receiptHash-useIndex"
   id: ID!
   receipt: Receipt!
-  useIndex: Int!
+  useIndex: BigInt!
   blockNumber: BigInt!
 }
 

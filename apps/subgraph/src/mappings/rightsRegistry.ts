@@ -14,49 +14,58 @@ import {
   Receipt,
   RevenueAllocation,
 } from "../../generated/schema";
-import { eventId, loadOrCreateToken } from "./common";
+import { eventId, loadOrCreateToken, ONE } from "./common";
 
-/** ReceiptIssued: transferMode is not in the event, so it is read back via receiptStatus(). */
+/**
+ * ReceiptIssued: transferMode is not in the event, so it is read back via receiptStatus().
+ * A reverted read leaves transferMode null (unknown) instead of inventing a value.
+ */
 export function handleReceiptIssued(event: ReceiptIssuedEvent): void {
   let token = loadOrCreateToken(event.params.tokenId);
-  let receipt = new Receipt(event.params.receiptHash.toHex());
+  let id = event.params.receiptHash.toHex();
+  let receipt = Receipt.load(id);
+  if (receipt == null) {
+    receipt = new Receipt(id);
+    receipt.usedCount = BigInt.zero();
+  }
+  receipt.complete = true;
   receipt.token = token.id;
   receipt.licensee = event.params.licensee;
   receipt.policyHash = event.params.policyHash;
-  receipt.maxUses = event.params.maxUses.toI32();
+  receipt.maxUses = event.params.maxUses;
   receipt.expiresAt = event.params.expiresAt;
-  receipt.usedCount = 0;
   receipt.issuedAtBlock = event.block.number;
 
   let contract = RightsRegistryContract.bind(event.address);
   let status = contract.try_receiptStatus(event.params.receiptHash);
-  receipt.transferMode = status.reverted ? 0 : status.value.getTransferMode();
+  if (status.reverted) {
+    receipt.unset("transferMode");
+  } else {
+    receipt.transferMode = status.value.getTransferMode();
+  }
   receipt.save();
 }
 
+/**
+ * ReceiptConsumed: appends a Consumption. A receipt whose issue was not indexed is kept as an
+ * incomplete audit stub (complete = false, no token / licensee) rather than fabricated.
+ */
 export function handleReceiptConsumed(event: ReceiptConsumedEvent): void {
   let receiptId = event.params.receiptHash.toHex();
   let receipt = Receipt.load(receiptId);
   if (receipt == null) {
-    // consume for a receipt issued before startBlock - keep the audit trail anyway
     receipt = new Receipt(receiptId);
-    receipt.token = loadOrCreateToken(BigInt.zero()).id;
-    receipt.licensee = event.address;
-    receipt.policyHash = event.params.receiptHash;
-    receipt.transferMode = 0;
-    receipt.maxUses = 0;
-    receipt.expiresAt = BigInt.zero();
-    receipt.usedCount = 0;
-    receipt.issuedAtBlock = event.block.number;
+    receipt.complete = false;
+    receipt.usedCount = BigInt.zero();
   }
-  let useIndex = event.params.useIndex.toI32();
+  let useIndex = event.params.useIndex;
   let consumption = new Consumption(receiptId + "-" + useIndex.toString());
   consumption.receipt = receipt.id;
   consumption.useIndex = useIndex;
   consumption.blockNumber = event.block.number;
   consumption.save();
 
-  receipt.usedCount = receipt.usedCount + 1;
+  receipt.usedCount = receipt.usedCount.plus(ONE);
   receipt.save();
 }
 

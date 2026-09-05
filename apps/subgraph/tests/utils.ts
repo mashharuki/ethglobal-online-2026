@@ -53,6 +53,38 @@ export function mockNftViews(tokenId: i32, manifestURI: string): void {
     .returns([ethereum.Value.fromString(manifestURI)]);
 }
 
+/** accessEpoch(tokenId) mocked to a fixed value (the authoritative read). */
+export function mockAccessEpoch(tokenId: i32, epoch: i32): void {
+  createMockedFunction(NFT, "accessEpoch", "accessEpoch(uint256):(uint256)")
+    .withArgs([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(tokenId))])
+    .returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(epoch))]);
+}
+
+/** accessEpoch(tokenId) mocked to revert (relay without historical state). */
+export function mockAccessEpochReverts(tokenId: i32): void {
+  createMockedFunction(NFT, "accessEpoch", "accessEpoch(uint256):(uint256)")
+    .withArgs([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(tokenId))])
+    .reverts();
+}
+
+/** Every metadata view reverts (hydration must be retried later, never invented). */
+export function mockNftViewsRevert(tokenId: i32): void {
+  let arg = [ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(tokenId))];
+  createMockedFunction(NFT, "creatorOf", "creatorOf(uint256):(address)").withArgs(arg).reverts();
+  createMockedFunction(NFT, "policyHash", "policyHash(uint256):(bytes32)").withArgs(arg).reverts();
+  createMockedFunction(NFT, "manifestURI", "manifestURI(uint256):(string)").withArgs(arg).reverts();
+}
+
+export function mockReceiptStatusReverts(receiptHash: Bytes): void {
+  createMockedFunction(
+    REGISTRY,
+    "receiptStatus",
+    "receiptStatus(bytes32):(bool,uint256,uint256,uint256,address,uint8,uint32,uint32,uint64)",
+  )
+    .withArgs([ethereum.Value.fromFixedBytes(receiptHash)])
+    .reverts();
+}
+
 export function mockReceiptStatus(receiptHash: Bytes, tokenId: i32, transferMode: i32, maxUses: i32): void {
   createMockedFunction(
     REGISTRY,
