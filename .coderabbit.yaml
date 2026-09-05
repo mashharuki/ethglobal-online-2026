@@ -1,0 +1,127 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+#
+# CodeRabbit configuration for shipaton2026.
+# pnpm monorepo: apps/backend (Hono on Cloudflare Workers) + apps/frontend
+# (Expo/React Native, RevenueCat) for the RevenueCat Shipaton hackathon.
+# Root tooling is Biome (format/lint) + knip (unused code) + TypeScript strict.
+
+language: "ja"
+early_access: false
+enable_free_tier: true
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+
+  high_level_summary: true
+  poem: false
+  collapse_walkthrough: true
+  review_status: true
+  sequence_diagrams: true
+  estimate_code_review_effort: true
+  related_issues: true
+  related_prs: true
+  suggested_labels: true
+  suggested_reviewers: true
+
+  auto_review:
+    enabled: true
+    drafts: true
+    auto_incremental_review: true
+    base_branches:
+      - "main"
+
+  # Include real source; exclude generated/vendored/build output.
+  path_filters:
+    - "**/*"
+    - "!**/node_modules/**"
+    - "!**/dist/**"
+    - "!**/.wrangler/**"
+    - "!**/.expo/**"
+    - "!**/ios/**"
+    - "!**/android/**"
+    - "!**/*.lock"
+    - "!pnpm-lock.yaml"
+    - "!**/*.min.js"
+    - "!**/*.log"
+    - "!.git/**"
+    - "!.serena/**"
+    - "!.codegraph/**"
+
+  path_instructions:
+    - path: "apps/backend/**/*.ts"
+      instructions: >
+        Cloudflare Workers + Hono backend. Confirm Node.js built-ins are only
+        used when the `nodejs_compat` compatibility flag is enabled in
+        wrangler.jsonc. When a Cloudflare binding (KV/R2/D1/AI/vars) is
+        added, check that wrangler.jsonc was updated and that
+        `npm run cf-typegen` was re-run so the `CloudflareBindings` type
+        stays in sync. Secrets/API keys must come from env bindings, never
+        be hardcoded.
+
+    - path: "apps/frontend/**/*.{ts,tsx}"
+      instructions: >
+        Expo (SDK 57) / React Native app using expo-router and RevenueCat
+        for monetization as part of a Shipaton hackathon submission. Check
+        that RevenueCat purchase, restore, and entitlement-check flows
+        handle errors and user cancellation, and that no RevenueCat or
+        store API keys are hardcoded. Navigation should follow expo-router
+        file-based routing conventions.
+
+    - path: "**/*.{test,spec}.{ts,tsx}"
+      instructions: >
+        Follow .claude/rules/testing.md: cover happy path, edge cases, and
+        error cases; don't test implementation details or third-party
+        internals; use factory functions for test data, not raw objects.
+
+    - path: "**/*.{ts,tsx}"
+      instructions: >
+        Follow .claude/rules/code-style.md: prefer const over let, early
+        returns over nesting, explicit return types on exported functions,
+        no unjustified `any`, Result pattern for expected failures, never
+        swallow errors silently.
+
+    - path: ".claude/**/*"
+      instructions: >
+        Claude Code agent configuration (rules/skills), not application
+        code — review for internal consistency and clarity, not runtime
+        correctness.
+
+    - path: ".kiro/**/*"
+      instructions: >
+        Kiro-style spec-driven development artifacts. When present, check
+        alignment between requirements.md, design.md, and tasks.md within
+        the same spec.
+
+  tools:
+    biome:
+      enabled: true
+    gitleaks:
+      enabled: true
+    osv-scanner:
+      enabled: true
+    semgrep:
+      enabled: true
+    github-checks:
+      enabled: true
+
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: true
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "CLAUDE.md"
+      - "**/CLAUDE.md"
+      - ".claude/rules/*.md"
+  learnings:
+    scope: auto
+  pull_requests:
+    scope: auto
