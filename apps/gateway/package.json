@@ -7,18 +7,33 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "lint": "biome check .",
-    "test": "vitest run",
-    "cf-typegen": "wrangler types"
+    "test": "vitest run && vitest run --config vitest.node.config.ts",
+    "test:workerd": "vitest run",
+    "test:node": "vitest run --config vitest.node.config.ts",
+    "cf-typegen": "wrangler types",
+    "sync-abis": "tsx scripts/sync-abis.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "load-shares": "tsx scripts/load-shares.ts",
+    "probe:workerd": "tsx scripts/probe-workerd.ts"
   },
   "dependencies": {
     "@truenft/openapi": "workspace:*",
-    "hono": "^4.13.7"
+    "@truenft/shared": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.7",
+    "postgres": "^3.4.9",
+    "viem": "^2.56.3"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^5.20260905.1",
+    "@electric-sql/pglite": "^0.5.8",
+    "@types/node": "^22.20.1",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.23.13",
     "typescript": "~6.0.3",
     "vitest": "^4.1.0",
     "wrangler": "^4.129.0"

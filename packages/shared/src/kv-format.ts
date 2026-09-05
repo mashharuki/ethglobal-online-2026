@@ -15,13 +15,41 @@ export const KV_FORMAT_VERSION = "tc-kv-v1";
 const IV_BYTES = 12;
 const KEK_BYTES = 32;
 
-// Structural types so this module typechecks against both DOM lib and @types/node (webcrypto).
-type SubtleApi = typeof globalThis.crypto.subtle;
-type AesKey = Awaited<ReturnType<SubtleApi["importKey"]>>;
+// Structural Web Crypto types: this module is typechecked under DOM, @types/node and
+// @cloudflare/workers-types, whose `crypto` globals are declared differently.
+type AesKey = object;
+type AesGcmParams = {
+  name: "AES-GCM";
+  iv: Uint8Array;
+  additionalData?: Uint8Array;
+};
+type SubtleApi = {
+  importKey(
+    format: "raw",
+    keyData: Uint8Array,
+    algorithm: { name: "AES-GCM" },
+    extractable: boolean,
+    keyUsages: string[],
+  ): Promise<AesKey>;
+  encrypt(
+    algorithm: AesGcmParams,
+    key: AesKey,
+    data: Uint8Array,
+  ): Promise<ArrayBuffer>;
+  decrypt(
+    algorithm: AesGcmParams,
+    key: AesKey,
+    data: Uint8Array,
+  ): Promise<ArrayBuffer>;
+};
+type WebCrypto = {
+  subtle: SubtleApi;
+  getRandomValues<T extends Uint8Array>(array: T): T;
+};
 
-function subtle(): SubtleApi {
-  const api = globalThis.crypto?.subtle;
-  if (api === undefined)
+function webCrypto(): WebCrypto {
+  const api = (globalThis as { crypto?: WebCrypto }).crypto;
+  if (api?.subtle === undefined)
     throw new Error("Web Crypto (crypto.subtle) is not available");
   return api;
 }
@@ -29,7 +57,7 @@ function subtle(): SubtleApi {
 async function importKek(kek: Uint8Array): Promise<AesKey> {
   if (kek.length !== KEK_BYTES)
     throw new RangeError(`KEK must be ${KEK_BYTES} bytes`);
-  return subtle().importKey(
+  return webCrypto().subtle.importKey(
     "raw",
     Uint8Array.from(kek),
     { name: "AES-GCM" },
@@ -43,7 +71,7 @@ export function shareGKvKey(assetId: Hex): string {
   return `share_g:${assetId.toLowerCase()}`;
 }
 
-function aadFor(assetId: Hex): Uint8Array<ArrayBuffer> {
+function aadFor(assetId: Hex): Uint8Array {
   return Uint8Array.from(
     new TextEncoder().encode(`${KV_FORMAT_VERSION}|${shareGKvKey(assetId)}`),
   );
@@ -55,8 +83,8 @@ export async function encryptShareG(
   assetId: Hex,
 ): Promise<string> {
   const key = await importKek(kek);
-  const iv = globalThis.crypto.getRandomValues(new Uint8Array(IV_BYTES));
-  const ciphertext = await subtle().encrypt(
+  const iv = webCrypto().getRandomValues(new Uint8Array(IV_BYTES));
+  const ciphertext = await webCrypto().subtle.encrypt(
     { name: "AES-GCM", iv, additionalData: aadFor(assetId) },
     key,
     Uint8Array.from(shareG),
@@ -89,7 +117,7 @@ export async function decryptShareG(
   }
   const key = await importKek(kek);
   try {
-    const plain = await subtle().decrypt(
+    const plain = await webCrypto().subtle.decrypt(
       {
         name: "AES-GCM",
         iv: Uint8Array.from(hexToBytes(`0x${ivHex}`)),
