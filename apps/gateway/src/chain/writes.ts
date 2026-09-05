@@ -214,30 +214,34 @@ export async function submitFinalize(
 
 /**
  * Waits for a settlement tx (settleAndIssue / finalize, submitted by the operator or by the
- * facilitator) and returns the receiptHash from its ReceiptIssued log.
+ * facilitator) and returns every receiptHash the registry's ReceiptIssued logs carry. The
+ * caller matches the one it expects (a tx may issue several receipts).
  */
-export async function receiptHashFromReceipt(
+export async function receiptHashesFromReceipt(
   ctx: ChainContext,
   txHash: Hex,
-): Promise<Hex> {
+): Promise<Hex[]> {
   const { receipt } = await waitForTx(ctx, txHash, "settleAndIssue");
   const logs = parseEventLogs({
     abi: rightsRegistryAbi,
     eventName: "ReceiptIssued",
     logs: receipt.logs,
   });
-  const issued = logs.find(
-    (log) =>
-      log.address.toLowerCase() === ctx.deployment.rightsRegistry.toLowerCase(),
-  );
-  if (issued === undefined) {
+  const hashes = logs
+    .filter(
+      (log) =>
+        log.address.toLowerCase() ===
+        ctx.deployment.rightsRegistry.toLowerCase(),
+    )
+    .map((log) => log.args.receiptHash);
+  if (hashes.length === 0) {
     throw new AppError(
       "SETTLEMENT_NOT_FINALIZED",
       "settlement tx emitted no ReceiptIssued from the registry",
       { txHash },
     );
   }
-  return issued.args.receiptHash;
+  return hashes;
 }
 
 /** @lintignore T084/T088 */

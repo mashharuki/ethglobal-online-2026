@@ -68,8 +68,10 @@ export type SettlePorts = {
   quoteReads(tokenId: bigint): Promise<QuoteReads>;
   /** submits settleAndIssue / finalize through OperatorTxQueue, returns the tx hash */
   operator(job: OperatorSettleJob | OperatorFinalizeJob): Promise<Hex>;
-  /** waits for the settlement tx and returns the receiptHash from ReceiptIssued */
-  receiptHashFromTx(txHash: Hex): Promise<Hex>;
+  /** waits for the settlement tx and returns every ReceiptIssued.receiptHash the registry emitted */
+  receiptHashesFromTx(txHash: Hex): Promise<Hex[]>;
+  /** RightsRegistry.receiptStatus(hash).issued - recovery after a duplicate settlement revert */
+  receiptIssued(receiptHash: Hex): Promise<boolean>;
   /** mirror node: payer account id -> EVM address */
   payerEvmAddress(accountId: string): Promise<Hex | undefined>;
   now(): Date;
@@ -102,6 +104,8 @@ export type ReceiptQuote = {
   priceTinybar: string;
   creatorBps: number;
   ownerBps: number;
+  /** server-chosen receipt nonce, fixed at quote time so every rail anchors the same receipt */
+  nonce: Hex;
 };
 
 export type PaymentRequired = {
@@ -112,7 +116,18 @@ export type PaymentRequired = {
 
 const RESOURCE_PATH = (assetId: Hex): string => `/assets/${assetId}/paid`;
 
-type QuoteTerms = Omit<ReceiptQuote, "issuedAt" | "expiresAt">;
+type QuoteTerms = Omit<ReceiptQuote, "issuedAt" | "expiresAt" | "nonce">;
+
+/** Where the buyer's HBAR goes; the custodial rail is unusable without its account. */
+function settlementPayTo(ports: SettlePorts): string {
+  if (ports.mode !== "custodial") return ports.deployment.rightsRegistry;
+  if (!/^\d+\.\d+\.\d+$/.test(ports.settlementAccountId)) {
+    throw new Error(
+      "SETTLEMENT_MODE=custodial requires SETTLEMENT_ACCOUNT_ID (Hedera account id)",
+    );
+  }
+  return ports.settlementAccountId;
+}
 
 /** Everything a quote fixes except the time window, re-read from the chain each time. */
 async function currentQuoteTerms(
@@ -149,11 +164,13 @@ export async function buildPaymentRequired(
   if (manifestPolicyHash(asset.manifest) !== base.policyHash) {
     throw new AppError("POLICY_HASH_MISMATCH");
   }
+  const payTo = settlementPayTo(ports);
   const issuedAt = Math.floor(ports.now().getTime() / 1000);
   const quote: ReceiptQuote = {
     ...base,
     issuedAt,
     expiresAt: issuedAt + asset.manifest.paidAccess.durationSec,
+    nonce: ports.randomNonce(),
   };
   const value = asset.manifest.paidAccess.price; // weibar
   const accept: PaymentAccept = {
@@ -161,10 +178,7 @@ export async function buildPaymentRequired(
     network: HEDERA_TESTNET_NETWORK,
     asset: HBAR_ASSET_ID,
     maxAmountRequired: value,
-    payTo:
-      ports.mode === "custodial"
-        ? ports.settlementAccountId
-        : ports.deployment.rightsRegistry,
+    payTo,
     resource: RESOURCE_PATH(assetId),
     description: `TrueCollective paid access to ${assetId}`,
     maxTimeoutSeconds: 600,
@@ -201,6 +215,89 @@ export type SettleOutput = {
   expiresAt: number;
   settlementMode: SettlementMode;
 };
+
+/** The receipt is a pure function of (quote, licensee, paymentId): replays rebuild it exactly. */
+function receiptFromQuote(
+  quote: ReceiptQuote,
+  licensee: Address,
+  paymentId: Hex,
+  assetId: Hex,
+): RightsReceipt {
+  return {
+    chainId: BigInt(quote.chainId),
+    verifyingContract: quote.verifyingContract,
+    nftContract: quote.nftContract,
+    tokenId: BigInt(quote.tokenId),
+    resourceHash: quote.resourceHash,
+    policyHash: quote.policyHash,
+    licenseEpoch: BigInt(quote.licenseEpoch),
+    ownerEpochAtIssue: BigInt(quote.ownerEpochAtIssue),
+    licensee,
+    permittedAction: quote.permittedAction,
+    transferMode:
+      quote.transferMode === 1
+        ? TransferMode.INVALIDATE_ON_TRANSFER
+        : TransferMode.SURVIVE_TRANSFER,
+    maxUses: quote.maxUses,
+    expiresAt: BigInt(quote.expiresAt),
+    purchaseRequestHash: computePurchaseRequestHash({
+      httpMethod: "POST",
+      path: RESOURCE_PATH(assetId),
+      planId: PAID_ACCESS_PLAN_ID,
+      resourceHash: quote.resourceHash,
+      policyHash: quote.policyHash,
+    }),
+    paymentId,
+    nonce: quote.nonce,
+    issuedAt: BigInt(quote.issuedAt),
+  };
+}
+
+/**
+ * Confirms the expected receipt was anchored by `txHash` (a ReceiptIssued log with exactly
+ * this hash). A tx that issued other receipts but not this one is COMMITTED_PARAMS_MISMATCH.
+ */
+async function assertAnchored(
+  ports: SettlePorts,
+  txHash: Hex,
+  expectedHash: Hex,
+): Promise<void> {
+  const issued = await ports.receiptHashesFromTx(txHash);
+  if (!issued.includes(expectedHash)) {
+    throw new AppError(
+      "COMMITTED_PARAMS_MISMATCH",
+      "settlement tx did not issue the quoted receipt",
+      { expected: expectedHash, onchain: issued, txHash },
+    );
+  }
+}
+
+/**
+ * Operator anchoring with duplicate recovery: a retry after a broadcast-then-crash reverts
+ * with ReceiptAlreadyIssued (mapped to PAYMENT_ID_PAYLOAD_CONFLICT); when the registry
+ * already holds exactly our receipt that is a success whose tx hash we no longer know.
+ */
+async function anchorViaOperator(
+  ports: SettlePorts,
+  job: OperatorSettleJob | OperatorFinalizeJob,
+  expectedHash: Hex,
+): Promise<string> {
+  let txHash: Hex;
+  try {
+    txHash = await ports.operator(job);
+  } catch (error) {
+    if (
+      error instanceof AppError &&
+      error.code === "PAYMENT_ID_PAYLOAD_CONFLICT" &&
+      (await ports.receiptIssued(expectedHash))
+    ) {
+      return "already-issued";
+    }
+    throw error;
+  }
+  await assertAnchored(ports, txHash, expectedHash);
+  return txHash;
+}
 
 function toParams(
   receipt: RightsReceipt,
@@ -386,36 +483,14 @@ export async function settlePayment(
     );
   }
   const paymentId = derivePaymentId(raw);
-  const purchaseRequestHash = computePurchaseRequestHash({
-    httpMethod: "POST",
-    path: RESOURCE_PATH(input.assetId),
-    planId: PAID_ACCESS_PLAN_ID,
-    resourceHash: input.quote.resourceHash,
-    policyHash: input.quote.policyHash,
-  });
   const priceTinybar = BigInt(input.quote.priceTinybar);
-  const receipt: RightsReceipt = {
-    chainId: BigInt(input.quote.chainId),
-    verifyingContract: input.quote.verifyingContract,
-    nftContract: input.quote.nftContract,
-    tokenId: BigInt(input.quote.tokenId),
-    resourceHash: input.quote.resourceHash,
-    policyHash: input.quote.policyHash,
-    licenseEpoch: BigInt(input.quote.licenseEpoch),
-    ownerEpochAtIssue: BigInt(input.quote.ownerEpochAtIssue),
-    licensee: input.licensee,
-    permittedAction: input.quote.permittedAction,
-    transferMode:
-      input.quote.transferMode === 1
-        ? TransferMode.INVALIDATE_ON_TRANSFER
-        : TransferMode.SURVIVE_TRANSFER,
-    maxUses: input.quote.maxUses,
-    expiresAt: BigInt(input.quote.expiresAt),
-    purchaseRequestHash,
+  const receipt = receiptFromQuote(
+    input.quote,
+    input.licensee,
     paymentId,
-    nonce: ports.randomNonce(),
-    issuedAt: BigInt(input.quote.issuedAt),
-  };
+    input.assetId,
+  );
+  const expectedHash = computeReceiptHash(receipt);
 
   const subject = {
     assetId: input.assetId,
@@ -435,14 +510,22 @@ export async function settlePayment(
   const claim = await claimPayment(
     ports,
     paymentId,
-    purchaseRequestHash,
+    receipt.purchaseRequestHash,
     priceTinybar,
   );
   if (claim !== "claimed") {
     // idempotent replay of a settled payment: the receipt was already issued for this payload
-    return replaySettled(ports, asset, claim.settled, receipt);
+    return replaySettled(ports, claim.settled, receipt, expectedHash);
   }
 
+  // Stages decide what a failure means for the binding (R-10):
+  //   verify  : nothing moved -> failed (a retry re-runs settlement)
+  //   settle  : facilitator call in flight -> an unexpected error is AMBIGUOUS: the row stays
+  //             pending (SETTLEMENT_IN_PROGRESS) until reconciled; a definitive rejection is failed
+  //   anchor  : HBAR moved, receipt not yet on chain -> failed + deny (custodial: the transfer
+  //             stays on the settlement account, disclosed in CONFIG.md)
+  //   settled : receipt on chain -> never downgraded, even if signing / audit fails afterwards
+  let stage: "verify" | "settle" | "anchor" | "settled" = "verify";
   try {
     const requirements = requirementsFor(ports, input, asset);
     const verified = await ports.facilitator.verify(payload, requirements);
@@ -452,47 +535,48 @@ export async function settlePayment(
         `facilitator rejected the payment: ${verified.invalidReason ?? "invalid"}`,
       );
     }
-    if (verified.payer !== undefined) {
-      const payerEvm = await ports.payerEvmAddress(verified.payer);
-      if (payerEvm === undefined || !isAddressEqual(payerEvm, input.licensee)) {
-        throw new AppError(
-          "LICENSEE_MISMATCH",
-          "licensee is not the payer of the signed payment",
-        );
-      }
+    // fail closed: no verified payer means the licensee cannot be proven to have paid
+    const payerEvm =
+      verified.payer === undefined
+        ? undefined
+        : await ports.payerEvmAddress(verified.payer);
+    if (payerEvm === undefined || !isAddressEqual(payerEvm, input.licensee)) {
+      throw new AppError(
+        "LICENSEE_MISMATCH",
+        "licensee is not the verified payer of the signed payment",
+      );
     }
+    stage = "settle";
     const settled = await ports.facilitator.settle(payload, requirements);
     if (!settled.success) {
+      stage = "verify";
       throw new AppError(
         "UNDERPAYMENT",
         `facilitator could not settle: ${settled.errorReason ?? "failed"}`,
       );
     }
+    stage = "anchor";
     let onchainTx: string = settled.transaction;
-    let receiptHash: Hex;
     if (ports.mode === "primary") {
-      // the facilitator submitted settleAndIssue{value}; the ReceiptIssued log carries the hash
-      receiptHash = await ports.receiptHashFromTx(settled.transaction as Hex);
+      // the facilitator submitted settleAndIssue{value}; its ReceiptIssued must be our receipt
+      await assertAnchored(ports, settled.transaction as Hex, expectedHash);
     } else {
-      // custodial: HBAR landed on the settlement account; the operator anchors the receipt
-      const txHash = await ports.operator({
-        kind: "settleAndIssue",
-        params: toParams(receipt, input.quote),
-        valueWeibar: (priceTinybar * 10_000_000_000n).toString(),
-        idempotencyKey: `settle:${paymentId}`,
-      });
-      receiptHash = await ports.receiptHashFromTx(txHash);
-      onchainTx = txHash;
-    }
-    const expectedHash = computeReceiptHash(receipt);
-    if (receiptHash !== expectedHash) {
-      throw new AppError(
-        "COMMITTED_PARAMS_MISMATCH",
-        "on-chain receiptHash differs from the quoted receipt",
-        { expected: expectedHash, onchain: receiptHash },
+      // custodial: HBAR landed on the settlement account; re-check the quote against the
+      // chain right before anchoring, then the operator submits settleAndIssue{value}
+      await assertQuoteCurrent(ports, asset, input.quote);
+      onchainTx = await anchorViaOperator(
+        ports,
+        {
+          kind: "settleAndIssue",
+          params: toParams(receipt, input.quote),
+          valueWeibar: (priceTinybar * 10_000_000_000n).toString(),
+          idempotencyKey: `settle:${paymentId}`,
+        },
+        expectedHash,
       );
     }
-    await setBinding(ports.db, paymentId, "settled", receiptHash);
+    await setBinding(ports.db, paymentId, "settled", expectedHash);
+    stage = "settled";
     const serverSignature = await signReceipt(
       ports.env,
       buildDomain(ports.deployment.rightsRegistry, ports.deployment.chainId),
@@ -501,12 +585,16 @@ export async function settlePayment(
     await writeAudit(ports.db, {
       actor: input.licensee,
       action: "x402_settle",
-      subject: { ...subject, receiptHash, settlementMode: ports.mode },
+      subject: {
+        ...subject,
+        receiptHash: expectedHash,
+        settlementMode: ports.mode,
+      },
       outcome: "allow",
       onchainRef: onchainTx.startsWith("0x") ? (onchainTx as Hex) : undefined,
     });
     return {
-      receiptHash,
+      receiptHash: expectedHash,
       receipt,
       serverSignature,
       onchainTx,
@@ -515,8 +603,17 @@ export async function settlePayment(
       settlementMode: ports.mode,
     };
   } catch (error) {
-    await setBinding(ports.db, paymentId, "failed");
-    if (error instanceof AppError) await deny(error.code);
+    const definitive = error instanceof AppError;
+    if (stage === "settled") {
+      // receipt anchored + bound; the client can replay the same payload to get its signature
+    } else if (stage === "settle" && !definitive) {
+      console.error("x402 settlement outcome unknown; binding left pending", {
+        paymentId,
+      });
+    } else {
+      await setBinding(ports.db, paymentId, "failed");
+    }
+    if (definitive) await deny(error.code);
     throw error;
   }
 }
@@ -531,10 +628,7 @@ function requirementsFor(
     network: HEDERA_TESTNET_NETWORK,
     asset: HBAR_ASSET_ID,
     maxAmountRequired: asset.manifest.paidAccess.price,
-    payTo:
-      ports.mode === "custodial"
-        ? ports.settlementAccountId
-        : ports.deployment.rightsRegistry,
+    payTo: settlementPayTo(ports),
     resource: RESOURCE_PATH(input.assetId),
     maxTimeoutSeconds: 600,
     extra: {
@@ -547,20 +641,25 @@ function requirementsFor(
 
 async function replaySettled(
   ports: SettlePorts,
-  _asset: ResolvedAsset,
-  receiptHash: Hex,
+  storedHash: Hex,
   receipt: RightsReceipt,
+  rebuiltHash: Hex,
 ): Promise<SettleOutput> {
-  // The stored receiptHash was produced from the same signed payload; the nonce it was issued
-  // with is not recoverable here, so the replay returns the hash + a fresh server signature
-  // over the reconstructed receipt only when the hashes agree (they do when nonce is stable).
+  // The receipt is rebuilt from the same quote + paymentId; only the caller-supplied licensee
+  // could differ, and then the hashes disagree: that is a different purchase, not a replay.
+  if (rebuiltHash !== storedHash) {
+    throw new AppError(
+      "PAYMENT_ID_PAYLOAD_CONFLICT",
+      "payment already settled for a different licensee",
+    );
+  }
   const serverSignature = await signReceipt(
     ports.env,
     buildDomain(ports.deployment.rightsRegistry, ports.deployment.chainId),
     receipt,
   );
   return {
-    receiptHash,
+    receiptHash: storedHash,
     receipt,
     serverSignature,
     onchainTx: "replay",
@@ -587,19 +686,35 @@ export async function finalizeDeposit(
     );
   }
   const asset = await ports.resolveAsset(input.assetId);
-  if (input.receipt.tokenId !== asset.tokenId) {
-    throw new AppError("RESOURCE_HASH_MISMATCH");
+  // the quote must still describe the asset, and the receipt must be exactly the one the
+  // quote + paymentId + licensee determine (caller cannot smuggle other terms to the operator)
+  await assertQuoteCurrent(ports, asset, input.quote);
+  const expected = receiptFromQuote(
+    input.quote,
+    input.receipt.licensee,
+    input.paymentId,
+    input.assetId,
+  );
+  const receiptHash = computeReceiptHash(expected);
+  if (
+    input.receipt.paymentId !== input.paymentId ||
+    computeReceiptHash(input.receipt) !== receiptHash
+  ) {
+    throw new AppError(
+      "COMMITTED_PARAMS_MISMATCH",
+      "receipt does not match the quote / paymentId",
+    );
   }
-  const txHash = await ports.operator({
-    kind: "finalize",
-    paymentId: input.paymentId,
-    params: toParams(input.receipt, input.quote),
-    idempotencyKey: `finalize:${input.paymentId}`,
-  });
-  const receiptHash = await ports.receiptHashFromTx(txHash);
-  if (receiptHash !== computeReceiptHash(input.receipt)) {
-    throw new AppError("COMMITTED_PARAMS_MISMATCH");
-  }
+  const txHash = await anchorViaOperator(
+    ports,
+    {
+      kind: "finalize",
+      paymentId: input.paymentId,
+      params: toParams(expected, input.quote),
+      idempotencyKey: `finalize:${input.paymentId}`,
+    },
+    receiptHash,
+  );
   const serverSignature = await signReceipt(
     ports.env,
     buildDomain(ports.deployment.rightsRegistry, ports.deployment.chainId),
@@ -615,15 +730,15 @@ export async function finalizeDeposit(
       settlementMode: "fallback",
     },
     outcome: "allow",
-    onchainRef: txHash,
+    onchainRef: txHash.startsWith("0x") ? (txHash as Hex) : undefined,
   });
   return {
     receiptHash,
-    receipt: input.receipt,
+    receipt: expected,
     serverSignature,
     onchainTx: txHash,
-    maxUses: input.receipt.maxUses,
-    expiresAt: Number(input.receipt.expiresAt),
+    maxUses: expected.maxUses,
+    expiresAt: Number(expected.expiresAt),
     settlementMode: "fallback",
   };
 }

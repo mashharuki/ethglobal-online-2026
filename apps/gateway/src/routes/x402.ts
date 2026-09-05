@@ -43,6 +43,7 @@ const QuoteSchema = z.object({
   priceTinybar: uintString,
   creatorBps: z.number().int().min(0).max(10_000),
   ownerBps: z.number().int().min(0).max(10_000),
+  nonce: hex32,
 });
 
 const SettleBody = z.object({
@@ -170,6 +171,7 @@ export function registerX402Routes(app: Hono<AppEnv>): void {
       priceTinybar: body.price,
       creatorBps: body.creatorBps,
       ownerBps: body.ownerBps,
+      nonce: r.nonce,
     };
     const settled = await withNotFound(() =>
       finalizeDeposit(services.settle, {

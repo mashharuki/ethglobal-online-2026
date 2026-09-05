@@ -38,9 +38,23 @@ T047). `SUBGRAPH_URL` is only a discovery hint for the assetId -> tokenId lookup
 
 `payment_id = keccak256(X-PAYMENT bytes)` (R-10). The licensee must be the payer of the signed
 payload: the facilitator's `payer` account is resolved through `HEDERA_MIRROR_URL` and compared
-with the `licensee` in the body (LICENSEE_MISMATCH otherwise). The 402 `receiptQuote` travels
-back inside `payload.accepted.extra` and is re-validated against fresh chain reads before
-anything is anchored.
+with the `licensee` in the body (LICENSEE_MISMATCH otherwise, also when no payer is reported).
+The 402 `receiptQuote` (including the server-chosen receipt `nonce`) travels back inside
+`payload.accepted.extra`; the receipt is a pure function of quote + licensee + paymentId, so a
+replay of the same payload returns the identical receipt and hash, and it is re-validated
+against fresh chain reads before the facilitator is called and again right before anchoring.
+
+`payment_binding.status` after a failure depends on the stage reached:
+
+| stage | failure -> status | why |
+|---|---|---|
+| verify (facilitator `/verify`, payer check) | `failed` | nothing moved; the same payload may be retried |
+| settle (`/settle` in flight) | unexpected error: stays `pending` (SETTLEMENT_IN_PROGRESS); definitive rejection: `failed` | outcome unknown - do not re-submit blindly; needs reconciliation against the facilitator / mirror node |
+| anchor (custodial `settleAndIssue`, quote re-check) | `failed` + deny audit | HBAR already reached `SETTLEMENT_ACCOUNT_ID` but no receipt exists: the transfer stays there (no refund path, constitution non-goal) |
+| settled (receipt on chain) | stays `settled` | signing / audit errors are recoverable by replaying the payload |
+
+A retried anchoring that reverts with `ReceiptAlreadyIssued` is recovered when
+`RightsRegistry.receiptStatus(expectedHash).issued` is true (`onchainTx: "already-issued"`).
 
 ## HTTP routes (tasks.md T086-T091)
 

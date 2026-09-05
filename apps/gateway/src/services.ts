@@ -5,9 +5,10 @@ import {
   readCreatorOf,
   readLicenseEpoch,
   readPolicyHash,
+  readReceiptStatus,
   readResourceHash,
 } from "./chain/reads";
-import { receiptHashFromReceipt, waitForTx } from "./chain/writes";
+import { receiptHashesFromReceipt, waitForTx } from "./chain/writes";
 import type { Db } from "./db/types";
 import { submitViaOperatorQueue } from "./do/client";
 import type { Env } from "./env";
@@ -77,7 +78,9 @@ export function createServices(env: Env, db: Db): Services {
       return { licenseEpoch, accessEpoch, policyHash, resourceHash };
     },
     operator: (job) => submitViaOperatorQueue(env, job),
-    receiptHashFromTx: (txHash) => receiptHashFromReceipt(ctx, txHash),
+    receiptHashesFromTx: (txHash) => receiptHashesFromReceipt(ctx, txHash),
+    receiptIssued: async (receiptHash) =>
+      (await readReceiptStatus(ctx, receiptHash)).issued,
     payerEvmAddress: (accountId) =>
       resolvePayerEvmAddress(env.HEDERA_MIRROR_URL, accountId),
     now: () => new Date(),
