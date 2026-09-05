@@ -155,6 +155,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
 
@@ -201,6 +203,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SettleResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "402":
           description: UNDERPAYMENT or missing/invalid payment header
           content:
@@ -236,6 +240,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SettleResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "402":
+          description: UNDERPAYMENT (deposit does not match price)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -296,6 +310,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
         "429":
@@ -386,6 +402,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BumpLicenseEpochResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -405,7 +423,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/JsonRpcMessage"
+              $ref: "#/components/schemas/JsonRpcIncoming"
       responses:
         "200":
           description: JSON-RPC response (or SSE stream)
@@ -416,7 +434,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/JsonRpcMessage"
+                $ref: "#/components/schemas/JsonRpcOutgoing"
             text/event-stream:
               schema:
                 type: string
@@ -520,7 +538,12 @@ components:
       pattern: "^0x[0-9a-fA-F]{40}$"
     HexBytes:
       type: string
-      pattern: "^0x[0-9a-fA-F]*$"
+      description: 0x-prefixed byte string (even number of hex digits, may be empty)
+      pattern: "^0x(?:[0-9a-fA-F]{2})*$"
+    Signature:
+      type: string
+      description: 65-byte secp256k1 signature (r || s || v) as 0x hex
+      pattern: "^0x[0-9a-fA-F]{130}$"
     UintString:
       type: string
       description: Unsigned integer as decimal string (uint256-safe)
@@ -788,6 +811,16 @@ components:
           $ref: "#/components/schemas/Bytes32"
         wallet:
           $ref: "#/components/schemas/Address"
+        purpose:
+          type: string
+          description: |
+            `owner-access` (default) issues an OwnerAuthChallenge for /owner/keygate and
+            /keygate/share. `bump-license-epoch` issues a RevocationChallenge{nonce, chainId,
+            tokenId, assetId, action, expiresAt} whose signature is ONLY accepted by
+            /assets/{assetId}/bump-license-epoch - an access signature can never authorize a
+            revocation and vice versa.
+          enum: [owner-access, bump-license-epoch]
+          default: owner-access
 
     OwnerSession:
       type: object
@@ -807,10 +840,10 @@ components:
         wallet:
           $ref: "#/components/schemas/Address"
         authSig:
-          $ref: "#/components/schemas/HexBytes"
+          $ref: "#/components/schemas/Signature"
           description: Signature over OwnerAuthChallenge{nonce, chainId, tokenId, assetId, expiresAt}
         keyGateSig:
-          $ref: "#/components/schemas/HexBytes"
+          $ref: "#/components/schemas/Signature"
           description: First access only - signature over KeyGateChallenge{assetId, "owner", 0x0}; never used for authentication (R-1a)
         ownerSession:
           type: string
@@ -834,10 +867,67 @@ components:
         contentHash:
           $ref: "#/components/schemas/Bytes32"
 
-    ReceiptParamsTemplate:
+    ReceiptQuote:
       type: object
-      description: The 17 receipt fields the gateway fixes at quote time (weibar `price` shown separately); buyer fills nothing
-      additionalProperties: true
+      description: |
+        The receipt fields the gateway fixes at quote (402) time. The remaining fields
+        (licensee, paymentId, nonce, purchaseRequestHash) are bound at settlement from the
+        buyer-signed payload; the buyer does not choose any of these values.
+      additionalProperties: false
+      required:
+        - chainId
+        - verifyingContract
+        - nftContract
+        - tokenId
+        - resourceHash
+        - policyHash
+        - licenseEpoch
+        - ownerEpochAtIssue
+        - permittedAction
+        - transferMode
+        - maxUses
+        - issuedAt
+        - expiresAt
+        - priceTinybar
+        - creatorBps
+        - ownerBps
+      properties:
+        chainId:
+          type: integer
+        verifyingContract:
+          $ref: "#/components/schemas/Address"
+        nftContract:
+          $ref: "#/components/schemas/Address"
+        tokenId:
+          $ref: "#/components/schemas/UintString"
+        resourceHash:
+          $ref: "#/components/schemas/Bytes32"
+        policyHash:
+          $ref: "#/components/schemas/Bytes32"
+        licenseEpoch:
+          $ref: "#/components/schemas/UintString"
+        ownerEpochAtIssue:
+          $ref: "#/components/schemas/UintString"
+        permittedAction:
+          type: integer
+          minimum: 0
+          maximum: 255
+        transferMode:
+          type: integer
+          enum: [0, 1]
+        maxUses:
+          type: integer
+          minimum: 1
+        issuedAt:
+          type: integer
+        expiresAt:
+          type: integer
+        priceTinybar:
+          $ref: "#/components/schemas/UintString"
+        creatorBps:
+          type: integer
+        ownerBps:
+          type: integer
 
     PaymentAccept:
       type: object
@@ -875,8 +965,8 @@ components:
               $ref: "#/components/schemas/Weibar"
             feePayer:
               type: string
-            receiptParamsTemplate:
-              $ref: "#/components/schemas/ReceiptParamsTemplate"
+            receiptQuote:
+              $ref: "#/components/schemas/ReceiptQuote"
           additionalProperties: true
 
     PaymentRequired:
@@ -973,7 +1063,7 @@ components:
         receipt:
           $ref: "#/components/schemas/RightsReceipt"
         serverSignature:
-          $ref: "#/components/schemas/HexBytes"
+          $ref: "#/components/schemas/Signature"
         onchainTx:
           type: string
           description: Hedera tx hash / id of the settlement
@@ -1032,9 +1122,9 @@ components:
         wallet:
           $ref: "#/components/schemas/Address"
         authSig:
-          $ref: "#/components/schemas/HexBytes"
+          $ref: "#/components/schemas/Signature"
         keyGateSig:
-          $ref: "#/components/schemas/HexBytes"
+          $ref: "#/components/schemas/Signature"
         ownerSession:
           type: string
 
@@ -1050,29 +1140,66 @@ components:
         receiptHash:
           $ref: "#/components/schemas/Bytes32"
         authSig:
-          $ref: "#/components/schemas/HexBytes"
+          $ref: "#/components/schemas/Signature"
           description: Signature over LicenseeAuthChallenge{nonce, chainId, receiptHash, expiresAt}
         keyGateSig:
-          $ref: "#/components/schemas/HexBytes"
+          $ref: "#/components/schemas/Signature"
           description: First access only - KeyGateChallenge{assetId, "licensee", receiptHash}
 
     KeygateShareResponse:
+      oneOf:
+        - $ref: "#/components/schemas/KeygateShareOwnerResponse"
+        - $ref: "#/components/schemas/KeygateShareLicenseeResponse"
+      discriminator:
+        propertyName: path
+        mapping:
+          owner: "#/components/schemas/KeygateShareOwnerResponse"
+          licensee: "#/components/schemas/KeygateShareLicenseeResponse"
+
+    KeygateShareOwnerResponse:
       type: object
-      required: [shareG]
+      description: Identical payload to /owner/keygate plus the `path` discriminator
+      required: [path, shareG, blindedU, accessEpochAtGrant, ownerSession, encryptedContentURI, contentHash]
       properties:
+        path:
+          type: string
+          enum: [owner]
+        shareG:
+          $ref: "#/components/schemas/Bytes32"
+        blindedU:
+          $ref: "#/components/schemas/Bytes32"
+        accessEpochAtGrant:
+          type: integer
+        ownerSession:
+          $ref: "#/components/schemas/OwnerSession"
+        encryptedContentURI:
+          type: string
+          format: uri
+        contentHash:
+          $ref: "#/components/schemas/Bytes32"
+
+    KeygateShareLicenseeResponse:
+      type: object
+      required: [path, shareG, blindedU, useIndex, onchainTx, encryptedContentURI, contentHash]
+      properties:
+        path:
+          type: string
+          enum: [licensee]
         shareG:
           $ref: "#/components/schemas/Bytes32"
         blindedU:
           $ref: "#/components/schemas/Bytes32"
         useIndex:
           type: integer
-          description: Licensee path only
+          minimum: 0
         onchainTx:
           type: string
-          description: Licensee path only - the consume tx
-        accessEpochAtGrant:
-          type: integer
-          description: Owner path only
+          description: The consume tx (settle-before-release)
+        encryptedContentURI:
+          type: string
+          format: uri
+        contentHash:
+          $ref: "#/components/schemas/Bytes32"
 
     GraphQLRequest:
       type: object
@@ -1090,7 +1217,7 @@ components:
       type: object
       properties:
         data:
-          type: object
+          type: [object, "null"]
           additionalProperties: true
         errors:
           type: array
@@ -1100,6 +1227,10 @@ components:
 
     AuditEntry:
       type: object
+      description: |
+        Strict allowlist (additionalProperties: false) so signatures / key shares / session tokens
+        can never appear in an audit response (R-1a, FR-023).
+      additionalProperties: false
       required: [id, at, action, outcome]
       properties:
         id:
@@ -1112,7 +1243,6 @@ components:
           enum: [owner_keygate, x402_settle, consume, claim, policy_update, bump_license_epoch, mcp_buy_access, mcp_decrypt_content]
         outcome:
           type: string
-          description: "'allow' or 'deny'"
           enum: [allow, deny]
         code:
           $ref: "#/components/schemas/ErrorCode"
@@ -1120,22 +1250,48 @@ components:
           $ref: "#/components/schemas/Bytes32"
         subject:
           type: string
-          description: Wallet or MCP session (never a signature value)
+          description: Wallet address or MCP session id
         onchainRef:
           type: string
         detail:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/AuditDetail"
+
+    AuditDetail:
+      type: object
+      additionalProperties: false
+      properties:
+        tokenId:
+          $ref: "#/components/schemas/UintString"
+        receiptHash:
+          $ref: "#/components/schemas/Bytes32"
+        paymentId:
+          $ref: "#/components/schemas/Bytes32"
+        useIndex:
+          type: integer
+        sessionEpoch:
+          type: integer
+        currentEpoch:
+          type: integer
+        licenseEpoch:
+          type: integer
+        newEpoch:
+          type: integer
+        amountTinybar:
+          $ref: "#/components/schemas/UintString"
 
     BumpLicenseEpochRequest:
       type: object
-      required: [wallet, authSig]
+      required: [wallet, revocationSig]
       properties:
         wallet:
           $ref: "#/components/schemas/Address"
-        authSig:
-          $ref: "#/components/schemas/HexBytes"
-          description: Creator signature over OwnerAuthChallenge issued by /owner/challenge for this asset
+        revocationSig:
+          $ref: "#/components/schemas/Signature"
+          description: |
+            Creator signature over RevocationChallenge{nonce, chainId, tokenId, assetId,
+            action = "bump-license-epoch", expiresAt} obtained from /owner/challenge with
+            purpose=bump-license-epoch. OwnerAuthChallenge signatures are rejected here
+            (SIGNATURE_INVALID): the action is part of the signed struct.
 
     BumpLicenseEpochResponse:
       type: object
@@ -1148,26 +1304,86 @@ components:
         onchainTx:
           type: string
 
-    JsonRpcMessage:
+    JsonRpcId:
+      oneOf:
+        - type: string
+        - type: integer
+
+    JsonRpcRequest:
       type: object
-      description: JSON-RPC 2.0 request, response or notification (MCP)
-      required: [jsonrpc]
+      required: [jsonrpc, id, method]
+      additionalProperties: false
       properties:
         jsonrpc:
           type: string
           enum: ["2.0"]
         id:
-          oneOf:
-            - type: string
-            - type: integer
+          $ref: "#/components/schemas/JsonRpcId"
         method:
           type: string
         params:
           type: object
           additionalProperties: true
+
+    JsonRpcNotification:
+      type: object
+      required: [jsonrpc, method]
+      additionalProperties: false
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        method:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+
+    JsonRpcSuccess:
+      type: object
+      required: [jsonrpc, id, result]
+      additionalProperties: false
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        id:
+          $ref: "#/components/schemas/JsonRpcId"
         result:
           type: object
           additionalProperties: true
+
+    JsonRpcError:
+      type: object
+      required: [jsonrpc, id, error]
+      additionalProperties: false
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        id:
+          $ref: "#/components/schemas/JsonRpcId"
         error:
           type: object
-          additionalProperties: true
+          required: [code, message]
+          properties:
+            code:
+              type: integer
+            message:
+              type: string
+            data:
+              description: "For tool errors: `{ code: ErrorCode, ... }`"
+              type: object
+              additionalProperties: true
+
+    JsonRpcIncoming:
+      description: What a client may POST (request or notification)
+      oneOf:
+        - $ref: "#/components/schemas/JsonRpcRequest"
+        - $ref: "#/components/schemas/JsonRpcNotification"
+
+    JsonRpcOutgoing:
+      description: What the server answers (success or error)
+      oneOf:
+        - $ref: "#/components/schemas/JsonRpcSuccess"
+        - $ref: "#/components/schemas/JsonRpcError"

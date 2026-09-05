@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ErrorBody, JsonResponse, Schemas } from "../src/index";
 
+const SIG = `0x${"ab".repeat(65)}` as const;
+
 describe("@truenft/openapi generated types", () => {
   it("should type the /healthz response from openapi.yaml", () => {
     const health: JsonResponse<"/healthz", "get"> = { ok: true, chainId: 296 };
@@ -54,7 +56,7 @@ describe("@truenft/openapi generated types", () => {
     const settled: JsonResponse<"/assets/{assetId}/paid", "post"> = {
       receiptHash: `0x${"ab".repeat(32)}`,
       receipt,
-      serverSignature: "0x",
+      serverSignature: SIG,
       onchainTx: "0x",
       maxUses: 5,
       expiresAt: 1_800_000_300,
@@ -62,13 +64,41 @@ describe("@truenft/openapi generated types", () => {
     expect(Object.keys(settled.receipt)).toHaveLength(17);
   });
 
-  it("should discriminate keygate share requests by path", () => {
+  it("should discriminate keygate share requests and responses by path", () => {
     const licensee: Schemas["KeygateShareRequest"] = {
       path: "licensee",
       assetId: `0x${"aa".repeat(32)}`,
       receiptHash: `0x${"ab".repeat(32)}`,
-      authSig: "0x",
+      authSig: SIG,
     };
     expect(licensee.path).toBe("licensee");
+
+    const response: Schemas["KeygateShareResponse"] = {
+      path: "licensee",
+      shareG: `0x${"11".repeat(32)}`,
+      blindedU: `0x${"22".repeat(32)}`,
+      useIndex: 0,
+      onchainTx: "0x",
+      encryptedContentURI: "ipfs://cid",
+      contentHash: `0x${"bb".repeat(32)}`,
+    };
+    expect(response.path).toBe("licensee");
+  });
+
+  it("should keep the audit entry allowlisted and the revocation request distinct", () => {
+    const entry: Schemas["AuditEntry"] = {
+      id: "1",
+      at: 1_800_000_000,
+      action: "consume",
+      outcome: "deny",
+      code: "RECEIPT_ALREADY_CONSUMED",
+      detail: { receiptHash: `0x${"ab".repeat(32)}`, useIndex: 0 },
+    };
+    expect(entry.detail?.useIndex).toBe(0);
+    const bump: Schemas["BumpLicenseEpochRequest"] = {
+      wallet: "0x3333333333333333333333333333333333333333",
+      revocationSig: SIG,
+    };
+    expect(bump.revocationSig).toBe(SIG);
   });
 });
