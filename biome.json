@@ -27,7 +27,8 @@
       "!packages/openapi/src/types.ts",
       "!**/test-results",
       "!**/playwright-report",
-      "!apps/subgraph/generated"
+      "!apps/subgraph/generated",
+      "!apps/subgraph"
     ]
   },
   "formatter": {
@@ -45,18 +46,6 @@
       "quoteStyle": "double"
     }
   },
-  "overrides": [
-    {
-      "includes": ["apps/subgraph/**"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noShadowRestrictedNames": "off"
-          }
-        }
-      }
-    }
-  ],
   "assist": {
     "enabled": true,
     "actions": {
