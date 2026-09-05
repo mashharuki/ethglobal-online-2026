@@ -17,3 +17,4 @@ dist
 apps/e2e/.accounts*.json
 apps/contracts/out
 **/.turbo
+apps/gateway/out

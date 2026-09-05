@@ -1,5 +1,5 @@
 /**
- * Worker bindings and variables (mirrors wrangler.toml). Secrets are listed in SECRETS.md.
+ * Worker bindings and variables (mirrors wrangler.toml). Secrets are listed in CONFIG.md.
  */
 type SettlementMode = "primary" | "fallback" | "custodial";
 
@@ -11,12 +11,17 @@ export type Env = {
   PAYMENT_ASSET: "native";
   SETTLEMENT_MODE: SettlementMode;
   SUBGRAPH_URL: string;
-  // secrets
+  /** Empty string = fall back to packages/shared DEFAULT_DEPLOYMENT (deploy write-back). */
+  RIGHTS_NFT_ADDRESS: string;
+  RIGHTS_REGISTRY_ADDRESS: string;
+  // secrets (wrangler secret put / .dev.vars)
   HEDERA_OPERATOR_KEY?: string;
   RECEIPT_SIGNER_KEY?: string;
   KV_KEK?: string;
   PRIVY_APP_ID?: string;
   PRIVY_APP_SECRET?: string;
+  /** Per-asset share_U (owner path), loaded by scripts/load-shares.ts. */
+  [shareU: `SHARE_U_${string}`]: string | undefined;
   // bindings
   SHARE_G: KVNamespace;
   HYPERDRIVE: Hyperdrive;

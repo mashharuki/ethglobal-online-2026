@@ -16,6 +16,7 @@
     "**/cdk.out/**",
     "**/.wrangler/**",
     "packages/openapi/src/types.ts",
+    "apps/gateway/src/chain/abi.ts",
     "**/*.d.ts",
     "**/*.test.ts",
     "**/*.spec.ts"
