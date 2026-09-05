@@ -12,11 +12,22 @@
       "!**/cdk.out",
       "!**/dist",
       "!**/build",
-      "!**/.claude",
-      "!**/.codegraph",
-      "!**/.serena",
-      "!**/.specify",
-      "!**/.agents"
+      "!.claude",
+      "!.codegraph",
+      "!.serena",
+      "!.specify",
+      "!.agents",
+      "!**/.wrangler",
+      "!**/artifacts",
+      "!apps/contracts/types",
+      "!**/public/*.svg",
+      "!**/cache",
+      "!**/generated",
+      "!**/worker-configuration.d.ts",
+      "!packages/openapi/src/types.ts",
+      "!**/test-results",
+      "!**/playwright-report",
+      "!apps/subgraph/generated"
     ]
   },
   "formatter": {
@@ -34,6 +45,18 @@
       "quoteStyle": "double"
     }
   },
+  "overrides": [
+    {
+      "includes": ["apps/subgraph/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noShadowRestrictedNames": "off"
+          }
+        }
+      }
+    }
+  ],
   "assist": {
     "enabled": true,
     "actions": {

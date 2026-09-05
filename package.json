@@ -1,21 +1,28 @@
 {
   "name": "ethglobal-online-2026",
   "version": "1.0.0",
-  "description": "",
+  "description": "TrueCollective - transfer-coupled rights runtime on Hedera (ETHGlobal ETHOnline 2026)",
   "private": true,
-  "main": "index.js",
   "scripts": {
     "build": "turbo build",
+    "dev": "turbo dev",
+    "test": "turbo test",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
     "format": "pnpm exec biome format --write .",
     "check": "pnpm exec biome check --write .",
+    "ci": "pnpm exec biome ci . && pnpm knip && pnpm jscpd",
     "knip": "knip",
-    "jscpd": "jscpd ./apps ./packages",
+    "jscpd": "jscpd --config .jscpd.json ./apps ./packages",
     "web": "pnpm --filter web",
     "contracts": "pnpm --filter contracts",
     "gateway": "pnpm --filter gateway",
     "agent": "pnpm --filter agent",
-    "subgraph": "pnpm --filter subgraph",
-    "cdk": "pnpm --filter cdk"
+    "subgraph": "pnpm --filter @subgraph",
+    "cdk": "pnpm --filter cdk",
+    "e2e": "pnpm --filter e2e",
+    "shared": "pnpm --filter @truenft/shared",
+    "openapi": "pnpm --filter @truenft/openapi"
   },
   "keywords": [],
   "author": "",
@@ -30,8 +37,11 @@
   "packageManager": "pnpm@11.24.0",
   "type": "module",
   "devDependencies": {
-    "turbo": "^2.10.12",
     "@biomejs/biome": "2.5.9",
-    "knip": "^6.32.2"
+    "jscpd": "^5.1.2",
+    "knip": "^6.32.2",
+    "turbo": "^2.10.12",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.0"
   }
 }

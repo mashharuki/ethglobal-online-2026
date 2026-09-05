@@ -1,10 +1,10 @@
-import { Address, BigInt, Bytes, ethereum } from "@graphprotocol/graph-ts";
+import { Address, BigInt, Bytes, type ethereum } from "@graphprotocol/graph-ts";
 import {
-  Approval as ApprovalEvent,
-  ApprovalForAll as ApprovalForAllEvent,
+  type Approval as ApprovalEvent,
+  type ApprovalForAll as ApprovalForAllEvent,
   MyToken as MyTokenContract,
-  OwnershipTransferred as OwnershipTransferredEvent,
-  Transfer as TransferEvent,
+  type OwnershipTransferred as OwnershipTransferredEvent,
+  type Transfer as TransferEvent,
 } from "../generated/MyToken/MyToken";
 import {
   Approval,
@@ -49,14 +49,14 @@ function loadOrCreateCollection(address: Address): Collection {
 }
 
 export function handleTransfer(event: TransferEvent): void {
-  let from = event.params.from;
-  let to = event.params.to;
-  let tokenId = event.params.tokenId;
+  const from = event.params.from;
+  const to = event.params.to;
+  const tokenId = event.params.tokenId;
 
-  let isMint = from.equals(ZERO_ADDRESS);
-  let isBurn = to.equals(ZERO_ADDRESS);
+  const isMint = from.equals(ZERO_ADDRESS);
+  const isBurn = to.equals(ZERO_ADDRESS);
 
-  let collection = loadOrCreateCollection(event.address);
+  const collection = loadOrCreateCollection(event.address);
 
   let token = Token.load(tokenId.toString());
   if (token == null) {
@@ -67,8 +67,8 @@ export function handleTransfer(event: TransferEvent): void {
     token.mintedBlock = event.block.number;
     token.mintedTxHash = event.transaction.hash;
 
-    let contract = MyTokenContract.bind(event.address);
-    let tokenURICall = contract.try_tokenURI(tokenId);
+    const contract = MyTokenContract.bind(event.address);
+    const tokenURICall = contract.try_tokenURI(tokenId);
     token.tokenURI = tokenURICall.reverted ? null : tokenURICall.value;
 
     if (isMint) {
@@ -87,12 +87,12 @@ export function handleTransfer(event: TransferEvent): void {
   token.approved = null;
 
   if (!isMint) {
-    let fromOwner = loadOrCreateOwner(from);
+    const fromOwner = loadOrCreateOwner(from);
     fromOwner.balance = fromOwner.balance.minus(ONE);
     fromOwner.save();
   }
 
-  let toOwner = loadOrCreateOwner(to);
+  const toOwner = loadOrCreateOwner(to);
   if (!isBurn) {
     toOwner.balance = toOwner.balance.plus(ONE);
   }
@@ -102,7 +102,7 @@ export function handleTransfer(event: TransferEvent): void {
   token.save();
   collection.save();
 
-  let transfer = new Transfer(eventId(event));
+  const transfer = new Transfer(eventId(event));
   transfer.token = token.id;
   transfer.from = from;
   transfer.to = to;
@@ -113,16 +113,16 @@ export function handleTransfer(event: TransferEvent): void {
 }
 
 export function handleApproval(event: ApprovalEvent): void {
-  let tokenId = event.params.tokenId;
-  let approved = event.params.approved;
+  const tokenId = event.params.tokenId;
+  const approved = event.params.approved;
 
-  let token = Token.load(tokenId.toString());
+  const token = Token.load(tokenId.toString());
   if (token != null) {
     token.approved = approved.equals(ZERO_ADDRESS) ? null : approved;
     token.save();
   }
 
-  let approval = new Approval(eventId(event));
+  const approval = new Approval(eventId(event));
   approval.token = tokenId.toString();
   approval.owner = event.params.owner;
   approval.approved = approved;
@@ -133,7 +133,7 @@ export function handleApproval(event: ApprovalEvent): void {
 }
 
 export function handleApprovalForAll(event: ApprovalForAllEvent): void {
-  let entity = new ApprovalForAll(eventId(event));
+  const entity = new ApprovalForAll(eventId(event));
   entity.owner = event.params.owner;
   entity.operator = event.params.operator;
   entity.approved = event.params.approved;
@@ -146,11 +146,11 @@ export function handleApprovalForAll(event: ApprovalForAllEvent): void {
 export function handleOwnershipTransferred(
   event: OwnershipTransferredEvent,
 ): void {
-  let collection = loadOrCreateCollection(event.address);
+  const collection = loadOrCreateCollection(event.address);
   collection.owner = event.params.newOwner;
   collection.save();
 
-  let entity = new OwnershipTransferred(eventId(event));
+  const entity = new OwnershipTransferred(eventId(event));
   entity.previousOwner = event.params.previousOwner;
   entity.newOwner = event.params.newOwner;
   entity.blockNumber = event.block.number;

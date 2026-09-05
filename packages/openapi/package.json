@@ -1,14 +1,26 @@
 {
-  "name": "openapi",
-  "version": "1.0.0",
+  "name": "@truenft/openapi",
+  "version": "0.1.0",
   "private": true,
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "description": "Single source of truth for the Access Gateway HTTP API (openapi.yaml, OpenAPI 3.1) plus openapi-typescript generated types shared by gateway / web / agent (FR-029).",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "module"
+  "files": [
+    "openapi.yaml",
+    "src"
+  ],
+  "scripts": {
+    "generate": "openapi-typescript openapi.yaml -o src/types.ts",
+    "lint": "redocly lint openapi.yaml",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^2.51.2",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.0"
+  }
 }

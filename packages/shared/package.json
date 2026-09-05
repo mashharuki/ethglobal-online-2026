@@ -1,14 +1,19 @@
 {
-  "name": "shared",
-  "version": "1.0.0",
+  "name": "@truenft/shared",
+  "version": "0.1.0",
   "private": true,
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "description": "Cross-layer domain code for TrueCollective: ErrorCode, EIP-712 types, hashing, manifest schema, KV format. Runs in Workers / Node / browser (no Node-only APIs).",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "module"
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.0"
+  }
 }
