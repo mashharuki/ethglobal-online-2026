@@ -37,13 +37,12 @@ export function registerMcpRoutes(app: Hono<AppEnv>): void {
       initialize = isInitialize(parsedBody);
     }
     const now = services.now();
-    const sessionId = initialize
+    // initialize: mint a token and key the tools on its identity; later requests: the
+    // identity the echoed token authenticates (undefined when absent / forged / expired)
+    const token = initialize
       ? await issueSessionId(services.env, now)
-      : await verifySessionId(
-          services.env,
-          c.req.header(MCP_SESSION_HEADER),
-          now,
-        );
+      : c.req.header(MCP_SESSION_HEADER);
+    const sessionId = await verifySessionId(services.env, token, now);
     const server = createMcpServer({ services, sessionId });
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
@@ -51,9 +50,9 @@ export function registerMcpRoutes(app: Hono<AppEnv>): void {
     });
     await server.connect(transport);
     const response = await transport.handleRequest(c.req.raw, { parsedBody });
-    if (!initialize || sessionId === undefined) return response;
+    if (!initialize || token === undefined) return response;
     const headers = new Headers(response.headers);
-    headers.set("Mcp-Session-Id", sessionId);
+    headers.set("Mcp-Session-Id", token);
     return new Response(response.body, {
       status: response.status,
       headers,

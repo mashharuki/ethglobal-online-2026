@@ -41,6 +41,8 @@ export const PAYER_ACCOUNT = "0.0.4242";
 export type Fake = {
   licenseEpoch: bigint;
   accessEpoch: bigint;
+  /** when set, successive quoteReads calls consume these accessEpoch values (last one sticks) */
+  accessEpochSequence?: bigint[];
   tokenOwner: Address;
   creator: Address;
   verifyOk: boolean;
@@ -237,12 +239,21 @@ export function buildServices(w: World): Services {
       },
     },
     resolveAsset,
-    quoteReads: async () => ({
-      licenseEpoch: fake.licenseEpoch,
-      accessEpoch: fake.accessEpoch,
-      policyHash: asset.policyHash,
-      resourceHash: asset.resourceHash,
-    }),
+    quoteReads: async () => {
+      const seq = fake.accessEpochSequence;
+      if (seq !== undefined && seq.length > 0) {
+        fake.accessEpoch =
+          seq.length > 1
+            ? (seq.shift() ?? fake.accessEpoch)
+            : (seq[0] ?? fake.accessEpoch);
+      }
+      return {
+        licenseEpoch: fake.licenseEpoch,
+        accessEpoch: fake.accessEpoch,
+        policyHash: asset.policyHash,
+        resourceHash: asset.resourceHash,
+      };
+    },
     operator: async (job) => {
       if (fake.operatorConflict) {
         throw new AppError(

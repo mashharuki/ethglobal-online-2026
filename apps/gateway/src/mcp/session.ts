@@ -39,7 +39,11 @@ export async function issueSessionId(env: Env, now: Date): Promise<string> {
   }
 }
 
-/** Header value -> the session id it carries, or undefined when absent, forged or expired. */
+/**
+ * Header value -> the authenticated session identity (`claims.id`), or undefined when
+ * absent, forged or expired. Identity comes from the verified claims, never from the raw
+ * token bytes, so re-encodings of the same token (hex case) are the same session.
+ */
 export async function verifySessionId(
   env: Env,
   value: string | null | undefined,
@@ -60,15 +64,17 @@ export async function verifySessionId(
       value,
       nowSec(now),
     );
-    return claims !== undefined && typeof claims.id === "string"
-      ? value
+    return claims !== undefined &&
+      typeof claims.id === "string" &&
+      claims.id.length > 0
+      ? claims.id
       : undefined;
   } finally {
     wipe(secret);
   }
 }
 
-/** Stored as a fixed-length bytea: keccak256 of the session token. */
+/** Stored as a fixed-length bytea: keccak256 of the authenticated session identity. */
 function sessionKey(sessionId: string): Hex {
   return keccak256(stringToHex(sessionId));
 }

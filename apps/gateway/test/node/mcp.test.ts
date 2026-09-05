@@ -2,8 +2,9 @@ import type { PGlite } from "@electric-sql/pglite";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Hono } from "hono";
-import { type Hex, keccak256 } from "viem";
+import { type Hex, hexToBytes, keccak256 } from "viem";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { signClaims } from "../../src/auth/session";
 import type { Db } from "../../src/db/types";
 import type { Env } from "../../src/env";
 import { handleError } from "../../src/errors";
@@ -17,6 +18,7 @@ import {
   createTestDb,
   MemoryKv,
   makeEnv,
+  RECEIPT_SIGNER_KEY,
   type TestAsset,
 } from "./helpers";
 
@@ -155,9 +157,15 @@ afterEach(async () => {
 describe("MCP server (T096)", () => {
   it("should expose the three tools and mint a server-signed session id on initialize", async () => {
     const { mcp, transport } = await connectWithTransport();
-    const sessionId = transport.sessionId;
-    expect(sessionId).toBeDefined();
-    expect(await verifySessionId(env, sessionId, NOW)).toBe(sessionId);
+    const token = transport.sessionId;
+    expect(token).toMatch(/^0x[0-9a-f]+$/);
+    const identity = await verifySessionId(env, token, NOW);
+    expect(identity).toMatch(/^[0-9a-f-]{36}$/);
+    // the identity is the authenticated claim, not the token bytes: a re-encoded token is
+    // the same session (same budget, same receipt bindings)
+    expect(
+      await verifySessionId(env, token?.toUpperCase().replace("0X", "0x"), NOW),
+    ).toBe(identity);
     const tools = (await mcp.listTools()).tools.map((t) => t.name).sort();
     expect(tools).toEqual(["buy_access", "decrypt_content", "discover_assets"]);
     const discovered = await call(mcp, "discover_assets", {});
@@ -178,6 +186,36 @@ describe("MCP server (T096)", () => {
     ).toMatchObject({ code: "MCP_SESSION_MISMATCH" });
     const { transport } = await connectWithTransport();
     const real = transport.sessionId as string;
+    // one flipped hex digit inside the MAC / payload
+    const tampered = `${real.slice(0, -1)}${real.endsWith("0") ? "1" : "0"}`;
+    expect(
+      await rawToolCall("buy_access", { assetId: asset.assetId }, tampered),
+    ).toMatchObject({ code: "MCP_SESSION_MISMATCH" });
+    // a valid token for another purpose, signed with the same MAC root
+    const wrongPurpose = await signClaims(
+      hexToBytes(RECEIPT_SIGNER_KEY),
+      "owner-session",
+      {
+        id: "not-a-session",
+        expiresAt: Math.floor(NOW.getTime() / 1000) + 3600,
+      },
+    );
+    expect(
+      await rawToolCall("buy_access", { assetId: asset.assetId }, wrongPurpose),
+    ).toMatchObject({ code: "MCP_SESSION_MISMATCH" });
+    // oversized header
+    expect(
+      await rawToolCall(
+        "buy_access",
+        { assetId: asset.assetId },
+        `0x${"ab".repeat(600)}`,
+      ),
+    ).toMatchObject({ code: "MCP_SESSION_MISMATCH" });
+    // exact expiry boundary: expiresAt <= now is expired
+    fake.now = new Date(NOW.getTime() + 24 * 60 * 60 * 1000);
+    expect(await verifySessionId(env, real, fake.now)).toBeUndefined();
+    fake.now = new Date(NOW.getTime() + 24 * 60 * 60 * 1000 - 1000);
+    expect(await verifySessionId(env, real, fake.now)).toBeDefined();
     fake.now = new Date(NOW.getTime() + 25 * 60 * 60 * 1000); // past the 24 h lifetime
     expect(
       await rawToolCall("buy_access", { assetId: asset.assetId }, real),
@@ -273,7 +311,19 @@ describe("spend policy (T092, SC-011 positive control)", () => {
     await mcp.close();
   });
 
-  it("should let exactly one of two concurrent purchases through the cap", async () => {
+  it("should let exactly one of two concurrent purchases through the cap, signing only for it", async () => {
+    // measure how many signatures one purchase costs (probe + transaction)
+    const warmup = await connect();
+    expect(
+      (await call(warmup, "buy_access", { assetId: asset.assetId })).isError,
+    ).toBe(false);
+    const perPurchase = fake.signCalls;
+    expect(perPurchase).toBeGreaterThan(0);
+    await warmup.close();
+    fake.signCalls = 0;
+    fake.settleCalls = 0;
+    fake.operatorJobs = [];
+
     const mcp = await connect();
     fake.spendCap = 500_000_000n; // one purchase
     fake.settleDelayMs = 30;
@@ -285,8 +335,27 @@ describe("spend policy (T092, SC-011 positive control)", () => {
     expect(outcomes).toEqual([false, true]);
     const loser = a.isError ? a : b;
     expect(loser.body).toMatchObject({ code: "SPEND_LIMIT_EXCEEDED" });
+    expect(fake.signCalls).toBe(perPurchase); // the loser never reached the wallet
     expect(fake.settleCalls).toBe(1);
     expect(fake.operatorJobs).toHaveLength(1);
+    await mcp.close();
+  });
+
+  it("should keep the reservation when a payload was built but never bound", async () => {
+    const mcp = await connect();
+    fake.spendCap = 500_000_000n;
+    // the NFT moves between the quote and the settlement re-check: settlePayment rejects the
+    // stale quote before it claims a binding row, after the payload (and its paymentId) exists
+    fake.accessEpochSequence = [1n, 2n];
+    const stale = await call(mcp, "buy_access", { assetId: asset.assetId });
+    expect(stale.isError).toBe(true);
+    expect(stale.body).toMatchObject({ code: "OWNER_EPOCH_MISMATCH" });
+    expect(fake.signCalls).toBeGreaterThan(0);
+    expect(fake.settleCalls).toBe(0);
+    fake.accessEpochSequence = undefined;
+    // budget stays reserved (fail closed): the session cannot buy again
+    const again = await call(mcp, "buy_access", { assetId: asset.assetId });
+    expect(again.body).toMatchObject({ code: "SPEND_LIMIT_EXCEEDED" });
     await mcp.close();
   });
 

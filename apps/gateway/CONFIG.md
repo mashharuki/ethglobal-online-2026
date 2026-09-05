@@ -107,9 +107,10 @@ Trust model (R-9 / R-9a, disclosed in the README):
 - **Spend policy.** `MCP_SESSION_SPEND_CAP_TINYBAR` is a hard cap per session enforced through
   the `mcp_session_spend` ledger: the price is RESERVED with one conditional UPDATE before any
   signature is requested (`SPEND_LIMIT_EXCEEDED` when it would exceed the cap; two concurrent
-  purchases cannot both pass), and given back only when no value can have moved (nothing
-  submitted, or `payment_binding` says the facilitator rejected it). An unknown outcome keeps
-  the reservation. An unset / malformed cap allows nothing.
+  purchases cannot both pass), and given back only when no value can have moved (no payment
+  payload was built, or `payment_binding` says the facilitator rejected it). An unknown
+  outcome - and a payload whose binding is absent - keeps the reservation. An unset /
+  malformed cap allows nothing.
   The cap lives in the gateway because the x402 payment is a raw-hash signature over a HAPI
   transaction that Privy cannot interpret structurally (research.md R-9 item 3): a Privy
   policy can restrict the wallet to `eth_signTypedData_v4` + `secp256k1_sign` (block

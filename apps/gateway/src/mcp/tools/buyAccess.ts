@@ -119,14 +119,15 @@ export async function buyAccess(
       expiresAt: settled.expiresAt,
     };
   } catch (error) {
-    // the reservation is only given back when no value can have moved: nothing was submitted
-    // (no paymentId / no binding row) or the binding records a definitive rejection. An
-    // unknown outcome (pending) or a settled receipt whose binding failed keeps the budget.
+    // the reservation is only given back when no value can have moved: no payment payload
+    // was ever built, or the binding records a definitive facilitator rejection. Anything
+    // else - unknown outcome (pending), a settled receipt whose binding failed, or a payload
+    // whose binding is absent - keeps the budget (fail closed).
     const status =
       paymentId === undefined
-        ? "absent"
+        ? "unsubmitted"
         : await readBindingStatus(services.db, paymentId);
-    if (status === "absent" || status === "failed") {
+    if (status === "unsubmitted" || status === "failed") {
       await releaseSpend(services.db, sessionId, priceTinybar);
     }
     throw error;
