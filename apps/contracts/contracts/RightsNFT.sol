@@ -17,8 +17,25 @@ contract RightsNFT is ERC721, IRightsNFT {
     mapping(uint256 tokenId => address) private _creator;
     mapping(uint256 tokenId => bytes32) private _policyHash;
     mapping(uint256 tokenId => string) private _manifestURI;
+    mapping(uint256 tokenId => bytes32) private _assetId;
+    mapping(uint256 tokenId => bytes32) private _contentHash;
 
     constructor() ERC721("TrueCollective Rights", "TCR") {}
+
+    function assetId(uint256 tokenId) external view returns (bytes32) {
+        _requireExists(tokenId);
+        return _assetId[tokenId];
+    }
+
+    function contentHash(uint256 tokenId) external view returns (bytes32) {
+        _requireExists(tokenId);
+        return _contentHash[tokenId];
+    }
+
+    function resourceHash(uint256 tokenId) external view returns (bytes32) {
+        _requireExists(tokenId);
+        return keccak256(abi.encode(address(this), tokenId, _assetId[tokenId], _contentHash[tokenId]));
+    }
 
     // ---------------------------------------------------------------- views
 
@@ -49,16 +66,22 @@ contract RightsNFT is ERC721, IRightsNFT {
 
     // --------------------------------------------------------------- writes
 
-    function mint(address to, address creator, bytes32 policyHash_, string calldata manifestURI_)
-        external
-        returns (uint256 tokenId)
-    {
+    function mint(
+        address to,
+        address creator,
+        bytes32 policyHash_,
+        bytes32 assetId_,
+        bytes32 contentHash_,
+        string calldata manifestURI_
+    ) external returns (uint256 tokenId) {
         // The creator must mint themselves (possibly to a different first owner) so nobody can
         // attribute a token - and its future revenue split - to a creator who never consented.
         if (creator == address(0) || creator != msg.sender) revert NotCreator();
         tokenId = _nextTokenId++;
         _creator[tokenId] = creator;
         _policyHash[tokenId] = policyHash_;
+        _assetId[tokenId] = assetId_;
+        _contentHash[tokenId] = contentHash_;
         _manifestURI[tokenId] = manifestURI_;
         _accessEpoch[tokenId] = 1;
         _safeMint(to, tokenId);
