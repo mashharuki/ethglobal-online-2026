@@ -1,5 +1,5 @@
 {
-  "id": "c6581c0d-df6c-48af-aadc-bfa89f343924",
+  "id": "805419f6-9930-4a65-aaea-4fef7489fce2",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -198,6 +198,10 @@
         "payment_binding_status_check": {
           "name": "payment_binding_status_check",
           "value": "\"payment_binding\".\"status\" IN ('pending', 'settled', 'failed')"
+        },
+        "payment_binding_amount_check": {
+          "name": "payment_binding_amount_check",
+          "value": "\"payment_binding\".\"amount\" >= 0 AND \"payment_binding\".\"amount\" = trunc(\"payment_binding\".\"amount\")"
         }
       },
       "isRLSEnabled": false
@@ -265,6 +269,10 @@
         "receipt_consumption_status_check": {
           "name": "receipt_consumption_status_check",
           "value": "\"receipt_consumption\".\"status\" IN ('locked', 'settled', 'failed')"
+        },
+        "receipt_consumption_use_index_check": {
+          "name": "receipt_consumption_use_index_check",
+          "value": "\"receipt_consumption\".\"use_index\" >= 0"
         }
       },
       "isRLSEnabled": false
@@ -363,6 +371,10 @@
         "wallet_blinded_shares_path_check": {
           "name": "wallet_blinded_shares_path_check",
           "value": "\"wallet_blinded_shares\".\"path\" IN ('owner', 'licensee')"
+        },
+        "wallet_blinded_shares_epoch_check": {
+          "name": "wallet_blinded_shares_epoch_check",
+          "value": "\"wallet_blinded_shares\".\"access_epoch_at_grant\" IS NULL OR (\"wallet_blinded_shares\".\"access_epoch_at_grant\" >= 0 AND \"wallet_blinded_shares\".\"access_epoch_at_grant\" = trunc(\"wallet_blinded_shares\".\"access_epoch_at_grant\"))"
         }
       },
       "isRLSEnabled": false

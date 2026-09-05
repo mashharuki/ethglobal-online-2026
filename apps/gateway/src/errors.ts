@@ -76,10 +76,18 @@ export class AppError extends Error {
   }
 }
 
+/** Long hex (keys, signatures, calldata) and URL userinfo are masked before logging. */
+const LOG_SECRET_RE = /0x[0-9a-fA-F]{64,}|:\/\/[^\s/@]+@/g;
+const LOG_MESSAGE_MAX = 200;
+
+export function redactForLog(message: string): string {
+  return message.replace(LOG_SECRET_RE, "[redacted]").slice(0, LOG_MESSAGE_MAX);
+}
+
 /**
  * Hono `onError`. `AppError` -> its status + openapi Error body. Anything else is an
- * operational failure: log name/message (never secrets) and answer 500 with a generic body
- * so stack traces and internal messages never reach clients (security.md).
+ * operational failure: log name + a redacted, truncated message (never secrets) and answer
+ * 500 with a generic body so stack traces and internal messages never reach clients.
  */
 export function handleError(err: Error, c: Context): Response {
   if (err instanceof AppError) {
@@ -91,7 +99,7 @@ export function handleError(err: Error, c: Context): Response {
   console.error("unhandled gateway error", {
     path: c.req.path,
     name: err.name,
-    message: err.message,
+    message: redactForLog(err.message),
   });
   return c.json({ error: "internal_error" }, 500);
 }

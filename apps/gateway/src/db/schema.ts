@@ -73,6 +73,11 @@ export const walletBlindedShares = pgTable(
       "wallet_blinded_shares_path_check",
       sql`${t.path} IN ('owner', 'licensee')`,
     ),
+    // numeric is unconstrained in Postgres; epochs are non-negative integers
+    check(
+      "wallet_blinded_shares_epoch_check",
+      sql`${t.accessEpochAtGrant} IS NULL OR (${t.accessEpochAtGrant} >= 0 AND ${t.accessEpochAtGrant} = trunc(${t.accessEpochAtGrant}))`,
+    ),
   ],
 );
 
@@ -101,6 +106,7 @@ export const receiptConsumption = pgTable(
       "receipt_consumption_status_check",
       sql`${t.status} IN ('locked', 'settled', 'failed')`,
     ),
+    check("receipt_consumption_use_index_check", sql`${t.useIndex} >= 0`),
   ],
 );
 
@@ -122,6 +128,11 @@ export const paymentBinding = pgTable(
     check(
       "payment_binding_status_check",
       sql`${t.status} IN ('pending', 'settled', 'failed')`,
+    ),
+    // tinybar amount: non-negative integer (numeric would otherwise accept 1.5 / -1)
+    check(
+      "payment_binding_amount_check",
+      sql`${t.amount} >= 0 AND ${t.amount} = trunc(${t.amount})`,
     ),
   ],
 );

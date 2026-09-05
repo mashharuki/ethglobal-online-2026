@@ -16,7 +16,10 @@ import {
 
 /**
  * Schema / migration tests (T074 / T075) against PGlite: real Postgres semantics for the
- * constraints the gateway's exactly-once guarantees rely on (constitution V).
+ * constraints the gateway's exactly-once guarantees rely on (constitution V). PGlite is
+ * single-connection, so lock CONTENTION (two transactions racing on FOR UPDATE) is NOT
+ * covered here - only that the FOR UPDATE query shape is valid; the DO-level 20-parallel
+ * test (T065) covers serialization against a real Postgres.
  */
 const migrationsFolder = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -25,6 +28,15 @@ const migrationsFolder = resolve(
 
 const H = (byte: string): Hex => `0x${byte.repeat(32)}`;
 const W = (byte: string): Hex => `0x${byte.repeat(20)}`;
+
+async function failure(run: () => Promise<unknown>): Promise<unknown> {
+  try {
+    await run();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
+}
 
 let client: PGlite;
 let db: Db;
@@ -58,51 +70,46 @@ describe("migrations", () => {
 });
 
 describe("receipt_consumption", () => {
+  const insert = (receiptHash: Hex, useIndex: number, wallet: Hex) =>
+    db.insert(schema.receiptConsumption).values({
+      receiptHash,
+      useIndex,
+      wallet,
+      status: "locked",
+    });
+
   it("should reject a second row for the same (receipt_hash, use_index) with a UNIQUE violation", async () => {
-    await db.insert(schema.receiptConsumption).values({
-      receiptHash: H("a1"),
-      useIndex: 0,
-      wallet: W("01"),
-      status: "locked",
-    });
-    let caught: unknown;
-    try {
-      await db.insert(schema.receiptConsumption).values({
-        receiptHash: H("a1"),
-        useIndex: 0,
-        wallet: W("02"),
-        status: "locked",
-      });
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeDefined();
-    expect(isUniqueViolation(caught)).toBe(true);
-    // a different use_index is fine
-    await db.insert(schema.receiptConsumption).values({
-      receiptHash: H("a1"),
-      useIndex: 1,
-      wallet: W("01"),
-      status: "locked",
-    });
+    await insert(H("a1"), 0, W("01"));
+    const dup = await failure(() => insert(H("a1"), 0, W("02")));
+    expect(dup).toBeDefined();
+    expect(isUniqueViolation(dup)).toBe(true);
   });
 
-  it("should reject a status outside locked/settled/failed", async () => {
-    let caught: unknown;
-    try {
-      await db.insert(schema.receiptConsumption).values({
+  it("should accept the same use_index for a different receipt and the next use_index for the same receipt", async () => {
+    await insert(H("a1"), 1, W("01"));
+    await insert(H("a9"), 0, W("01"));
+    const rows = await db
+      .select()
+      .from(schema.receiptConsumption)
+      .where(eq(schema.receiptConsumption.useIndex, 0));
+    expect(rows.map((r) => r.receiptHash).sort()).toEqual([H("a1"), H("a9")]);
+  });
+
+  it("should reject a status outside locked/settled/failed and a negative use_index", async () => {
+    const badStatus = await failure(() =>
+      db.insert(schema.receiptConsumption).values({
         receiptHash: H("a2"),
         useIndex: 0,
         wallet: W("01"),
         status: "done" as "locked",
-      });
-    } catch (error) {
-      caught = error;
-    }
-    expect(pgErrorCode(caught)).toBe(PG_CHECK_VIOLATION);
+      }),
+    );
+    expect(pgErrorCode(badStatus)).toBe(PG_CHECK_VIOLATION);
+    const negative = await failure(() => insert(H("a2"), -1, W("01")));
+    expect(pgErrorCode(negative)).toBe(PG_CHECK_VIOLATION);
   });
 
-  it("should round-trip bytea columns as 0x hex and lock rows FOR UPDATE inside a transaction", async () => {
+  it("should round-trip bytea columns as 0x hex and accept FOR UPDATE inside a transaction (shape only)", async () => {
     await db.transaction(async (tx) => {
       const rows = await tx
         .select()
@@ -128,66 +135,102 @@ describe("payment_binding (R-10)", () => {
       .returning();
     expect(row?.status).toBe("pending");
     expect(row?.amount).toBe(500_000_000n);
-    let caught: unknown;
-    try {
-      await db.insert(schema.paymentBinding).values({
+    const dup = await failure(() =>
+      db.insert(schema.paymentBinding).values({
         paymentId: H("b1"),
         purchaseRequestHash: H("b3"), // different payload, same paymentId
         amount: 1n,
-      });
-    } catch (error) {
-      caught = error;
-    }
-    expect(isUniqueViolation(caught)).toBe(true);
+      }),
+    );
+    expect(isUniqueViolation(dup)).toBe(true);
+    // same payload hash under a different paymentId is a different purchase: allowed
+    await db.insert(schema.paymentBinding).values({
+      paymentId: H("b4"),
+      purchaseRequestHash: H("b2"),
+      amount: 500_000_000n,
+    });
+  });
+
+  it("should reject fractional or negative amounts at the database (numeric CHECK)", async () => {
+    const fractional = await failure(() =>
+      client.query(
+        "insert into payment_binding (payment_id, purchase_request_hash, amount) values ($1, $2, 1.5)",
+        [
+          Buffer.from("c1".repeat(32), "hex"),
+          Buffer.from("c2".repeat(32), "hex"),
+        ],
+      ),
+    );
+    expect(pgErrorCode(fractional)).toBe(PG_CHECK_VIOLATION);
+    const negative = await failure(() =>
+      db.insert(schema.paymentBinding).values({
+        paymentId: H("c3"),
+        purchaseRequestHash: H("c2"),
+        amount: -1n,
+      }),
+    );
+    expect(pgErrorCode(negative)).toBe(PG_CHECK_VIOLATION);
   });
 });
 
 describe("wallet_blinded_shares (R-1a)", () => {
-  it("should key rows by (asset_id, wallet, path) and constrain path", async () => {
+  it("should key rows by (asset_id, wallet, path) and constrain path and epoch", async () => {
     await db.insert(schema.walletBlindedShares).values({
-      assetId: H("c1"),
+      assetId: H("d1"),
       wallet: W("03"),
       path: "owner",
-      blindedU: H("c2"),
+      blindedU: H("d2"),
       accessEpochAtGrant: 2n,
     });
+    // same asset + wallet, other path; and same asset + path, other wallet: both allowed
     await db.insert(schema.walletBlindedShares).values({
-      assetId: H("c1"),
+      assetId: H("d1"),
       wallet: W("03"),
       path: "licensee",
-      blindedU: H("c3"),
-      receiptHash: H("c4"),
+      blindedU: H("d3"),
+      receiptHash: H("d4"),
     });
-    let dup: unknown;
-    try {
-      await db.insert(schema.walletBlindedShares).values({
-        assetId: H("c1"),
+    await db.insert(schema.walletBlindedShares).values({
+      assetId: H("d1"),
+      wallet: W("04"),
+      path: "owner",
+      blindedU: H("d5"),
+      accessEpochAtGrant: 3n,
+    });
+    const dup = await failure(() =>
+      db.insert(schema.walletBlindedShares).values({
+        assetId: H("d1"),
         wallet: W("03"),
         path: "owner",
-        blindedU: H("c5"),
-      });
-    } catch (error) {
-      dup = error;
-    }
+        blindedU: H("d6"),
+      }),
+    );
     expect(isUniqueViolation(dup)).toBe(true);
-    let badPath: unknown;
-    try {
-      await db.insert(schema.walletBlindedShares).values({
-        assetId: H("c1"),
-        wallet: W("04"),
+    const badPath = await failure(() =>
+      db.insert(schema.walletBlindedShares).values({
+        assetId: H("d1"),
+        wallet: W("05"),
         path: "admin" as "owner",
-        blindedU: H("c5"),
-      });
-    } catch (error) {
-      badPath = error;
-    }
+        blindedU: H("d6"),
+      }),
+    );
     expect(pgErrorCode(badPath)).toBe(PG_CHECK_VIOLATION);
+    const negativeEpoch = await failure(() =>
+      db.insert(schema.walletBlindedShares).values({
+        assetId: H("d1"),
+        wallet: W("06"),
+        path: "owner",
+        blindedU: H("d6"),
+        accessEpochAtGrant: -1n,
+      }),
+    );
+    expect(pgErrorCode(negativeEpoch)).toBe(PG_CHECK_VIOLATION);
   });
 });
 
 describe("auth_nonce (FR-024)", () => {
   it("should let a nonce be consumed exactly once via a conditional UPDATE", async () => {
-    const nonce = H("d1");
+    const nonce = H("e1");
     await db.insert(schema.authNonce).values({
       nonce,
       wallet: W("05"),
@@ -212,20 +255,21 @@ describe("auth_nonce (FR-024)", () => {
 });
 
 describe("mcp_session_binding (R-9a)", () => {
-  it("should bind a receipt to exactly one MCP session", async () => {
+  it("should bind a receipt to exactly one MCP session while one session may hold many receipts", async () => {
     await db.insert(schema.mcpSessionBinding).values({
-      receiptHash: H("e1"),
-      mcpSessionId: H("e2"),
+      receiptHash: H("f1"),
+      mcpSessionId: H("f2"),
     });
-    let caught: unknown;
-    try {
-      await db.insert(schema.mcpSessionBinding).values({
-        receiptHash: H("e1"),
-        mcpSessionId: H("e3"),
-      });
-    } catch (error) {
-      caught = error;
-    }
-    expect(isUniqueViolation(caught)).toBe(true);
+    await db.insert(schema.mcpSessionBinding).values({
+      receiptHash: H("f3"),
+      mcpSessionId: H("f2"),
+    });
+    const dup = await failure(() =>
+      db.insert(schema.mcpSessionBinding).values({
+        receiptHash: H("f1"),
+        mcpSessionId: H("f4"),
+      }),
+    );
+    expect(isUniqueViolation(dup)).toBe(true);
   });
 });

@@ -6,7 +6,8 @@ import type { Db } from "../db/types";
 /**
  * audit_log writer (tasks.md T079, FR-023). Every allow / deny decision on a key operation
  * is recorded with the on-chain reference when one exists. Signature values are never
- * stored (R-1a): any subject key that looks like a signature is dropped before insert.
+ * stored (R-1a): keys that mention a signature AND values shaped like a secp256k1
+ * signature are dropped before insert, recursively.
  */
 export type AuditOutcome = "allow" | `deny:${ErrorCode}`;
 
@@ -22,22 +23,32 @@ export function denyOutcome(code: ErrorCode): AuditOutcome {
   return `deny:${code}`;
 }
 
-const SIGNATURE_KEY_RE = /(sig|signature)$/i;
+/** authSig, keyGateSig, serverSignature, signatures, signatureHex, sig, ... */
+const SIGNATURE_KEY_RE = /sig|signature/i;
+/** 65-byte (r,s,v) signature as 0x hex - dropped wherever it appears, whatever the key. */
+const SIGNATURE_VALUE_RE = /^0x[0-9a-fA-F]{130}$/;
 
-/** Recursively removes keys ending in `sig` / `signature` (authSig, keyGateSig, serverSignature, ...). */
+function isSignatureValue(value: unknown): boolean {
+  return typeof value === "string" && SIGNATURE_VALUE_RE.test(value);
+}
+
+/** Removes signature keys / values recursively; bigints become decimal strings (jsonb). */
 export function sanitizeAuditSubject(
   subject: Record<string, unknown>,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(subject)) {
     if (SIGNATURE_KEY_RE.test(key)) continue;
+    if (isSignatureValue(value)) continue;
     out[key] = sanitizeValue(value);
   }
   return out;
 }
 
 function sanitizeValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sanitizeValue);
+  if (Array.isArray(value)) {
+    return value.filter((v) => !isSignatureValue(v)).map(sanitizeValue);
+  }
   if (typeof value === "bigint") return value.toString();
   if (typeof value === "object" && value !== null) {
     return sanitizeAuditSubject(value as Record<string, unknown>);

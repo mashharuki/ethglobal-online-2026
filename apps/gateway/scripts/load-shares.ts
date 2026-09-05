@@ -8,7 +8,13 @@
 // Ordering: `wrangler secret put` needs the Worker to exist, so run this after the first
 // `wrangler deploy` (T097) and re-deploy afterwards. Share values are never printed.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { encryptShareG, shareGKvKey } from "@truenft/shared";
@@ -37,6 +43,23 @@ function parseArgs(argv: string[]): {
   }
   if (Number.isNaN(chainId)) throw new Error("--chain-id must be a number");
   return { chainId, dryRun, local };
+}
+
+/** Owner-only file: refuses symlinks and forces 0600 even when the file already exists. */
+function writeOwnerOnlyFile(path: string, content: string): void {
+  let existing: ReturnType<typeof lstatSync> | undefined;
+  try {
+    existing = lstatSync(path);
+  } catch {
+    existing = undefined;
+  }
+  if (existing?.isSymbolicLink()) {
+    throw new Error(
+      `${path} is a symlink; refusing to write secrets through it`,
+    );
+  }
+  writeFileSync(path, content, { mode: 0o600, flag: "w" });
+  chmodSync(path, 0o600);
 }
 
 function wrangler(args: string[], input?: string): void {
@@ -92,7 +115,7 @@ async function main(): Promise<void> {
   if (dryRun) {
     const file = resolve(outDir, "load-shares.dry-run.json");
     // blobs are KEK ciphertext; share_U is deliberately NOT included
-    writeFileSync(file, `${JSON.stringify(plan, null, 2)}\n`, { mode: 0o600 });
+    writeOwnerOnlyFile(file, `${JSON.stringify(plan, null, 2)}\n`);
     console.log(
       `dry run: wrote ${file} (${plan.length} assets, no wrangler calls)`,
     );
@@ -123,7 +146,7 @@ async function main(): Promise<void> {
   }
   if (local) {
     const file = resolve(outDir, "share-u.dev.vars");
-    writeFileSync(file, `${devVarsLines.join("\n")}\n`, { mode: 0o600 });
+    writeOwnerOnlyFile(file, `${devVarsLines.join("\n")}\n`);
     console.log(
       `local mode: append ${file} to apps/gateway/.dev.vars (0600, never commit)`,
     );

@@ -23,7 +23,7 @@ import type { Env } from "../env";
  * authorization authority (every request re-reads chain state, constitution II); the wallet
  * client wraps HEDERA_OPERATOR_KEY and is only used through OperatorTxQueue (R-3a).
  */
-export type ChainReader = PublicClient<HttpTransport, Chain>;
+type ChainReader = PublicClient<HttpTransport, Chain>;
 export type OperatorWallet = WalletClient<HttpTransport, Chain, Account>;
 
 export type ChainContext = {

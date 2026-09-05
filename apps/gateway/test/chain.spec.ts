@@ -20,6 +20,25 @@ import { AppError } from "../src/errors";
 
 const abi: Abi = rightsRegistryAbi;
 
+/** Custom errors that MUST map to a public ErrorCode (contracts/error-codes.md). */
+const REQUIRED_SOLIDITY_ERRORS = [
+  "UnderPayment",
+  "ReceiptAlreadyIssued",
+  "ReceiptAlreadyConsumed",
+  "ReceiptExpired",
+  "UseLimitExceeded",
+  "LicenseEpochMismatch",
+  "LicenseInvalidatedOnTransfer",
+  "ResourceHashMismatch",
+  "PolicyHashMismatch",
+  "PolicyContentMismatch",
+  "ExpiryMismatch",
+  "ContractWalletUnsupported",
+  "NotAuthorized",
+  "CommittedParamsMismatch",
+  "OwnerEpochMismatch",
+] as const;
+
 /** Builds the error shape viem raises when simulateContract hits a custom error. */
 function revertWith(errorName: string): BaseError {
   const data = encodeErrorResult({ abi, errorName });
@@ -32,13 +51,23 @@ function revertWith(errorName: string): BaseError {
 }
 
 describe("revertToAppError (T073 revert -> ErrorCode)", () => {
-  it("should map every Solidity custom error in SOLIDITY_ERROR_TO_CODE to its ErrorCode", () => {
-    for (const [errorName, code] of Object.entries(SOLIDITY_ERROR_TO_CODE)) {
+  it("should cover every required Solidity custom error (independent of the mapping under test)", () => {
+    expect(Object.keys(SOLIDITY_ERROR_TO_CODE).sort()).toEqual(
+      [...REQUIRED_SOLIDITY_ERRORS].sort(),
+    );
+    expect(REQUIRED_SOLIDITY_ERRORS).toHaveLength(15);
+  });
+
+  it("should map every required custom error to its ErrorCode", () => {
+    for (const errorName of REQUIRED_SOLIDITY_ERRORS) {
       const mapped = revertToAppError(revertWith(errorName));
       expect(mapped, errorName).toBeInstanceOf(AppError);
-      expect(mapped?.code, errorName).toBe(code);
+      expect(mapped?.code, errorName).toBe(SOLIDITY_ERROR_TO_CODE[errorName]);
       expect(mapped?.detail).toEqual({ solidityError: errorName });
     }
+    expect(revertToAppError(revertWith("ReceiptExpired"))?.code).toBe(
+      "RECEIPT_EXPIRED",
+    );
   });
 
   it("should return undefined for custom errors without a public code (BpsInvalid, NotIssued)", () => {
@@ -88,14 +117,21 @@ describe("chain clients (T071)", () => {
 });
 
 const liveCtx = createChainContext(env);
-if (!isChainConfigured(liveCtx)) {
+const liveConfigured = isChainConfigured(liveCtx);
+const liveRequired = env.REQUIRE_LIVE_CHAIN === "1";
+if (!liveConfigured && !liveRequired) {
   console.warn(
-    "[gateway] live chain reads SKIPPED: RIGHTS_NFT_ADDRESS / RIGHTS_REGISTRY_ADDRESS not configured (BLOCKED, not verified)",
+    "[gateway] live chain reads SKIPPED: RIGHTS_NFT_ADDRESS / RIGHTS_REGISTRY_ADDRESS not configured (BLOCKED, not verified). Set REQUIRE_LIVE_CHAIN=1 to turn this into a failure.",
   );
 }
 
-describe.skipIf(!isChainConfigured(liveCtx))("live reads (T072)", () => {
+describe.skipIf(!liveConfigured && !liveRequired)("live reads (T072)", () => {
   it("should read licenseEpoch(1) from the configured RightsRegistry", async () => {
+    if (!liveConfigured) {
+      throw new Error(
+        "REQUIRE_LIVE_CHAIN=1 but RIGHTS_NFT_ADDRESS / RIGHTS_REGISTRY_ADDRESS are not configured",
+      );
+    }
     const epoch = await readLicenseEpoch(liveCtx, 1n);
     expect(typeof epoch).toBe("bigint");
   });

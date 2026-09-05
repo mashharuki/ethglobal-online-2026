@@ -9,7 +9,7 @@ import type * as schema from "./schema";
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
 /** Postgres SQLSTATE codes the gateway branches on. */
-export const PG_UNIQUE_VIOLATION = "23505";
+const PG_UNIQUE_VIOLATION = "23505";
 export const PG_CHECK_VIOLATION = "23514";
 
 export function pgErrorCode(error: unknown): string | undefined {

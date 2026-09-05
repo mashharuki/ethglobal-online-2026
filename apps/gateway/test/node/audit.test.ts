@@ -18,6 +18,8 @@ const migrationsFolder = resolve(
   "../../src/db/migrations",
 );
 
+const SIG = `0x${"ab".repeat(65)}`;
+
 let client: PGlite;
 let db: Db;
 
@@ -33,21 +35,35 @@ afterAll(async () => {
 });
 
 describe("audit_log writer (T079, FR-023, R-1a)", () => {
-  it("should strip signature values (authSig / keyGateSig / serverSignature) before storing", () => {
+  it("should strip signature keys (authSig / keyGateSig / serverSignature / signatures / signatureHex)", () => {
     expect(
       sanitizeAuditSubject({
         assetId: "0x01",
-        authSig: "0xdead",
-        keyGateSig: "0xbeef",
+        authSig: SIG,
+        keyGateSig: SIG,
+        signatures: [SIG, SIG],
+        signatureHex: SIG,
         nested: {
-          serverSignature: "0x00",
+          serverSignature: SIG,
           tokenId: 7n,
-          list: [{ sig: "x", ok: 1 }],
+          list: [{ sig: SIG, ok: 1 }],
         },
       }),
     ).toEqual({
       assetId: "0x01",
       nested: { tokenId: "7", list: [{ ok: 1 }] },
+    });
+  });
+
+  it("should strip 65-byte signature values under any key (payload.proof, arrays)", () => {
+    expect(
+      sanitizeAuditSubject({
+        payload: { proof: SIG, receiptHash: `0x${"aa".repeat(32)}` },
+        values: [SIG, "keep", 1],
+      }),
+    ).toEqual({
+      payload: { receiptHash: `0x${"aa".repeat(32)}` },
+      values: ["keep", 1],
     });
   });
 
@@ -58,7 +74,8 @@ describe("audit_log writer (T079, FR-023, R-1a)", () => {
       subject: {
         receiptHash: `0x${"aa".repeat(32)}`,
         useIndex: 0,
-        authSig: "0x77",
+        authSig: SIG,
+        payload: { proof: SIG },
       },
       outcome: "allow",
       onchainRef: `0x${"bb".repeat(32)}`,
@@ -74,11 +91,12 @@ describe("audit_log writer (T079, FR-023, R-1a)", () => {
     expect(row?.subject).toEqual({
       receiptHash: `0x${"aa".repeat(32)}`,
       useIndex: 0,
+      payload: {},
     });
     const serialized = JSON.stringify(row, (_, v) =>
       typeof v === "bigint" ? v.toString() : v,
     );
-    expect(serialized).not.toContain("0x77");
+    expect(serialized).not.toContain("ab".repeat(65));
   });
 
   it("should record deny entries as deny:<ErrorCode>", async () => {

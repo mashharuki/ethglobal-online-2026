@@ -2,7 +2,6 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "tags": ["-lintignore"],
   "ignore": ["packages/openapi/src/types.ts"],
-  "ignoreExportsUsedInFile": true,
   "workspaces": {
     "apps/cdk": {
       "entry": ["bin/*.ts", "test/**/*.test.ts"],

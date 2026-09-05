@@ -1,8 +1,13 @@
 import { ERROR_HTTP_STATUS, ErrorCode } from "@truenft/shared";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { describe, expect, it } from "vitest";
-import { AppError, ERROR_MESSAGE, handleError } from "../src/errors";
+import { describe, expect, it, vi } from "vitest";
+import {
+  AppError,
+  ERROR_MESSAGE,
+  handleError,
+  redactForLog,
+} from "../src/errors";
 
 function appThrowing(error: Error): Hono {
   const app = new Hono();
@@ -49,6 +54,28 @@ describe("AppError / handleError (T070)", () => {
     expect(text).not.toContain("hunter2");
     expect(text).not.toContain("db.internal");
     expect(JSON.parse(text)).toEqual({ error: "internal_error" });
+  });
+
+  it("should redact long hex (keys, signatures, calldata) and URL credentials from the server log", async () => {
+    const logged: unknown[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...args) => {
+      logged.push(...args);
+    });
+    try {
+      const key = `0x${"5a".repeat(32)}`;
+      await appThrowing(
+        new Error(
+          `signer ${key} failed against https://user:hunter2@relay.example/api`,
+        ),
+      ).request("/");
+    } finally {
+      spy.mockRestore();
+    }
+    const serialized = JSON.stringify(logged);
+    expect(serialized).not.toContain("5a".repeat(32));
+    expect(serialized).not.toContain("hunter2");
+    expect(serialized).toContain("[redacted]");
+    expect(redactForLog("x".repeat(500))).toHaveLength(200);
   });
 
   it("should pass Hono HTTPException responses through unchanged", async () => {

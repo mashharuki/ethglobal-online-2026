@@ -21,6 +21,7 @@
       "!**/artifacts",
       "!apps/contracts/types",
       "!apps/contracts/out",
+      "!apps/gateway/out",
       "!**/public/*.svg",
       "!**/cache",
       "!**/generated",

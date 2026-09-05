@@ -11,21 +11,28 @@ import { rightsRegistryAbi } from "./abi";
 import type { ChainContext, OperatorWallet } from "./clients";
 
 /**
- * Transaction submission for RightsRegistry (tasks.md T073): simulate -> write -> wait,
- * with revert reasons mapped to the public ErrorCode. Nonce assignment is left to the
- * caller (OperatorTxQueue serializes it, R-3a); pass `nonce` to pin it.
+ * Transaction submission for RightsRegistry (tasks.md T073). Submission (simulate + send,
+ * returns the tx hash) is separated from confirmation (`waitForTx`) so OperatorTxQueue can
+ * persist the hash before waiting and never double-submits after a crash (R-3a). The
+ * `send*` helpers compose both for callers that do not need that split. Nonce assignment
+ * is left to the caller; pass `nonce` to pin it. `@lintignore` marks exports whose
+ * consumers land with OperatorTxQueue / the x402 facilitator (tasks.md T083 / T088).
  */
+/** @lintignore T083/T088 */
 export type ReceiptParams = ContractFunctionArgs<
   typeof rightsRegistryAbi,
   "payable",
   "settleAndIssue"
 >[0];
 
+/** @lintignore T083/T088 */
 export type WriteContext = ChainContext & { wallet: OperatorWallet };
 
-export type TxResult = { txHash: Hex; receipt: TransactionReceipt };
+type TxResult = { txHash: Hex; receipt: TransactionReceipt };
 
-/** @lintignore consumed by keygate/release + ReceiptLock (tasks.md T081/T083, next PR) */
+type WriteOptions = { nonce?: number };
+
+/** @lintignore T083/T088 */
 export class TxRevertedError extends Error {
   override readonly name = "TxRevertedError";
   constructor(
@@ -54,8 +61,18 @@ export function revertToAppError(error: unknown): AppError | undefined {
   return new AppError(code, undefined, { solidityError: errorName });
 }
 
-async function waitFor(
-  ctx: WriteContext,
+function rethrow(error: unknown): never {
+  const mapped = revertToAppError(error);
+  if (mapped !== undefined) throw mapped;
+  throw error;
+}
+
+/**
+ * Waits for one confirmation of an already-submitted tx. Throws TxRevertedError (with the
+ * hash) if it mined with status 0. @lintignore T083/T088
+ */
+export async function waitForTx(
+  ctx: ChainContext,
   txHash: Hex,
   functionName: string,
 ): Promise<TxResult> {
@@ -69,21 +86,13 @@ async function waitFor(
   return { txHash, receipt };
 }
 
-function rethrow(error: unknown): never {
-  const mapped = revertToAppError(error);
-  if (mapped !== undefined) throw mapped;
-  throw error;
-}
-
-export type WriteOptions = { nonce?: number };
-
-/** `consume(receiptHash, useIndex)` - operator only (R-3a). @lintignore consumed by keygate/release + ReceiptLock (tasks.md T081/T083, next PR) */
-export async function sendConsume(
+/** `consume(receiptHash, useIndex)` - operator only (R-3a). Returns the tx hash. @lintignore T083/T088 */
+export async function submitConsume(
   ctx: WriteContext,
   receiptHash: Hex,
   useIndex: number,
   options: WriteOptions = {},
-): Promise<TxResult> {
+): Promise<Hex> {
   try {
     const { request } = await ctx.publicClient.simulateContract({
       account: ctx.wallet.account,
@@ -92,23 +101,36 @@ export async function sendConsume(
       functionName: "consume",
       args: [receiptHash, useIndex],
     });
-    const txHash = await ctx.wallet.writeContract({
+    return await ctx.wallet.writeContract({
       ...request,
       nonce: options.nonce,
     });
-    return await waitFor(ctx, txHash, "consume");
   } catch (error) {
     rethrow(error);
   }
 }
 
-/** `settleAndIssue(p)` with exact native value (weibar = price tinybar * 1e10). @lintignore consumed by keygate/release + ReceiptLock (tasks.md T081/T083, next PR) */
-export async function sendSettleAndIssue(
+/** @lintignore T083/T088 */
+export async function sendConsume(
+  ctx: WriteContext,
+  receiptHash: Hex,
+  useIndex: number,
+  options: WriteOptions = {},
+): Promise<TxResult> {
+  const txHash = await submitConsume(ctx, receiptHash, useIndex, options);
+  return waitForTx(ctx, txHash, "consume");
+}
+
+/**
+ * `settleAndIssue(p)` with exact native value (weibar = price tinybar * 1e10). Returns the
+ * tx hash and the receiptHash the simulation produced. @lintignore T083/T088
+ */
+export async function submitSettleAndIssue(
   ctx: WriteContext,
   params: ReceiptParams,
   valueWeibar: bigint,
   options: WriteOptions = {},
-): Promise<TxResult & { receiptHash: Hex }> {
+): Promise<{ txHash: Hex; receiptHash: Hex }> {
   try {
     const { request, result } = await ctx.publicClient.simulateContract({
       account: ctx.wallet.account,
@@ -122,19 +144,35 @@ export async function sendSettleAndIssue(
       ...request,
       nonce: options.nonce,
     });
-    const settled = await waitFor(ctx, txHash, "settleAndIssue");
-    return { ...settled, receiptHash: result };
+    return { txHash, receiptHash: result };
   } catch (error) {
     rethrow(error);
   }
 }
 
-/** `bumpLicenseEpoch(tokenId)` - emergency revocation / policy update path. @lintignore consumed by keygate/release + ReceiptLock (tasks.md T081/T083, next PR) */
-export async function sendBumpLicenseEpoch(
+/** @lintignore T083/T088 */
+export async function sendSettleAndIssue(
+  ctx: WriteContext,
+  params: ReceiptParams,
+  valueWeibar: bigint,
+  options: WriteOptions = {},
+): Promise<TxResult & { receiptHash: Hex }> {
+  const { txHash, receiptHash } = await submitSettleAndIssue(
+    ctx,
+    params,
+    valueWeibar,
+    options,
+  );
+  const settled = await waitForTx(ctx, txHash, "settleAndIssue");
+  return { ...settled, receiptHash };
+}
+
+/** `bumpLicenseEpoch(tokenId)` - emergency revocation / policy update path. @lintignore T083/T088 */
+export async function submitBumpLicenseEpoch(
   ctx: WriteContext,
   tokenId: bigint,
   options: WriteOptions = {},
-): Promise<TxResult> {
+): Promise<Hex> {
   try {
     const { request } = await ctx.publicClient.simulateContract({
       account: ctx.wallet.account,
@@ -143,12 +181,21 @@ export async function sendBumpLicenseEpoch(
       functionName: "bumpLicenseEpoch",
       args: [tokenId],
     });
-    const txHash = await ctx.wallet.writeContract({
+    return await ctx.wallet.writeContract({
       ...request,
       nonce: options.nonce,
     });
-    return await waitFor(ctx, txHash, "bumpLicenseEpoch");
   } catch (error) {
     rethrow(error);
   }
+}
+
+/** @lintignore T083/T088 */
+export async function sendBumpLicenseEpoch(
+  ctx: WriteContext,
+  tokenId: bigint,
+  options: WriteOptions = {},
+): Promise<TxResult> {
+  const txHash = await submitBumpLicenseEpoch(ctx, tokenId, options);
+  return waitForTx(ctx, txHash, "bumpLicenseEpoch");
 }
