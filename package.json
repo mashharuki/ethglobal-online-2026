@@ -2,6 +2,7 @@
   "name": "ethglobal-online-2026",
   "version": "1.0.0",
   "description": "",
+  "private": true,
   "main": "index.js",
   "scripts": {
     "build": "turbo build",
@@ -9,6 +10,7 @@
     "check": "pnpm exec biome check --write .",
     "knip": "knip",
     "jscpd": "jscpd ./apps ./packages",
+    "web": "pnpm --filter web",
     "contracts": "pnpm --filter contracts",
     "gateway": "pnpm --filter gateway",
     "agent": "pnpm --filter agent",
