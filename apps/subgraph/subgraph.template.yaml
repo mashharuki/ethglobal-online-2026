@@ -1,0 +1,38 @@
+specVersion: 0.0.4
+description: Subgraph for the MyToken (ERC-721) contract on Hedera
+repository: https://github.com/hashgraph/hedera-subgraph-example
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: MyToken
+    network: testnet
+    source:
+      address: "{{MyToken}}"
+      abi: MyToken
+      startBlock: {{startBlock}}
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - Collection
+        - Token
+        - Owner
+        - Transfer
+        - Approval
+        - ApprovalForAll
+        - OwnershipTransferred
+      abis:
+        - name: MyToken
+          file: ./abis/MyToken.json
+      eventHandlers:
+        - event: Transfer(indexed address,indexed address,indexed uint256)
+          handler: handleTransfer
+        - event: Approval(indexed address,indexed address,indexed uint256)
+          handler: handleApproval
+        - event: ApprovalForAll(indexed address,indexed address,bool)
+          handler: handleApprovalForAll
+        - event: OwnershipTransferred(indexed address,indexed address)
+          handler: handleOwnershipTransferred
+      file: ./src/mappings.ts

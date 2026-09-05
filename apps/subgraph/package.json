@@ -1,0 +1,36 @@
+{
+  "name": "@subgraph",
+  "version": "1.0.0",
+  "private": true,
+  "description": "An example repo to get you started with Subgraphs on Hedera. Based on the example [Hedera Smart Contracts Repo](https://github.com/Daniel-K-Ivanov/hedera-contracts-repo-example)",
+  "main": "index.js",
+  "scripts": {
+    "compile": "mustache config/testnet.json subgraph.template.yaml > subgraph.yaml && graph codegen && graph build",
+    "deploy": "graph deploy --node https://api.studio.thegraph.com/deploy/ mytoken",
+    "create-local": "graph create --node http://localhost:8020/ MyToken",
+    "remove-local": "graph remove --node http://localhost:8020/ MyToken",
+    "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 MyToken",
+    "test": "graph test",
+    "graph-node": "docker compose --file ./graph-node/docker-compose.yaml up -d",
+    "graph-local-clean": "cd graph-node && docker compose down -v && docker compose rm -v && rm -rf data/ipfs data/postgres"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Daniel-K-Ivanov/hedera-subgraph-repo-example.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Daniel-K-Ivanov/hedera-subgraph-repo-example/issues"
+  },
+  "homepage": "https://github.com/Daniel-K-Ivanov/hedera-subgraph-repo-example#readme",
+  "dependencies": {
+    "@graphprotocol/graph-cli": "latest",
+    "@graphprotocol/graph-ts": "latest",
+    "@protofire/subgraph-toolkit": "latest"
+  },
+  "devDependencies": {
+    "matchstick-as": "latest",
+    "mustache": "latest"
+  }
+}

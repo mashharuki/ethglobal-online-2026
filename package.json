@@ -11,7 +11,9 @@
     "jscpd": "jscpd ./apps ./packages",
     "contracts": "pnpm --filter contracts",
     "gateway": "pnpm --filter gateway",
-    "agent": "pnpm --filter agent"
+    "agent": "pnpm --filter agent",
+    "subgraph": "pnpm --filter subgraph",
+    "cdk": "pnpm --filter cdk"
   },
   "keywords": [],
   "author": "",
