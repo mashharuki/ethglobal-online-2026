@@ -15,12 +15,14 @@ function hydrate(token: RightsToken, contract: RightsNFTContract, tokenId: BigIn
   let creator = contract.try_creatorOf(tokenId);
   let policyHash = contract.try_policyHash(tokenId);
   let manifestURI = contract.try_manifestURI(tokenId);
-  if (creator.reverted || policyHash.reverted || manifestURI.reverted) {
+  let assetId = contract.try_assetId(tokenId);
+  if (creator.reverted || policyHash.reverted || manifestURI.reverted || assetId.reverted) {
     return;
   }
   token.creator = creator.value;
   token.policyHash = policyHash.value;
   token.manifestURI = manifestURI.value;
+  token.assetId = assetId.value;
   token.hydrated = true;
 }
 

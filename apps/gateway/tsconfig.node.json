@@ -1,17 +1,21 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM"],
     "types": ["node"],
     "paths": { "@/*": ["./src/*"] }
   },
   "include": [
     "scripts/**/*.ts",
     "test/node/**/*.ts",
-    "src/db/schema.ts",
-    "src/db/types.ts",
-    "src/audit/log.ts",
+    "src/**/*.ts",
     "drizzle.config.ts",
     "vitest.node.config.ts"
+  ],
+  "exclude": [
+    "src/index.ts",
+    "src/do/ReceiptLock.ts",
+    "src/do/OperatorTxQueue.ts",
+    "src/db/migrations/**"
   ]
 }

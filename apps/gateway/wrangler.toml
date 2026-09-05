@@ -20,6 +20,7 @@ SUBGRAPH_URL = ""
 # Empty = packages/shared DEFAULT_DEPLOYMENT (filled by apps/contracts deploy write-back, T047).
 RIGHTS_NFT_ADDRESS = ""
 RIGHTS_REGISTRY_ADDRESS = ""
+IPFS_GATEWAY_URL = "https://ipfs.io"
 
 # share_G ciphertext store (KEK-encrypted with packages/shared/src/kv-format.ts).
 # Replace `id` with the output of `wrangler kv namespace create SHARE_G`.

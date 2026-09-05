@@ -21,8 +21,22 @@ return fresh byte copies and never memoise.
 ## Non-secret vars (`wrangler.toml [vars]`)
 
 `HEDERA_CHAIN_ID`, `HEDERA_RPC_URL`, `X402_FACILITATOR_URL`, `PAYMENT_ASSET`, `SETTLEMENT_MODE`,
-`SUBGRAPH_URL`, `RIGHTS_NFT_ADDRESS`, `RIGHTS_REGISTRY_ADDRESS`. Empty contract addresses fall
-back to `packages/shared` `DEFAULT_DEPLOYMENT` (written by `apps/contracts` deploy, T047).
+`SUBGRAPH_URL`, `RIGHTS_NFT_ADDRESS`, `RIGHTS_REGISTRY_ADDRESS`, `IPFS_GATEWAY_URL`. Empty contract
+addresses fall back to `packages/shared` `DEFAULT_DEPLOYMENT` (written by `apps/contracts` deploy,
+T047). `SUBGRAPH_URL` is only a discovery hint for the assetId -> tokenId lookup
+(`src/graph/lookup.ts`); the mapping is proven on chain before anything is released (R-11).
+
+## KeyGate / auth modules (tasks.md T077-T083)
+
+| Module | Role |
+|---|---|
+| `src/auth/verify.ts` + `auth/nonce.ts` | nonce-bound EIP-712 authentication (`OwnerAuthChallenge` / `LicenseeAuthChallenge`, TTL 120 s, single use). A `KeyGateChallenge` signature is never accepted as authentication (R-1a). |
+| `src/auth/session.ts` | HMAC-signed `ownerSession` / fallback grants (error-code selection only, never authorization). MAC key = HKDF(`RECEIPT_SIGNER_KEY`, purpose). |
+| `src/keygate/split.ts` | `blindedU = share_U XOR HKDF(keyGateSig)` computed once per (asset, wallet, path) and stored in `wallet_blinded_shares`. Arithmetic lives in `packages/shared/src/keygate.ts` (shared with web / agent). |
+| `src/keygate/release.ts` | the single release decision (owner + licensee paths); chain reads injected via `keygate/ports.ts`. |
+| `src/keygate/fallback.ts` | disclosed fallback: gateway reconstructs K and decrypts (constitution VI deviation, README). |
+| `src/do/ReceiptLock.ts` / `do/OperatorTxQueue.ts` | R-3 / R-3a Durable Objects; decision logic in `receiptLockCore.ts` / `operatorQueueCore.ts`. |
+| `src/middleware/rateLimit.ts` | 60 req/min per IP on `/assets/*`, 30 req/min per wallet on `/owner/*` and `/keygate/*`. |
 
 Bindings that are ids rather than secrets (`SHARE_G` KV namespace id, `HYPERDRIVE` id) are
 filled into `wrangler.toml` after `wrangler kv namespace create SHARE_G` and

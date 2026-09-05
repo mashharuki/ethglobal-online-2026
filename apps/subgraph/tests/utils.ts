@@ -28,6 +28,9 @@ export const RECEIPT_HASH = Bytes.fromHexString(
 export const PAYMENT_ID = Bytes.fromHexString(
   "0x0101010101010101010101010101010101010101010101010101010101010101",
 ) as Bytes;
+export const ASSET_ID = Bytes.fromHexString(
+  "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+) as Bytes;
 
 let logIndex = 0;
 
@@ -51,6 +54,9 @@ export function mockNftViews(tokenId: i32, manifestURI: string): void {
   createMockedFunction(NFT, "manifestURI", "manifestURI(uint256):(string)")
     .withArgs(arg)
     .returns([ethereum.Value.fromString(manifestURI)]);
+  createMockedFunction(NFT, "assetId", "assetId(uint256):(bytes32)")
+    .withArgs(arg)
+    .returns([ethereum.Value.fromFixedBytes(ASSET_ID)]);
 }
 
 /** accessEpoch(tokenId) mocked to a fixed value (the authoritative read). */
@@ -73,6 +79,7 @@ export function mockNftViewsRevert(tokenId: i32): void {
   createMockedFunction(NFT, "creatorOf", "creatorOf(uint256):(address)").withArgs(arg).reverts();
   createMockedFunction(NFT, "policyHash", "policyHash(uint256):(bytes32)").withArgs(arg).reverts();
   createMockedFunction(NFT, "manifestURI", "manifestURI(uint256):(string)").withArgs(arg).reverts();
+  createMockedFunction(NFT, "assetId", "assetId(uint256):(bytes32)").withArgs(arg).reverts();
 }
 
 export function mockReceiptStatusReverts(receiptHash: Bytes): void {

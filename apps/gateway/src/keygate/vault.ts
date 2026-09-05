@@ -73,6 +73,16 @@ export function readReceiptSignerKey(
   return key as Hex;
 }
 
+/**
+ * RECEIPT_SIGNER_KEY as 32 raw bytes - the HMAC root for owner sessions / fallback grants
+ * (purpose-specific HKDF keeps the derived keys apart). Wipe after use.
+ */
+export function readReceiptSignerSecret(
+  env: Pick<SecretsEnv, "RECEIPT_SIGNER_KEY">,
+): Uint8Array {
+  return hexToBytes(readReceiptSignerKey(env));
+}
+
 /** Best-effort zeroisation of secret bytes after use. */
 export function wipe(bytes: Uint8Array): void {
   bytes.fill(0);

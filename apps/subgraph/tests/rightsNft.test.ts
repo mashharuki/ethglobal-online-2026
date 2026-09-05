@@ -3,6 +3,7 @@ import { assert, beforeEach, clearStore, describe, test } from "matchstick-as/as
 import { handlePolicyUpdated, handleTransfer } from "../src/mappings/rightsNft";
 import { handleRevenueAllocated } from "../src/mappings/rightsRegistry";
 import {
+  ASSET_ID,
   CREATOR,
   createPolicyUpdated,
   createRevenueAllocated,
@@ -38,6 +39,7 @@ describe("RightsNFT mappings", () => {
     assert.fieldEquals("RightsToken", "1", "licenseEpoch", "0");
     assert.fieldEquals("RightsToken", "1", "policyHash", POLICY.toHex());
     assert.fieldEquals("RightsToken", "1", "manifestURI", "ipfs://manifest-1");
+    assert.fieldEquals("RightsToken", "1", "assetId", ASSET_ID.toHex());
     assert.fieldEquals("RightsToken", "1", "totalRevenue", "0");
     assert.entityCount("TransferEvent", 1);
     assert.entityCount("Owner", 2); // zero placeholder + ownerA

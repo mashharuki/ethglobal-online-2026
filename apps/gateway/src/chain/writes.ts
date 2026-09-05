@@ -16,23 +16,22 @@ import type { ChainContext, OperatorWallet } from "./clients";
  * persist the hash before waiting and never double-submits after a crash (R-3a). The
  * `send*` helpers compose both for callers that do not need that split. Nonce assignment
  * is left to the caller; pass `nonce` to pin it. `@lintignore` marks exports whose
- * consumers land with OperatorTxQueue / the x402 facilitator (tasks.md T083 / T088).
+ * consumer is the x402 facilitator / settlement route (tasks.md T084 / T088).
  */
-/** @lintignore T083/T088 */
+/** @lintignore T084/T088 */
 export type ReceiptParams = ContractFunctionArgs<
   typeof rightsRegistryAbi,
   "payable",
   "settleAndIssue"
 >[0];
 
-/** @lintignore T083/T088 */
 export type WriteContext = ChainContext & { wallet: OperatorWallet };
 
 type TxResult = { txHash: Hex; receipt: TransactionReceipt };
 
 type WriteOptions = { nonce?: number };
 
-/** @lintignore T083/T088 */
+/** @lintignore T084/T088 */
 export class TxRevertedError extends Error {
   override readonly name = "TxRevertedError";
   constructor(
@@ -69,7 +68,7 @@ function rethrow(error: unknown): never {
 
 /**
  * Waits for one confirmation of an already-submitted tx. Throws TxRevertedError (with the
- * hash) if it mined with status 0. @lintignore T083/T088
+ * hash) if it mined with status 0.
  */
 export async function waitForTx(
   ctx: ChainContext,
@@ -86,7 +85,7 @@ export async function waitForTx(
   return { txHash, receipt };
 }
 
-/** `consume(receiptHash, useIndex)` - operator only (R-3a). Returns the tx hash. @lintignore T083/T088 */
+/** `consume(receiptHash, useIndex)` - operator only (R-3a). Returns the tx hash. */
 export async function submitConsume(
   ctx: WriteContext,
   receiptHash: Hex,
@@ -110,7 +109,7 @@ export async function submitConsume(
   }
 }
 
-/** @lintignore T083/T088 */
+/** @lintignore T084/T088 */
 export async function sendConsume(
   ctx: WriteContext,
   receiptHash: Hex,
@@ -123,7 +122,7 @@ export async function sendConsume(
 
 /**
  * `settleAndIssue(p)` with exact native value (weibar = price tinybar * 1e10). Returns the
- * tx hash and the receiptHash the simulation produced. @lintignore T083/T088
+ * tx hash and the receiptHash the simulation produced. @lintignore T084/T088
  */
 export async function submitSettleAndIssue(
   ctx: WriteContext,
@@ -150,7 +149,7 @@ export async function submitSettleAndIssue(
   }
 }
 
-/** @lintignore T083/T088 */
+/** @lintignore T084/T088 */
 export async function sendSettleAndIssue(
   ctx: WriteContext,
   params: ReceiptParams,
@@ -167,7 +166,7 @@ export async function sendSettleAndIssue(
   return { ...settled, receiptHash };
 }
 
-/** `bumpLicenseEpoch(tokenId)` - emergency revocation / policy update path. @lintignore T083/T088 */
+/** `bumpLicenseEpoch(tokenId)` - emergency revocation / policy update path. */
 export async function submitBumpLicenseEpoch(
   ctx: WriteContext,
   tokenId: bigint,
@@ -190,7 +189,7 @@ export async function submitBumpLicenseEpoch(
   }
 }
 
-/** @lintignore T083/T088 */
+/** @lintignore T084/T088 */
 export async function sendBumpLicenseEpoch(
   ctx: WriteContext,
   tokenId: bigint,

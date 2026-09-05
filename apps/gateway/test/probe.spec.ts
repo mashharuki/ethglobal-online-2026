@@ -27,17 +27,24 @@ describe("workerd runtime probe (T019)", () => {
     expect(env.HYPERDRIVE.connectionString.startsWith("postgres")).toBe(true);
   });
 
-  it("should route to the ReceiptLock Durable Object per receiptHash", async () => {
+  it("should route to the ReceiptLock Durable Object per receiptHash (input validation answers 400)", async () => {
     const id = env.RECEIPT_LOCK.idFromName(`0x${"01".repeat(32)}`);
-    const response = await env.RECEIPT_LOCK.get(id).fetch("http://do/consume");
-    expect(response.status).toBe(501);
-    expect(await response.json()).toMatchObject({ code: "NOT_IMPLEMENTED" });
+    const response = await env.RECEIPT_LOCK.get(id).fetch("http://do/consume", {
+      method: "POST",
+      body: JSON.stringify({ receiptHash: "nope" }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: "BAD_REQUEST" },
+    });
   });
 
-  it("should route to the single OperatorTxQueue Durable Object", async () => {
+  it("should route to the single OperatorTxQueue Durable Object (GET answers 405)", async () => {
     const id = env.OPERATOR_TX_QUEUE.idFromName("operator");
-    const response = await env.OPERATOR_TX_QUEUE.get(id).fetch("http://do/tx");
-    expect(response.status).toBe(501);
+    const response =
+      await env.OPERATOR_TX_QUEUE.get(id).fetch("http://do/submit");
+    expect(response.status).toBe(405);
   });
 
   it("should read and write the SHARE_G KV namespace", async () => {
