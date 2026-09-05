@@ -1,4 +1,6 @@
 {
-  "startBlock": 39895777,
-  "MyToken": "0x94f5c9f6a59c257823fa5fecd8e7a15f8ed94029"
+  "network": "testnet",
+  "startBlock": 0,
+  "RightsNFT": "0x0000000000000000000000000000000000000000",
+  "RightsRegistry": "0x0000000000000000000000000000000000000000"
 }

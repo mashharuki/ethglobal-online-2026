@@ -4,3 +4,5 @@
 /generated/
 /graph-node/data/
 /subgraph.yaml
+/tests/.bin/
+/tests/.latest.json

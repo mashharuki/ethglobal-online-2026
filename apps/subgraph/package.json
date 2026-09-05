@@ -1,36 +1,27 @@
 {
   "name": "@subgraph",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "An example repo to get you started with Subgraphs on Hedera. Based on the example [Hedera Smart Contracts Repo](https://github.com/Daniel-K-Ivanov/hedera-contracts-repo-example)",
-  "main": "index.js",
+  "description": "TrueCollective Rights Graph - self-hosted The Graph subgraph for RightsNFT / RightsRegistry on Hedera Testnet (discovery and audit only).",
   "scripts": {
-    "compile": "mustache config/testnet.json subgraph.template.yaml > subgraph.yaml && graph codegen && graph build",
-    "deploy": "graph deploy --node https://api.studio.thegraph.com/deploy/ mytoken",
-    "create-local": "graph create --node http://localhost:8020/ MyToken",
-    "remove-local": "graph remove --node http://localhost:8020/ MyToken",
-    "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 MyToken",
-    "test": "graph test",
+    "sync-abis": "node scripts/sync-abis.mjs",
+    "manifest": "mustache config/testnet.json subgraph.template.yaml > subgraph.yaml",
+    "codegen": "pnpm run manifest && graph codegen",
+    "build": "pnpm run codegen && graph build",
+    "compile": "pnpm run build",
+    "test": "pnpm run codegen && graph test",
+    "create": "graph create --node ${GRAPH_NODE_ADMIN:-http://localhost:8020/} truecollective/rights-graph",
+    "deploy": "pnpm run build && graph deploy --node ${GRAPH_NODE_ADMIN:-http://localhost:8020/} --ipfs ${GRAPH_NODE_IPFS:-http://localhost:5001} --version-label ${SUBGRAPH_VERSION:-v0.1.0} truecollective/rights-graph",
     "graph-node": "docker compose --file ./graph-node/docker-compose.yaml up -d",
-    "graph-local-clean": "cd graph-node && docker compose down -v && docker compose rm -v && rm -rf data/ipfs data/postgres"
+    "graph-node:down": "docker compose --file ./graph-node/docker-compose.yaml down"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Daniel-K-Ivanov/hedera-subgraph-repo-example.git"
-  },
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/Daniel-K-Ivanov/hedera-subgraph-repo-example/issues"
-  },
-  "homepage": "https://github.com/Daniel-K-Ivanov/hedera-subgraph-repo-example#readme",
   "dependencies": {
-    "@graphprotocol/graph-cli": "latest",
-    "@graphprotocol/graph-ts": "latest",
-    "@protofire/subgraph-toolkit": "latest"
+    "@graphprotocol/graph-cli": "0.98.1",
+    "@graphprotocol/graph-ts": "0.38.2"
   },
   "devDependencies": {
-    "matchstick-as": "latest",
-    "mustache": "latest"
+    "assemblyscript": "0.19.23",
+    "matchstick-as": "0.6.0",
+    "mustache": "^4.2.0"
   }
 }

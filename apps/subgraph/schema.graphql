@@ -1,97 +1,102 @@
-# MyToken (ERC-721) subgraph schema
+# Rights Graph - discovery / audit only. Never an authorization source (FR-020, constitution II).
+# Spec: specs/001-rights-runtime-mvp/contracts/subgraph-schema.md
+#
+# Counters that are uint32 / uint256 on-chain are BigInt here (GraphQL Int is signed 32-bit).
+# Entities observed before their originating event (startBlock after mint, consume before an
+# indexed issue) are stored with `hydrated` / `complete` = false instead of invented values.
 
 """
-コレクション全体の集計値と現在のオーナー（Ownable）を保持するシングルトン。
-id はコントラクトアドレス。
+One RightsNFT token. `accessEpoch` mirrors the on-chain Owner Epoch (read back via
+`accessEpoch(tokenId)` on every transfer, falling back to +1 arithmetic); `licenseEpoch`
+mirrors the latest LicenseEpochBumped. Both are informational here.
 """
-type Collection @entity(immutable: false) {
+type RightsToken @entity(immutable: false) {
+  "tokenId"
   id: ID!
-  "Ownable の現在のオーナー"
-  owner: Bytes!
-  "現在の流通枚数 (mint - burn)"
-  totalSupply: BigInt!
-  "これまでに mint された累計枚数"
-  totalMinted: BigInt!
-  "これまでに burn された累計枚数"
-  totalBurned: BigInt!
-}
-
-"""
-NFT 1 枚ごとの現在の状態。id は tokenId の 10 進文字列。
-"""
-type Token @entity(immutable: false) {
-  id: ID!
-  tokenId: BigInt!
-  "現在の所有者"
+  "false until creator / policyHash / manifestURI were read from the contract"
+  hydrated: Boolean!
   owner: Owner!
-  "コントラクトが返す tokenURI (baseURI 未設定なら空文字)"
-  tokenURI: String
-  "承認済みアドレス (approve 済みでなければ null)"
-  approved: Bytes
-  burned: Boolean!
-  mintedAt: BigInt!
-  mintedBlock: BigInt!
-  mintedTxHash: Bytes!
-  transfers: [Transfer!]! @derivedFrom(field: "token")
+  creator: Bytes!
+  accessEpoch: BigInt!
+  policyHash: Bytes!
+  manifestURI: String!
+  licenseEpoch: BigInt!
+  transfers: [TransferEvent!]! @derivedFrom(field: "token")
+  receipts: [Receipt!]! @derivedFrom(field: "token")
+  allocations: [RevenueAllocation!]! @derivedFrom(field: "token")
+  "Sum of creatorAmount + ownerAmount over all allocations (tinybar)"
+  totalRevenue: BigInt!
 }
 
-"""
-アドレスごとの保有状況。id はアドレス。
-"""
 type Owner @entity(immutable: false) {
+  "address"
   id: ID!
-  "現在保有している NFT の枚数"
-  balance: BigInt!
-  tokens: [Token!]! @derivedFrom(field: "owner")
+  tokens: [RightsToken!]! @derivedFrom(field: "owner")
 }
 
-"""
-Transfer イベント履歴。from = 0x0 は mint、to = 0x0 は burn。
-"""
-type Transfer @entity(immutable: true) {
+type TransferEvent @entity(immutable: true) {
+  "txHash-logIndex"
   id: ID!
-  token: Token!
+  token: RightsToken!
   from: Bytes!
   to: Bytes!
+  "accessEpoch after this transfer"
+  accessEpoch: BigInt!
   blockNumber: BigInt!
   timestamp: BigInt!
-  txHash: Bytes!
 }
 
-"""
-単一トークンに対する approve の履歴。
-"""
-type Approval @entity(immutable: true) {
+type Receipt @entity(immutable: false) {
+  "receiptHash"
   id: ID!
-  token: Token!
+  "false when only consumptions were observed (issued before startBlock)"
+  complete: Boolean!
+  token: RightsToken
+  licensee: Bytes
+  policyHash: Bytes
+  "0 SURVIVE_TRANSFER / 1 INVALIDATE_ON_TRANSFER; null when receiptStatus() could not be read"
+  transferMode: Int
+  maxUses: BigInt
+  expiresAt: BigInt
+  "Number of Consumption entities"
+  usedCount: BigInt!
+  issuedAtBlock: BigInt
+  consumptions: [Consumption!]! @derivedFrom(field: "receipt")
+}
+
+type Consumption @entity(immutable: true) {
+  "receiptHash-useIndex"
+  id: ID!
+  receipt: Receipt!
+  useIndex: BigInt!
+  blockNumber: BigInt!
+}
+
+type RevenueAllocation @entity(immutable: true) {
+  "paymentId"
+  id: ID!
+  token: RightsToken!
+  creator: Bytes!
+  creatorAmount: BigInt!
+  "Owner at settlement time (A-5) - does not follow later transfers"
   owner: Bytes!
-  approved: Bytes!
+  ownerAmount: BigInt!
   blockNumber: BigInt!
-  timestamp: BigInt!
-  txHash: Bytes!
 }
 
-"""
-setApprovalForAll の履歴。
-"""
-type ApprovalForAll @entity(immutable: true) {
+type LicenseEpochChange @entity(immutable: true) {
+  "txHash-logIndex"
   id: ID!
-  owner: Bytes!
-  operator: Bytes!
-  approved: Boolean!
+  token: RightsToken!
+  newEpoch: BigInt!
   blockNumber: BigInt!
-  timestamp: BigInt!
-  txHash: Bytes!
 }
 
-"""
-Ownable の owner 移転履歴。
-"""
-type OwnershipTransferred @entity(immutable: true) {
+type Claim @entity(immutable: true) {
+  "txHash-logIndex"
   id: ID!
-  previousOwner: Bytes!
-  newOwner: Bytes!
+  account: Bytes!
+  "tinybar"
+  amount: BigInt!
   blockNumber: BigInt!
-  timestamp: BigInt!
-  txHash: Bytes!
 }
