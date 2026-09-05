@@ -457,7 +457,7 @@ type Claim =
  * Every takeover is a CAS on the full row state the caller observed (status, stage, token,
  * lease timestamp): a holder that advanced the stage or refreshed its lease in between wins.
  */
-async function takeClaim(
+export async function takeClaim(
   ports: SettlePorts,
   row: BindingRow,
   token: Hex,

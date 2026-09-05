@@ -8,7 +8,7 @@ import {
   type RightsReceipt,
   TransferMode,
 } from "@truenft/shared";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { type Address, type Hex, hexToBytes } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -28,7 +28,11 @@ import {
   PAID_ACCESS_PLAN_ID,
   type PaymentPayload,
 } from "../../src/x402/facilitator";
-import type { ReceiptQuote, SettlePorts } from "../../src/x402/settle";
+import {
+  type ReceiptQuote,
+  type SettlePorts,
+  takeClaim,
+} from "../../src/x402/settle";
 import {
   buildAsset,
   CHAIN_ID,
@@ -60,6 +64,7 @@ let env: Env;
 let asset: TestAsset;
 let app: Hono<AppEnv>;
 let fake: Fake;
+let services: Services;
 
 type Fake = {
   licenseEpoch: bigint;
@@ -90,6 +95,10 @@ type Fake = {
   settleDelayMs: number;
   /** the receipt wait (tx confirmation) blows up */
   receiptWaitThrows: boolean;
+  /** injected clock (lease expiry) */
+  now: Date;
+  /** when set, the next facilitator /verify awaits it before answering */
+  verifyGate?: Promise<void>;
 };
 
 function paymentHeader(quote: ReceiptQuote, salt = "tx-1"): string {
@@ -191,7 +200,7 @@ function buildServices(): Services {
         redelivered: false,
       };
     },
-    now: () => NOW,
+    now: () => fake.now,
   };
   // the operator "mines" settleAndIssue: the tx hash encodes the params so receiptHashFromTx
   // can recompute exactly what the contract would have emitted
@@ -208,11 +217,17 @@ function buildServices(): Services {
     },
     facilitator: {
       supported: async () => ({ kinds: [] }),
-      verify: async () => ({
-        isValid: fake.verifyOk,
-        invalidReason: fake.verifyOk ? undefined : "bad",
-        payer: fake.payerAccount === "" ? undefined : fake.payerAccount,
-      }),
+      verify: async () => {
+        // one-shot barrier so a test can park a request inside its claim
+        const gate = fake.verifyGate;
+        fake.verifyGate = undefined;
+        if (gate !== undefined) await gate;
+        return {
+          isValid: fake.verifyOk,
+          invalidReason: fake.verifyOk ? undefined : "bad",
+          payer: fake.payerAccount === "" ? undefined : fake.payerAccount,
+        };
+      },
       settle: async () => {
         fake.settleCalls += 1;
         if (fake.settleDelayMs > 0) {
@@ -269,7 +284,7 @@ function buildServices(): Services {
     pendingWaitMs: 20,
     payerEvmAddress: async (accountId) =>
       accountId === fake.payerAccount ? fake.payerEvm : undefined,
-    now: () => NOW,
+    now: () => fake.now,
     randomNonce: () => `0x${"51".repeat(32)}`,
   };
   const graph: GraphFetch = async () => {
@@ -292,7 +307,7 @@ function buildServices(): Services {
       return `0x${"b1".repeat(32)}`;
     },
     waitForTx: async () => {},
-    now: () => NOW,
+    now: () => fake.now,
   };
 }
 
@@ -426,8 +441,9 @@ beforeEach(async () => {
     settleRejects: false,
     settleDelayMs: 0,
     receiptWaitThrows: false,
+    now: NOW,
   };
-  const services = buildServices();
+  services = buildServices();
   app = new Hono<AppEnv>();
   app.onError(handleError);
   app.use("*", async (c, next) => {
@@ -860,37 +876,82 @@ describe("x402 (T088 / T063)", () => {
     expect((await pay(anchor)).status).toBe(200);
     expect(fake.settleCalls).toBe(1);
     expect(fake.operatorJobs).toHaveLength(2);
-    // a stale takeover: the row the taker observed has moved on (stage advanced) -> refused
+    // a stale takeover: the taker observed (verify, expired) but the holder advanced the
+    // stage before the CAS -> production takeClaim refuses, the row is untouched
     const moved = paymentHeader(quote, "moved-on");
     await seedBinding(moved, quote, { stage: "verify", claimedAt: expired });
     const paymentId = derivePaymentId(new TextEncoder().encode(atob(moved)));
-    const [observed] = await db
-      .select()
-      .from(paymentBinding)
-      .where(eq(paymentBinding.paymentId, paymentId));
-    if (observed === undefined) throw new Error("seed missing");
+    const rowOf = async () => {
+      const [row] = await db
+        .select()
+        .from(paymentBinding)
+        .where(eq(paymentBinding.paymentId, paymentId));
+      if (row === undefined) throw new Error("seed missing");
+      return row;
+    };
+    const observed = await rowOf();
     await db
       .update(paymentBinding)
       .set({ stage: "settle" })
       .where(eq(paymentBinding.paymentId, paymentId));
-    const stale = await db
-      .update(paymentBinding)
-      .set({ claimToken: `0x${"ee".repeat(16)}`, claimedAt: NOW })
-      .where(
-        and(
-          eq(paymentBinding.paymentId, paymentId),
-          eq(paymentBinding.status, observed.status),
-          eq(paymentBinding.stage, observed.stage),
-          eq(paymentBinding.claimToken, observed.claimToken as Hex),
-          eq(paymentBinding.claimedAt, observed.claimedAt as Date),
-        ),
-      )
-      .returning({ paymentId: paymentBinding.paymentId });
-    expect(stale).toHaveLength(0);
-    expect(await (await pay(moved)).json()).toMatchObject({
-      code: "SETTLEMENT_IN_PROGRESS",
+    const taken = await takeClaim(
+      services.settle,
+      observed,
+      `0x${"ee".repeat(16)}`,
+    );
+    expect(taken).toBeUndefined();
+    expect(await rowOf()).toMatchObject({
+      stage: "settle",
+      claimToken: observed.claimToken,
+      claimedAt: observed.claimedAt,
     });
+    // and the same observation with only the lease refreshed is stale too
+    await db
+      .update(paymentBinding)
+      .set({ stage: "verify", claimedAt: NOW })
+      .where(eq(paymentBinding.paymentId, paymentId));
+    expect(
+      await takeClaim(services.settle, observed, `0x${"ef".repeat(16)}`),
+    ).toBeUndefined();
+    expect((await rowOf()).claimToken).toBe(observed.claimToken);
     expect(fake.settleCalls).toBe(1);
+  });
+
+  it("should make a holder whose lease was taken over lose its claim instead of paying", async () => {
+    const quote = await quoteFor();
+    const header = paymentHeader(quote, "takeover");
+    const pay = () =>
+      post(
+        `/assets/${asset.assetId}/paid`,
+        { licensee: buyer.address },
+        { "X-PAYMENT": header },
+      );
+    let release: () => void = () => {};
+    fake.verifyGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const holder = pay(); // claims, then parks inside /verify
+    await new Promise((r) => setTimeout(r, 10));
+    expect(await binding(header)).toMatchObject({
+      stage: "verify",
+      claimed: true,
+    });
+    // its lease expires (clock jump) and a retry takes the row over and settles
+    fake.now = new Date(NOW.getTime() + 10 * 60_000);
+    const taker = await pay();
+    expect(taker.status).toBe(200);
+    expect(fake.settleCalls).toBe(1);
+    // the original holder wakes up: its stage write is refused, it never reaches /settle
+    release();
+    const lost = await holder;
+    expect(lost.status).toBe(409);
+    expect(await lost.json()).toMatchObject({ code: "SETTLEMENT_IN_PROGRESS" });
+    expect(fake.settleCalls).toBe(1);
+    expect(await binding(header)).toMatchObject({
+      status: "settled",
+      stage: "done",
+      claimed: false,
+    });
   });
 
   it("should resume a primary-rail payment only once the facilitator tx is visible", async () => {
