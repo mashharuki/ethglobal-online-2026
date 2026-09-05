@@ -21,10 +21,245 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List discoverable assets (subgraph + expanded manifests) */
+        get: operations["listAssets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/{assetId}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public preview body (no authorization) */
+        get: operations["getAssetPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/owner/challenge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue a nonce-bound OwnerAuthChallenge (FR-024) */
+        post: operations["createOwnerChallenge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/owner/keygate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Owner path share_G release (ownerOf / accessEpoch read on-chain every call)
+         * @description Server steps (gateway-api.md): nonce check -> manifest lookup by assetId (tokenId is derived
+         *     server-side, R-11) -> authSig recovery == wallet and bound assetId -> EOA check ->
+         *     `eth_call ownerOf(tokenId) == wallet` -> accessEpoch -> reuse or compute blindedU (keyGateSig
+         *     required on first access only, R-1a) -> decrypt share_G -> issue ownerSession -> audit.
+         *     When an `ownerSession` is presented and its `accessEpochAtGrant` differs from the live
+         *     accessEpoch the answer is OWNER_EPOCH_MISMATCH (checked before ownerOf).
+         */
+        post: operations["ownerKeygate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/{assetId}/paid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** x402 payment requirements (HTTP 402 when unpaid) */
+        get: operations["getPaymentRequirements"];
+        put?: never;
+        /**
+         * Settle an x402 payment and issue the Rights Receipt (1 Hedera tx)
+         * @description `payment_id` is derived by the gateway from the keccak of the buyer-signed payload
+         *     (R-10). Idempotent per payment_id: an identical purchaseRequestHash returns the stored
+         *     response; a different one is PAYMENT_ID_PAYLOAD_CONFLICT; an in-flight settlement is
+         *     SETTLEMENT_IN_PROGRESS after a short poll.
+         */
+        post: operations["settlePayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/{assetId}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** R-2a fallback rail only - permissionless finalize of a payFor deposit */
+        post: operations["finalizePayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/keygate/challenge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue a nonce-bound LicenseeAuthChallenge (R-1a) */
+        post: operations["createLicenseeChallenge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/keygate/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * KeyGate share_G release (owner or licensee path)
+         * @description Licensee path runs inside the ReceiptLock Durable Object for the receiptHash: nonce +
+         *     authSig (LICENSEE_MISMATCH) -> receiptStatus read on-chain (CHAIN_ID / RESOURCE_HASH /
+         *     POLICY_HASH checks) -> SELECT ... FOR UPDATE -> useIndex from the DO counter (R-3a) ->
+         *     consume via OperatorTxQueue -> settle-before-release of share_G. Owner path is identical
+         *     to /owner/keygate (no consume).
+         */
+        post: operations["keygateShare"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rights Graph GraphQL pass-through (discovery / audit only, never authorization) */
+        post: operations["graphQuery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audit log excerpt (allow / deny decisions, FR-023) */
+        get: operations["listAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/{assetId}/bump-license-epoch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Creator-signed emergency revocation (License Epoch +1) */
+        post: operations["bumpLicenseEpoch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** MCP server-to-client SSE stream */
+        get: operations["mcpStream"];
+        put?: never;
+        /** MCP Streamable HTTP endpoint (JSON-RPC 2.0) - tools discover_assets / buy_access / decrypt_content */
+        post: operations["mcpPost"];
+        /** Terminate an MCP session */
+        delete: operations["mcpEndSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Bytes32: string;
+        Address: string;
+        HexBytes: string;
+        /** @description Unsigned integer as decimal string (uint256-safe) */
+        UintString: string;
+        /** @description Native HBAR amount in weibar (10^18 = 1 HBAR), multiple of 10^10 */
+        Weibar: string;
         Health: {
             ok: boolean;
             /** @description Hedera chainId the gateway authorizes against (296 = testnet) */
@@ -35,7 +270,7 @@ export interface components {
          *     this enum only mirrors it (T039 verifies the two stay identical). Do not rename values.
          * @enum {string}
          */
-        ErrorCode: "RECEIPT_ALREADY_CONSUMED" | "RESOURCE_HASH_MISMATCH" | "POLICY_HASH_MISMATCH" | "CHAIN_ID_MISMATCH" | "LICENSEE_MISMATCH" | "RECEIPT_EXPIRED" | "USE_LIMIT_EXCEEDED" | "UNDERPAYMENT" | "PAYMENT_ID_PAYLOAD_CONFLICT" | "OWNER_EPOCH_MISMATCH" | "LICENSE_INVALIDATED_ON_TRANSFER" | "LICENSE_EPOCH_MISMATCH";
+        ErrorCode: "RECEIPT_ALREADY_CONSUMED" | "RESOURCE_HASH_MISMATCH" | "POLICY_HASH_MISMATCH" | "CHAIN_ID_MISMATCH" | "LICENSEE_MISMATCH" | "RECEIPT_EXPIRED" | "USE_LIMIT_EXCEEDED" | "UNDERPAYMENT" | "PAYMENT_ID_PAYLOAD_CONFLICT" | "OWNER_EPOCH_MISMATCH" | "LICENSE_INVALIDATED_ON_TRANSFER" | "LICENSE_EPOCH_MISMATCH" | "NONCE_INVALID_OR_EXPIRED" | "SIGNATURE_INVALID" | "NOT_CURRENT_OWNER" | "CONTRACT_WALLET_UNSUPPORTED" | "CONDITIONS_HASH_MISMATCH" | "SETTLEMENT_NOT_FINALIZED" | "MANIFEST_SCHEMA_INVALID" | "RATE_LIMITED" | "POLICY_CONTENT_MISMATCH" | "EXPIRY_MISMATCH" | "COMMITTED_PARAMS_MISMATCH" | "MCP_SESSION_MISMATCH" | "SETTLEMENT_IN_PROGRESS" | "NOT_AUTHORIZED";
         Error: {
             code: components["schemas"]["ErrorCode"];
             message: string;
@@ -43,9 +278,369 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        Permissions: {
+            commercialUse: boolean;
+            aiTraining: boolean;
+            derivativeGeneration: boolean;
+        };
+        /** @enum {string} */
+        TransferMode: "SURVIVE_TRANSFER" | "INVALIDATE_ON_TRANSFER";
+        PaidAccess: {
+            price: components["schemas"]["Weibar"];
+            durationSec: number;
+            maxUses: number;
+        };
+        /** @description Mirrors specs/.../contracts/rights-manifest.schema.json (zod in packages/shared) */
+        RightsManifest: {
+            /** @enum {string} */
+            schemaVersion: "1.0";
+            assetId: components["schemas"]["Bytes32"];
+            nftContract: components["schemas"]["Address"];
+            tokenId: components["schemas"]["UintString"];
+            /** Format: uri */
+            previewURI: string;
+            /** Format: uri */
+            encryptedContentURI: string;
+            contentHash: components["schemas"]["Bytes32"];
+            keyGate: {
+                /** @enum {string} */
+                scheme: "xor-2share";
+                /** @enum {integer} */
+                keyGateVersion: 1;
+                conditionsHash: components["schemas"]["Bytes32"];
+                ownerCondition: string;
+                licenseCondition: string;
+            };
+            ownerAccess: {
+                /** @enum {string} */
+                price: "0";
+                durationSec: number;
+            };
+            paidAccess: components["schemas"]["PaidAccess"];
+            permissions: components["schemas"]["Permissions"];
+            transferMode: components["schemas"]["TransferMode"];
+            revenueSplit: {
+                creatorBps: number;
+                ownerBps: number;
+            };
+        };
+        AssetSummary: {
+            assetId: components["schemas"]["Bytes32"];
+            tokenId: components["schemas"]["UintString"];
+            nftContract: components["schemas"]["Address"];
+            owner?: components["schemas"]["Address"];
+            creator?: components["schemas"]["Address"];
+            /** Format: uri */
+            previewURI: string;
+            /** Format: uri */
+            manifestURI: string;
+            paidAccess: components["schemas"]["PaidAccess"];
+            transferMode: components["schemas"]["TransferMode"];
+            permissions: components["schemas"]["Permissions"];
+            /** @description Live Owner Epoch (informational) */
+            accessEpoch?: number;
+            /** @description Live License Epoch (informational) */
+            licenseEpoch?: number;
+        };
+        PreviewDocument: {
+            [key: string]: unknown;
+        };
+        /** @description EIP-712 typed data payload (domain / types / primaryType / message) */
+        TypedData: {
+            domain: {
+                name: string;
+                version: string;
+                chainId: number;
+                verifyingContract: components["schemas"]["Address"];
+            };
+            types: {
+                [key: string]: {
+                    name: string;
+                    type: string;
+                }[];
+            };
+            primaryType: string;
+            message: {
+                [key: string]: unknown;
+            };
+        };
+        ChallengeResponse: {
+            typedData: components["schemas"]["TypedData"];
+            nonce: components["schemas"]["Bytes32"];
+            /** @description Unix seconds (issued + 120s) */
+            expiresAt: number;
+        };
+        OwnerChallengeRequest: {
+            assetId: components["schemas"]["Bytes32"];
+            wallet: components["schemas"]["Address"];
+        };
+        OwnerSession: {
+            token: components["schemas"]["HexBytes"];
+            expiresAt: number;
+        };
+        OwnerKeygateRequest: {
+            assetId: components["schemas"]["Bytes32"];
+            wallet: components["schemas"]["Address"];
+            /** @description Signature over OwnerAuthChallenge{nonce, chainId, tokenId, assetId, expiresAt} */
+            authSig: components["schemas"]["HexBytes"];
+            /** @description First access only - signature over KeyGateChallenge{assetId, "owner", 0x0}; never used for authentication (R-1a) */
+            keyGateSig?: components["schemas"]["HexBytes"];
+            /** @description Previously issued ownerSession.token (used only to select OWNER_EPOCH_MISMATCH over NOT_CURRENT_OWNER) */
+            ownerSession?: string;
+        };
+        OwnerKeygateResponse: {
+            shareG: components["schemas"]["Bytes32"];
+            blindedU: components["schemas"]["Bytes32"];
+            accessEpochAtGrant: number;
+            ownerSession: components["schemas"]["OwnerSession"];
+            /** Format: uri */
+            encryptedContentURI: string;
+            contentHash: components["schemas"]["Bytes32"];
+        };
+        /** @description The 17 receipt fields the gateway fixes at quote time (weibar `price` shown separately); buyer fills nothing */
+        ReceiptParamsTemplate: {
+            [key: string]: unknown;
+        };
+        PaymentAccept: {
+            /** @enum {string} */
+            scheme: "exact";
+            /** @enum {string} */
+            network: "hedera:testnet";
+            /** @description Native asset marker fixed by the day1 probe (T020) */
+            asset: string;
+            maxAmountRequired: components["schemas"]["Weibar"];
+            /** @description RightsRegistry (primary/fallback) or the gateway settlement account (custodial rail) */
+            payTo: string;
+            resource: string;
+            description?: string;
+            maxTimeoutSeconds?: number;
+            extra?: {
+                /** @enum {string} */
+                settlementMode?: "primary" | "fallback" | "custodial";
+                contractCall?: string;
+                value?: components["schemas"]["Weibar"];
+                feePayer?: string;
+                receiptParamsTemplate?: components["schemas"]["ReceiptParamsTemplate"];
+            } & {
+                [key: string]: unknown;
+            };
+        };
+        PaymentRequired: {
+            x402Version: number;
+            accepts: components["schemas"]["PaymentAccept"][];
+            error?: string;
+            manifest?: components["schemas"]["RightsManifest"];
+        };
+        /** @description Optional JSON body when the payment payload is not carried in X-PAYMENT */
+        SettleRequest: {
+            /** @description Same encoding as the X-PAYMENT header */
+            paymentPayload?: string;
+            licensee?: components["schemas"]["Address"];
+        };
+        /** @description The 17 EIP-712 fields; hashStruct(this) is receiptHash (constitution V) */
+        RightsReceipt: {
+            chainId: number;
+            verifyingContract: components["schemas"]["Address"];
+            nftContract: components["schemas"]["Address"];
+            tokenId: components["schemas"]["UintString"];
+            resourceHash: components["schemas"]["Bytes32"];
+            policyHash: components["schemas"]["Bytes32"];
+            licenseEpoch: components["schemas"]["UintString"];
+            ownerEpochAtIssue: components["schemas"]["UintString"];
+            licensee: components["schemas"]["Address"];
+            permittedAction: number;
+            /** @enum {integer} */
+            transferMode: 0 | 1;
+            maxUses: number;
+            expiresAt: number;
+            purchaseRequestHash: components["schemas"]["Bytes32"];
+            paymentId: components["schemas"]["Bytes32"];
+            nonce: components["schemas"]["Bytes32"];
+            issuedAt: number;
+        };
+        SettleResponse: {
+            receiptHash: components["schemas"]["Bytes32"];
+            receipt: components["schemas"]["RightsReceipt"];
+            serverSignature: components["schemas"]["HexBytes"];
+            /** @description Hedera tx hash / id of the settlement */
+            onchainTx: string;
+            maxUses: number;
+            expiresAt: number;
+            /** @enum {string} */
+            settlementMode?: "primary" | "fallback" | "custodial";
+        };
+        FinalizeRequest: {
+            paymentId: components["schemas"]["Bytes32"];
+            receipt: components["schemas"]["RightsReceipt"];
+            /** @description tinybar */
+            price?: components["schemas"]["UintString"];
+            creatorBps?: number;
+            ownerBps?: number;
+        };
+        LicenseeChallengeRequest: {
+            receiptHash: components["schemas"]["Bytes32"];
+            wallet: components["schemas"]["Address"];
+        };
+        KeygateShareRequest: components["schemas"]["KeygateShareOwnerRequest"] | components["schemas"]["KeygateShareLicenseeRequest"];
+        KeygateShareOwnerRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            path: "owner";
+            assetId: components["schemas"]["Bytes32"];
+            wallet: components["schemas"]["Address"];
+            authSig: components["schemas"]["HexBytes"];
+            keyGateSig?: components["schemas"]["HexBytes"];
+            ownerSession?: string;
+        };
+        KeygateShareLicenseeRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            path: "licensee";
+            assetId: components["schemas"]["Bytes32"];
+            receiptHash: components["schemas"]["Bytes32"];
+            /** @description Signature over LicenseeAuthChallenge{nonce, chainId, receiptHash, expiresAt} */
+            authSig: components["schemas"]["HexBytes"];
+            /** @description First access only - KeyGateChallenge{assetId, "licensee", receiptHash} */
+            keyGateSig?: components["schemas"]["HexBytes"];
+        };
+        KeygateShareResponse: {
+            shareG: components["schemas"]["Bytes32"];
+            blindedU?: components["schemas"]["Bytes32"];
+            /** @description Licensee path only */
+            useIndex?: number;
+            /** @description Licensee path only - the consume tx */
+            onchainTx?: string;
+            /** @description Owner path only */
+            accessEpochAtGrant?: number;
+        };
+        GraphQLRequest: {
+            query: string;
+            variables?: {
+                [key: string]: unknown;
+            };
+            operationName?: string;
+        };
+        GraphQLResponse: {
+            data?: {
+                [key: string]: unknown;
+            };
+            errors?: {
+                [key: string]: unknown;
+            }[];
+        };
+        AuditEntry: {
+            id: string;
+            /** @description Unix seconds */
+            at: number;
+            /** @enum {string} */
+            action: "owner_keygate" | "x402_settle" | "consume" | "claim" | "policy_update" | "bump_license_epoch" | "mcp_buy_access" | "mcp_decrypt_content";
+            /**
+             * @description 'allow' or 'deny'
+             * @enum {string}
+             */
+            outcome: "allow" | "deny";
+            code?: components["schemas"]["ErrorCode"];
+            assetId?: components["schemas"]["Bytes32"];
+            /** @description Wallet or MCP session (never a signature value) */
+            subject?: string;
+            onchainRef?: string;
+            detail?: {
+                [key: string]: unknown;
+            };
+        };
+        BumpLicenseEpochRequest: {
+            wallet: components["schemas"]["Address"];
+            /** @description Creator signature over OwnerAuthChallenge issued by /owner/challenge for this asset */
+            authSig: components["schemas"]["HexBytes"];
+        };
+        BumpLicenseEpochResponse: {
+            tokenId: components["schemas"]["UintString"];
+            newEpoch: number;
+            onchainTx: string;
+        };
+        /** @description JSON-RPC 2.0 request, response or notification (MCP) */
+        JsonRpcMessage: {
+            /** @enum {string} */
+            jsonrpc: "2.0";
+            id?: string | number;
+            method?: string;
+            params?: {
+                [key: string]: unknown;
+            };
+            result?: {
+                [key: string]: unknown;
+            };
+            error?: {
+                [key: string]: unknown;
+            };
+        };
     };
-    responses: never;
-    parameters: never;
+    responses: {
+        /** @description Malformed request or MANIFEST_SCHEMA_INVALID / CONTRACT_WALLET_UNSUPPORTED */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description NONCE_INVALID_OR_EXPIRED / SIGNATURE_INVALID */
+        Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Authorization denied (see ErrorCode) */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Unknown asset / receipt */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description RECEIPT_ALREADY_CONSUMED / PAYMENT_ID_PAYLOAD_CONFLICT / SETTLEMENT_IN_PROGRESS / SETTLEMENT_NOT_FINALIZED / COMMITTED_PARAMS_MISMATCH */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description RATE_LIMITED */
+        RateLimited: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+    };
+    parameters: {
+        AssetId: components["schemas"]["Bytes32"];
+        /** @description x402 payment payload (base64 JSON) produced by the client scheme */
+        XPayment: string;
+        McpSessionId: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -70,6 +665,439 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
+        };
+    };
+    listAssets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Asset summaries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetSummary"][];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getAssetPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assetId: components["parameters"]["AssetId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Preview document */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewDocument"];
+                };
+            };
+            /** @description Redirect to the preview URI */
+            302: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    createOwnerChallenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OwnerChallengeRequest"];
+            };
+        };
+        responses: {
+            /** @description Typed data to sign */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChallengeResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    ownerKeygate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OwnerKeygateRequest"];
+            };
+        };
+        responses: {
+            /** @description share_G released to the current owner */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerKeygateResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getPaymentRequirements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assetId: components["parameters"]["AssetId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Payment required - x402 `accepts` for native HBAR on hedera:testnet */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentRequired"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    settlePayment: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description x402 payment payload (base64 JSON) produced by the client scheme */
+                "X-PAYMENT"?: components["parameters"]["XPayment"];
+            };
+            path: {
+                assetId: components["parameters"]["AssetId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SettleRequest"];
+            };
+        };
+        responses: {
+            /** @description Receipt issued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettleResponse"];
+                };
+            };
+            /** @description UNDERPAYMENT or missing/invalid payment header */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    finalizePayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assetId: components["parameters"]["AssetId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinalizeRequest"];
+            };
+        };
+        responses: {
+            /** @description Receipt issued from the committed deposit */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettleResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    createLicenseeChallenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LicenseeChallengeRequest"];
+            };
+        };
+        responses: {
+            /** @description Typed data to sign */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChallengeResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    keygateShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeygateShareRequest"];
+            };
+        };
+        responses: {
+            /** @description share_G released */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeygateShareResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    graphQuery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GraphQLRequest"];
+            };
+        };
+        responses: {
+            /** @description GraphQL response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphQLResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description Subgraph unreachable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listAudit: {
+        parameters: {
+            query?: {
+                assetId?: components["schemas"]["Bytes32"];
+                /** @description Unix seconds */
+                since?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Audit entries, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEntry"][];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    bumpLicenseEpoch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assetId: components["parameters"]["AssetId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BumpLicenseEpochRequest"];
+            };
+        };
+        responses: {
+            /** @description License epoch bumped on-chain */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BumpLicenseEpochResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    mcpStream: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Mcp-Session-Id"?: components["parameters"]["McpSessionId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSE stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Stream not supported by this server configuration */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mcpPost: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Mcp-Session-Id"?: components["parameters"]["McpSessionId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JsonRpcMessage"];
+            };
+        };
+        responses: {
+            /** @description JSON-RPC response (or SSE stream) */
+            200: {
+                headers: {
+                    "Mcp-Session-Id"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JsonRpcMessage"];
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Accepted (notification / response without body) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    mcpEndSession: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Mcp-Session-Id"?: components["parameters"]["McpSessionId"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session terminated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
         };
     };
 }
