@@ -8,12 +8,12 @@ import {
   type RightsReceipt,
   TransferMode,
 } from "@truenft/shared";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { type Address, type Hex, hexToBytes } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { paymentBinding } from "../../src/db/schema";
+import { type PaymentStage, paymentBinding } from "../../src/db/schema";
 import type { Db } from "../../src/db/types";
 import type { ReceiptParamsJson } from "../../src/do/operatorQueueCore";
 import type { Env } from "../../src/env";
@@ -364,6 +364,30 @@ async function binding(header: string): Promise<BindingView | undefined> {
     paid: row.paidAt !== null,
     claimed: row.claimToken !== null,
   };
+}
+
+/** a binding row as an earlier (dead) request would have left it */
+async function seedBinding(
+  header: string,
+  quote: ReceiptQuote,
+  row: { stage: PaymentStage; claimedAt: Date; paidAt?: Date },
+): Promise<void> {
+  await db.insert(paymentBinding).values({
+    paymentId: derivePaymentId(new TextEncoder().encode(atob(header))),
+    purchaseRequestHash: computePurchaseRequestHash({
+      httpMethod: "POST",
+      path: `/assets/${asset.assetId}/paid`,
+      planId: PAID_ACCESS_PLAN_ID,
+      resourceHash: quote.resourceHash,
+      policyHash: quote.policyHash,
+    }),
+    amount: BigInt(quote.priceTinybar),
+    status: "pending",
+    stage: row.stage,
+    claimToken: `0x${"dd".repeat(16)}`,
+    claimedAt: row.claimedAt,
+    paidAt: row.paidAt,
+  });
 }
 
 async function quoteFor(): Promise<ReceiptQuote> {
@@ -787,17 +811,85 @@ describe("x402 (T088 / T063)", () => {
         { "X-PAYMENT": header },
       );
     const [a, b] = await Promise.all([pay(), pay()]);
-    const statuses = [a.status, b.status].sort();
-    expect(statuses).toEqual([200, 409]);
-    const loser = a.status === 409 ? a : b;
-    expect(await loser.json()).toMatchObject({
-      code: "SETTLEMENT_IN_PROGRESS",
-    });
+    // the second request either gives up on the live claim or, if scheduling let the first
+    // finish inside its wait budget, replays; it never pays
+    for (const res of [a, b]) {
+      expect([200, 409]).toContain(res.status);
+      if (res.status === 409) {
+        expect(await res.json()).toMatchObject({
+          code: "SETTLEMENT_IN_PROGRESS",
+        });
+      }
+    }
     expect(fake.settleCalls).toBe(1);
     expect(fake.operatorJobs).toHaveLength(1);
     fake.settleDelayMs = 0;
     const replay = await pay();
     expect(replay.status).toBe(200);
+    expect(fake.settleCalls).toBe(1);
+  });
+
+  it("should take over an expired claim by its stage and refuse a stale takeover", async () => {
+    const quote = await quoteFor();
+    const pay = (header: string) =>
+      post(
+        `/assets/${asset.assetId}/paid`,
+        { licensee: buyer.address },
+        { "X-PAYMENT": header },
+      );
+    const expired = new Date(NOW.getTime() - 10 * 60_000);
+    // a holder that died during verify: nothing moved, taken over and paid once
+    const verify = paymentHeader(quote, "dead-verify");
+    await seedBinding(verify, quote, { stage: "verify", claimedAt: expired });
+    expect((await pay(verify)).status).toBe(200);
+    expect(fake.settleCalls).toBe(1);
+    // a holder that died while /settle was in flight: blocked, never re-submitted
+    const settle = paymentHeader(quote, "dead-settle");
+    await seedBinding(settle, quote, { stage: "settle", claimedAt: expired });
+    expect(await (await pay(settle)).json()).toMatchObject({
+      code: "SETTLEMENT_IN_PROGRESS",
+    });
+    expect(fake.settleCalls).toBe(1);
+    // a holder that died after paying: resumed at anchoring without paying again
+    const anchor = paymentHeader(quote, "dead-anchor");
+    await seedBinding(anchor, quote, {
+      stage: "anchor",
+      claimedAt: expired,
+      paidAt: expired,
+    });
+    expect((await pay(anchor)).status).toBe(200);
+    expect(fake.settleCalls).toBe(1);
+    expect(fake.operatorJobs).toHaveLength(2);
+    // a stale takeover: the row the taker observed has moved on (stage advanced) -> refused
+    const moved = paymentHeader(quote, "moved-on");
+    await seedBinding(moved, quote, { stage: "verify", claimedAt: expired });
+    const paymentId = derivePaymentId(new TextEncoder().encode(atob(moved)));
+    const [observed] = await db
+      .select()
+      .from(paymentBinding)
+      .where(eq(paymentBinding.paymentId, paymentId));
+    if (observed === undefined) throw new Error("seed missing");
+    await db
+      .update(paymentBinding)
+      .set({ stage: "settle" })
+      .where(eq(paymentBinding.paymentId, paymentId));
+    const stale = await db
+      .update(paymentBinding)
+      .set({ claimToken: `0x${"ee".repeat(16)}`, claimedAt: NOW })
+      .where(
+        and(
+          eq(paymentBinding.paymentId, paymentId),
+          eq(paymentBinding.status, observed.status),
+          eq(paymentBinding.stage, observed.stage),
+          eq(paymentBinding.claimToken, observed.claimToken as Hex),
+          eq(paymentBinding.claimedAt, observed.claimedAt as Date),
+        ),
+      )
+      .returning({ paymentId: paymentBinding.paymentId });
+    expect(stale).toHaveLength(0);
+    expect(await (await pay(moved)).json()).toMatchObject({
+      code: "SETTLEMENT_IN_PROGRESS",
+    });
     expect(fake.settleCalls).toBe(1);
   });
 

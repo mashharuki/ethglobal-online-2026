@@ -58,8 +58,13 @@ so a crash is read the same way as a thrown error:
 | anchor (`paid_at` set; quote re-check, operator `settleAndIssue`, log match) | stays `pending` / `anchor`, claim released, deny audit | resumes at anchoring under a new claim - the facilitator is never called again for this payload. A stale quote keeps failing here: the HBAR stays on `SETTLEMENT_ACCOUNT_ID` (no refund path, constitution non-goal) |
 | settled (receipt on chain, `done`) | stays `settled` | replays the receipt + signature |
 
-A live claim (lease not expired) makes concurrent retries wait briefly, then answer
-SETTLEMENT_IN_PROGRESS; an expired lease is taken over according to the stage above.
+A live claim (lease 120 s, refreshed before anchoring) makes concurrent retries wait briefly,
+then answer SETTLEMENT_IN_PROGRESS; an expired lease is taken over according to the stage
+above, by a CAS on the whole observed row (status, stage, token, lease timestamp). Ownership
+guards the row only: one broadcast per payment is guaranteed by the OperatorTxQueue
+idempotency key (`settle:<paymentId>`) and by the registry (`ReceiptAlreadyIssued`).
+Rows that predate the `stage` column are classified by the migration: pending -> `settle`
+(blocked until reconciled), settled -> `done`.
 
 Anchoring treats the registry as the authority: whatever the operator call or the receipt
 wait threw, `RightsRegistry.receiptStatus(expectedHash).issued === true` means it succeeded

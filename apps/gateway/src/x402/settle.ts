@@ -396,8 +396,15 @@ async function assertQuoteCurrent(
 type BindingRow = typeof paymentBinding.$inferSelect;
 type BindingPatch = Partial<typeof paymentBinding.$inferInsert>;
 
-/** a request that stops touching its row for this long is presumed dead (claim takeover) */
-const CLAIM_LEASE_MS = 60_000;
+/**
+ * A request that stops touching its row for this long is presumed dead (claim takeover).
+ * Longer than one operator round trip (broadcast + receipt wait); the holder also refreshes
+ * the lease right before anchoring. Ownership only guards the ROW: the fence against two
+ * generations broadcasting the same settlement is the OperatorTxQueue idempotencyKey
+ * (`settle:<paymentId>`, one broadcast per key) and, finally, the registry itself
+ * (ReceiptAlreadyIssued), which `recoverable` turns back into a success.
+ */
+const CLAIM_LEASE_MS = 120_000;
 
 async function readBinding(
   db: Db,
@@ -447,7 +454,8 @@ type Claim =
  *     stage anchor with paid_at             -> resume  (paid; only the anchoring is outstanding)
  *     stage settle                          -> blocked (facilitator outcome unknown: reconcile by hand)
  * - pending with a live lease               -> wait (undefined)
- * Every takeover is a CAS on the row state the caller observed.
+ * Every takeover is a CAS on the full row state the caller observed (status, stage, token,
+ * lease timestamp): a holder that advanced the stage or refreshed its lease in between wins.
  */
 async function takeClaim(
   ports: SettlePorts,
@@ -484,9 +492,13 @@ async function takeClaim(
       and(
         eq(paymentBinding.paymentId, row.paymentId),
         eq(paymentBinding.status, row.status),
+        eq(paymentBinding.stage, row.stage),
         row.claimToken === null
           ? isNull(paymentBinding.claimToken)
           : eq(paymentBinding.claimToken, row.claimToken),
+        row.claimedAt === null
+          ? isNull(paymentBinding.claimedAt)
+          : eq(paymentBinding.claimedAt, row.claimedAt),
       ),
     )
     .returning({ paymentId: paymentBinding.paymentId });
@@ -650,6 +662,9 @@ export async function settlePayment(
       stage = "anchor";
       onchainTx = settled.transaction;
     }
+    // refresh the lease before the slow part; a stale takeover attempt (older claimedAt) fails
+    if (!(await own({ claimedAt: ports.now() })))
+      throw lost("before anchoring");
     if (await ports.receiptIssued(expectedHash)) {
       // anchored by an earlier attempt (or by the facilitator tx already mined)
       if (resuming) onchainTx = "already-issued";
