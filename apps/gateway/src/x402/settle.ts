@@ -7,6 +7,7 @@ import {
   manifestToPolicyInput,
   type RightsReceipt,
   TransferMode,
+  weibarToTinybar,
 } from "@truenft/shared";
 import { and, eq, isNull } from "drizzle-orm";
 import { type Address, bytesToHex, type Hex, isAddressEqual } from "viem";
@@ -184,7 +185,7 @@ export async function buildPaymentRequired(
     scheme: "exact",
     network: HEDERA_TESTNET_NETWORK,
     asset: HBAR_ASSET_ID,
-    amount: value,
+    amount: weibarToTinybar(BigInt(value)).toString(),
     maxAmountRequired: value,
     payTo,
     resource: RESOURCE_PATH(assetId),
@@ -783,7 +784,7 @@ function requirementsFor(
     scheme: "exact",
     network: HEDERA_TESTNET_NETWORK,
     asset: HBAR_ASSET_ID,
-    amount: asset.manifest.paidAccess.price,
+    amount: weibarToTinybar(BigInt(asset.manifest.paidAccess.price)).toString(),
     maxAmountRequired: asset.manifest.paidAccess.price,
     payTo: settlementPayTo(ports),
     resource: RESOURCE_PATH(input.assetId),

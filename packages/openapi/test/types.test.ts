@@ -25,6 +25,7 @@ describe("@truenft/openapi generated types", () => {
           scheme: "exact",
           network: "hedera:testnet",
           asset: "native",
+          amount: "500000000",
           maxAmountRequired: "5000000000000000000",
           payTo: "0x1111111111111111111111111111111111111111",
           resource: "/assets/0xaa/paid",
