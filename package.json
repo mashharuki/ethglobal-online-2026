@@ -8,7 +8,10 @@
     "format": "pnpm exec biome format --write .",
     "check": "pnpm exec biome check --write .",
     "knip": "knip",
-    "jscpd": "jscpd ./apps ./packages"
+    "jscpd": "jscpd ./apps ./packages",
+    "contracts": "pnpm --filter contracts",
+    "gateway": "pnpm --filter gateway",
+    "agent": "pnpm --filter agent"
   },
   "keywords": [],
   "author": "",
