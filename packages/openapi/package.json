@@ -1,6 +1,6 @@
 {
   "name": "@truenft/openapi",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Single source of truth for the Access Gateway HTTP API (openapi.yaml, OpenAPI 3.1) plus openapi-typescript generated types shared by gateway / web / agent (FR-029).",
   "type": "module",
@@ -13,13 +13,18 @@
   ],
   "scripts": {
     "generate": "openapi-typescript openapi.yaml -o src/types.ts",
+    "sync-errors": "tsx scripts/sync-error-codes.ts",
+    "check-errors": "tsx scripts/sync-error-codes.ts --check",
     "lint": "redocly lint openapi.yaml",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "devDependencies": {
     "@redocly/cli": "^2.51.2",
+    "@truenft/shared": "workspace:*",
+    "@types/node": "^22.20.1",
     "openapi-typescript": "^7.13.0",
+    "tsx": "^4.23.13",
     "typescript": "~6.0.3",
     "vitest": "^4.1.0"
   }

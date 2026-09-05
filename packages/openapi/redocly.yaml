@@ -6,3 +6,5 @@ rules:
   info-license: off
   security-defined: off
   no-server-example.com: off
+  # GET /assets/{assetId}/paid is intentionally 402-only (x402 payment requirements)
+  operation-2xx-response: off

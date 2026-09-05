@@ -75,7 +75,22 @@ export const TYPED_DATA_TYPES = {
     { name: "receiptHash", type: "bytes32" },
     { name: "expiresAt", type: "uint64" },
   ],
+  /**
+   * Creator-signed emergency revocation (POST /assets/{assetId}/bump-license-epoch).
+   * A distinct struct with an explicit `action` so an OwnerAuthChallenge signature
+   * (access) can never be replayed as a revocation, nor the reverse.
+   */
+  RevocationChallenge: [
+    { name: "nonce", type: "bytes32" },
+    { name: "chainId", type: "uint256" },
+    { name: "tokenId", type: "uint256" },
+    { name: "assetId", type: "bytes32" },
+    { name: "action", type: "string" },
+    { name: "expiresAt", type: "uint64" },
+  ],
 } as const;
+
+export const REVOCATION_ACTION_BUMP_LICENSE_EPOCH = "bump-license-epoch";
 
 export type RightsReceipt = {
   chainId: bigint;
@@ -115,6 +130,15 @@ export type LicenseeAuthChallenge = {
   nonce: Hex;
   chainId: bigint;
   receiptHash: Hex;
+  expiresAt: bigint;
+};
+
+export type RevocationChallenge = {
+  nonce: Hex;
+  chainId: bigint;
+  tokenId: bigint;
+  assetId: Hex;
+  action: typeof REVOCATION_ACTION_BUMP_LICENSE_EPOCH;
   expiresAt: bigint;
 };
 
@@ -216,6 +240,18 @@ export function licenseeAuthTypedData(
     domain,
     types: { LicenseeAuthChallenge: TYPED_DATA_TYPES.LicenseeAuthChallenge },
     primaryType: "LicenseeAuthChallenge",
+    message,
+  } as const;
+}
+
+export function revocationTypedData(
+  domain: TrueCollectiveDomain,
+  message: RevocationChallenge,
+) {
+  return {
+    domain,
+    types: { RevocationChallenge: TYPED_DATA_TYPES.RevocationChallenge },
+    primaryType: "RevocationChallenge",
     message,
   } as const;
 }
