@@ -33,7 +33,9 @@
 - **鍵導出**：`KeyGateChallenge` への署名（`sig_wallet`）はこれまでどおり `blindedU` の計算にのみ使うが、**クライアントから毎回送らせない**。`blindedU` は「初回アクセス時（購入完了直後 or 所有者の初回認証成功時）」の 1 回だけ計算・保存し、以降のアクセスは nonce 付き認証署名のみで完結させる（`share_U` そのものではなく `blindedU`＝`share_U XOR HKDF(sig_wallet)` を保存する既存設計は変えない）。
 - ログ・監査記録（`audit_log`）には `keyGateSig` / `sig_wallet` を一切書き込まない（既存の `authSig` も同様）。
 
-**Rationale**：これにより、通常のリクエストログ・エラーログから漏れうるのは nonce 付きの使い捨て認証署名のみとなり、鍵導出素材（`sig_wallet`）はリクエストのライフサイクル外に出ない。「licensee パスは憲章 VI 完全準拠」という `plan.md` の主張が実装レベルでも成立する。
+**Rationale**：これにより、通常のリクエストログ・エラーログから漏れうるのは nonce 付きの使い捨て認証署名のみとなり、鍵導出素材（`sig_wallet`）は**2 回目以降のアクセス**ではリクエストのライフサイクルに一切現れなくなる。
+
+**残る信頼限界（2026-09-06 追記、Codex bounded exec レビュー指摘：完全準拠と書いていたのは過大主張だった）**：**初回アクセス**（`blindedU` をまだ計算していない状態での購入直後 / 所有者の初回認証）では、依然として `keyGateSig`（`sig_wallet`）がリクエストとして Gateway に届き、その処理中に Gateway は `sig_wallet` と `share_U`（KMS から一時参照）の両方を同時に扱う ―つまりその瞬間は `K` を再構築できる材料を全て持つ。R-1a が閉じたのは「固定署名の**無期限リプレイ**」と「**通常運用時**（2 回目以降）のリクエスト経路への露出」であり、「初回 blinding 計算時に Gateway が理論上 `K` を再構築できない」ことまでは保証しない。この限界は owner パスの `share_U` 残存信頼点（plan.md Complexity Tracking）と同種であり、`plan.md` の「licensee パスは完全準拠」という記述は「初回を除き」と限定して読み替える（README 信頼モデル段落 T123 にも明記する）。
 
 **Alternatives considered**：署名の代わりに API キー発行 → 鍵配布の別チャネルが増え MVP には過剰。両チャレンジを 1 本のまま nonce だけ足す → 鍵導出値が nonce ごとに変わってしまい `blindedU` の再利用ができなくなる（購入のたびに違う `K` になり破綻）ため、2 チャレンジへの分離が必須。
 
@@ -98,8 +100,8 @@ Gateway が認可チェック後に **短命署名 URL** または復号済み�
 `RightsRegistry.payFor(bytes32 paymentId) payable` に buyer が HBAR を預ける（`pending[paymentId] = {payer, amount, ts}`、それ自体は原子的な native transfer）。直後に **誰でも呼べる** `RightsRegistry.finalize(paymentId, receiptParams)` が `pending` 額とパラメータを検証して allocation + `ReceiptIssued` を確定する。HBAR は常にコントラクト管理下（誰にも custody されない）。`finalize` 未実行で放置されたら `refundUnfinalized(paymentId)` を timeout 後に buyer が呼べる。これは憲章の「Settlement → Claimable → Claim の 3 段」に相当し、**既定ではなくフォールバック**として明示。
 
 **⚠ fallback 採用時の追加ハードニング（2026-09-05 マルチモデルレビュー対応・Codex #2 Critical）**：上記の素朴な `pending[paymentId] = {payer, amount, ts}` は購入内容（`receiptParams`）に一切コミットしていないため、**誰でも呼べる `finalize` が「別人の入金を、finalize 呼び出し者が指定する任意の資産・licensee の収益に転用できる」**（`amount` 一致だけでは防げない。攻撃者が被害者の入金後に、自分が creator/owner である資産を指定して先に `finalize` を呼ぶ）。fallback を実際に採用する場合は必ず次を満たすこと：
-- `payFor` 呼び出し時点で `purchaseRequestHash`（または `receiptParams` のハッシュ）を `pending[paymentId]` に固定させる（`payFor(bytes32 paymentId, bytes32 committedParamsHash) payable`）。
-- `finalize` は渡された `receiptParams` から同じ規則でハッシュを再計算し、`committedParamsHash` と一致することを require（不一致は revert）。
+- `payFor` 呼び出し時点で **`ReceiptParams` 全体**（`licensee` を含む全フィールド）のハッシュ `committedParamsHash := keccak256(abi.encode(p))` を `pending[paymentId]` に固定させる（`payFor(bytes32 paymentId, bytes32 committedParamsHash) payable`）。**`purchaseRequestHash` を代用してはならない**（2026-09-05 追記、Codex bounded exec レビューで発見・Critical）：`purchaseRequestHash` は `httpMethod`/`canonicalPath`/`planId`/`resourceHash`/`policyHash` のみを含み `licensee` を含まないため、これを `committedParamsHash` に使うと「誰が受益者か」が固定されず、攻撃者が被害者の入金後に**自分を `licensee` として** `finalize` を呼んで確定できてしまう（本節が防ごうとした攻撃がそのまま残る）。
+- `finalize` は渡された `receiptParams` から `keccak256(abi.encode(p))`（`payFor` と同一の全フィールドエンコード）を再計算し、`committedParamsHash` と一致することを require（不一致は revert）。
 - 「入金時点」と「finalize 時点」のどちらを収益配分先（`ownerOf` の解決時点）とするかを明示し、`solidity-interfaces.md` の `finalize` の実装ステップに明記する（本 MVP では **finalize 時点の `ownerOf`** を採用し、A-5 の primary と同じ規則にする）。
 
 いずれの場合も **Claim は Pull 型**：`RightsRegistry.claim()`（`nonReentrant`、CEI）が呼び出し元の確定済み claimable を **ネイティブ HBAR** で払い出すのみ。所有者の再解決はしない（FR-009 / FR-010 / A-5）。
@@ -175,7 +177,11 @@ Gateway が認可チェック後に **短命署名 URL** または復号済み�
 
 **問題3（Codex #10／Fable H-6、独立に一致）**：`receipt_consumption` の `status='locked'` から `consume` tx submit までの間に Worker/DO がクラッシュすると、(a) tx 未送信ならオンチェーン `usedCount` は不変だが同じ `useIndex` で `UNIQUE` 衝突 → 恒久的に `RECEIPT_ALREADY_CONSUMED`。(b) tx が実は mined 済みで `status` 更新前に落ちると、支払済みの 1 回分の `share_G` が配信されないまま消える。
 
-**Decision（修正）**：`UNIQUE` 衝突時、既存行が `status='locked'` かつ一定時間（60秒）を超えていたら、**まずオンチェーンの `consumed[receiptHash][useIndex]` を直接確認**する。`true` なら行を `settled` に補正して既存の再配信規則（5分 TTL）に乗せる、`false` なら行を `failed` にして同一 `useIndex` で `consume` を再送する（`data-model.md` の `receipt_consumption` 状態遷移を拡張）。
+**Decision（修正）**：`UNIQUE` 衝突時、既存行が `status='locked'` かつ一定時間（60秒）を超えていたら、**まずオンチェーンの `consumed[receiptHash][useIndex]` を直接確認**する。`true` なら行を `settled` に補正して既存の再配信規則（5分 TTL）に乗せる、`false` なら行を `failed` にして**同一** `useIndex` で `consume` を再送する（別の `useIndex` へ進めてはならない ― `maxUses` の境界で、支払い済みの利用権が消費されないまま失われる。`data-model.md` の `receipt_consumption` 状態遷移を拡張）。
+
+**問題3-補足（2026-09-06 追加、Codex bounded exec レビュー指摘）**：上記の復旧は「**新しいリクエストが同じ `useIndex` で `UNIQUE` 衝突を起こしたとき**」にしかトリガーされない。しかし DO 自体がコールドスタートで再起動した場合、`usedCount`（オンチェーン確定値）でカウンタを初期化するだけでは、「tx は確定したが `status` 更新前にクラッシュした」孤立行（`status='locked'` のまま）を見逃す ―`usedCount` は既にインクリメントされているため、DO は次の `useIndex` から採番を再開してしまい、この孤立行の `share_G` は二度と配信されない（新しいリクエストが偶然同じ `useIndex` にぶつからない限り検出されない）。
+
+**Decision（追加修正）**：DO のコールドスタート時、`usedCount` でカウンタを初期化する**前に**、`receipt_consumption` から当該 `receiptHash` の `status='locked'` な行を全て取得し、各々について `consumed[receiptHash][useIndex]` を確認して `settled`（true の場合、`share_G` 未配信なら配信）または `failed`（false の場合）へ reconcile してから、カウンタを `usedCount` で初期化する。この起動時 reconcile ステップを `apps/gateway/src/do/ReceiptLock.ts` の初期化ロジックに明記する（tasks.md T083）。
 
 **問題4（Fable H-12、Codexは未指摘）**：`ReceiptLock` DO は `receiptHash` 単位で直列化されるが、`consume` tx の送信自体は共通の `HEDERA_OPERATOR_KEY` から行われる。異なる `receiptHash`（例：buyer と別の agent が同時に別資産を復号）が別々の DO から同時に tx を送ると、nonce 採番（`eth_getTransactionCount`）が競合し、片方が `nonce too low` で失敗しうる。
 
@@ -247,7 +253,7 @@ Gateway が認可チェック後に **短命署名 URL** または復号済み�
 | ハッシュ | 定義 |
 |---|---|
 | `resourceHash` | `keccak256(abi.encode(nftContract, tokenId, assetId, contentHash))`。`assetId` は資産の一意 ID（`bytes32`）、`contentHash` は暗号文の `keccak256` |
-| `policyHash` | `keccak256(abi.encode(price(uint256), duration(uint64), maxUses(uint32), permissions(uint8 ビットフラグ), transferMode(uint8), revenueSplit(creatorBps uint16, ownerBps uint16)))` |
+| `policyHash` | `keccak256(abi.encode(price(uint256), duration(uint64), maxUses(uint32), permissions(uint8 ビットフラグ), transferMode(uint8), revenueSplit(creatorBps uint16, ownerBps uint16)))`。**`price` は tinybar 単位**（2026-09-05 R-4/R-6a 改訂：Manifest 上の `paidAccess.price` は weibar 表記だが、`policyHash` 算出・`RightsNFT.setPolicy` 登録・`settleAndIssue` 再検証のいずれも `price / 1e10`（tinybar）で統一する。単位を揃えないと登録済み `policyHash` と `settleAndIssue` が再導出する `policyHash` が一致しなくなる） |
 | `conditionsHash` | `keccak256(abi.encode(ownerConditionSelector, licenseConditionSelector, verifyingContract))` — KeyGate 条件の改ざん検知用（`RightsManifest.keyGate.conditionsHash`） |
 | `purchaseRequestHash` | `keccak256(abi.encode(httpMethod, canonicalPath, planId(bytes32), resourceHash, policyHash))`。`canonicalPath` = 小文字化・末尾スラッシュ除去・クエリ順ソート済みパス。**個々のアクセス（復号）呼び出しの内容は含めない**（憲章 V） |
 | `receiptHash` | `RightsReceipt` struct（17 フィールド）の **EIP-712 `hashStruct`**。ドメイン `{name:"TrueCollective", version:"1", chainId:296, verifyingContract: RightsRegistry}`。オンチェーン認可の権威 |
@@ -258,17 +264,20 @@ Gateway が認可チェック後に **短命署名 URL** または復号済み�
 
 **問題**：`settleAndIssue` の既存ロジック（`solidity-interfaces.md` step 2）は `RightsNFT.policyHash(p.tokenId) == p.policyHash` のみを検証する。しかし `p.price` / `p.maxUses` / `p.transferMode` / `p.creatorBps` / `p.ownerBps` / `p.expiresAt` は呼び出し側の自由入力であり、**`p.policyHash` が本当にこれらの値から算出されたものかは一切検証されない**。攻撃者は正規の `policyHash`（`RightsNFT.policyHash(tokenId)` で誰でも読める）をそのまま `p.policyHash` にコピーしつつ、`p.price=0`（または 1 tinybar）・`p.maxUses=無制限`・長大な `p.expiresAt` を自由に指定して `settleAndIssue` を直接呼び出せる。全 require を通過し、オンチェーン権威 `hasValidConsumption` はこれを正規の Receipt として扱う。
 
-**Decision（修正）**：`ReceiptParams` に `durationSec`（`uint64`）を追加し、`settleAndIssue` の検証ステップに以下を追加する：
+**Decision（修正、2026-09-06 訂正：Codex bounded exec レビューで本節と `solidity-interfaces.md`/`eip712-types.md` の記述齟齬を指摘され、後者に統一）**：**`ReceiptParams` にフィールドは追加しない**（当初案の `durationSec` 追加は撤回。既存の `expiresAt` / `issuedAt` から逆算する）。`settleAndIssue` の検証ステップに以下を追加する：
 ```
 2. require(RightsNFT.policyHash(p.tokenId) == p.policyHash)                                   // 既存（PolicyHashMismatch）
-2a. require(p.policyHash == keccak256(abi.encode(
-      p.price, p.durationSec, p.maxUses, p.permittedAction, p.transferMode,
+2a. durationSec = p.expiresAt - p.issuedAt                                                     // 新規フィールドなしで逆算
+    require(p.policyHash == keccak256(abi.encode(
+      p.price, durationSec, p.maxUses, p.permittedAction, p.transferMode,
       p.creatorBps, p.ownerBps)))                                                              // 新規：PolicyContentMismatch
-2b. require(p.expiresAt == p.issuedAt + p.durationSec)                                          // 新規：ExpiryMismatch
+2b. require(p.issuedAt <= block.timestamp                                                       // 新規：ExpiryMismatch
+      && block.timestamp - p.issuedAt <= ISSUANCE_WINDOW)                                        //   見積（402応答）〜settle の許容窓（例 10 分）。
+                                                                                                  //   任意の未来 issuedAt・古い見積の使い回しの両方を排除する
 ```
-`policyHash` の定義（`price(uint256), duration(uint64), maxUses(uint32), permissions(uint8), transferMode(uint8), revenueSplit(creatorBps uint16, ownerBps uint16)`）はこの表の並びと一致させる（上表を正典としたまま、`durationSec` を `duration` の実フィールド名として明記）。新規 custom error `PolicyContentMismatch` / `ExpiryMismatch` を `solidity-interfaces.md` の error 一覧・`error-codes.md` に追加する。
+`policyHash` の定義（`price(uint256), duration(uint64), maxUses(uint32), permissions(uint8), transferMode(uint8), revenueSplit(creatorBps uint16, ownerBps uint16)`）はこの表の並びと一致させる（上表を正典としたまま、逆算した `durationSec` を `duration` の実フィールド値として使う）。新規 custom error `PolicyContentMismatch` / `ExpiryMismatch` を `solidity-interfaces.md` の error 一覧・`error-codes.md` に追加する。
 
-**Rationale**：`policyHash` はもともと「ポリシー内容の改ざん検知」のために存在する（本 R-6 節）。しかしそれを検証する側（`settleAndIssue`）がポリシーの**内容そのもの**からハッシュを再導出して照合しない限り、`policyHash` の一致検証は「攻撃者が正規値をコピーするだけで無効化できる」形骸的なチェックになる。修正は require 数行の追加のみで、既存の `ReceiptParams` 構造・呼び出し順序を破壊しない。**両モデルとも「実装着手前に直すべき最優先事項」と結論しており、Phase 3（T041 `ReceiptLib.sol` / T045 `RightsRegistry.sol`）着手時に必ず反映する。**
+**Rationale**：`policyHash` はもともと「ポリシー内容の改ざん検知」のために存在する（本 R-6 節）。しかしそれを検証する側（`settleAndIssue`）がポリシーの**内容そのもの**からハッシュを再導出して照合しない限り、`policyHash` の一致検証は「攻撃者が正規値をコピーするだけで無効化できる」形骸的なチェックになる。修正は require 数行の追加のみで、既存の `ReceiptParams` 構造・呼び出し順序を破壊しない。**両モデルとも「実装着手前に直すべき最優先事項」と結論しており、Phase 3（T041 `ReceiptLib.sol` / T045 `RightsRegistry.sol`）着手時に必ず反映する。** `2b` は `2a` とは別目的（`2a` はポリシー内容の改ざん検知、`2b` は `issuedAt` 自体の真正性 ― 未来日時の詐称・古い見積の使い回し ― を防ぐ）で、両方が必要。
 
 **epoch の命名（M1）**：所有者世代カウンタの **実フィールド名は `accessEpoch[tokenId]`**（`RightsNFT`、`_update` で +1）。概念名は「Owner Epoch」。Receipt に埋め込む発行時スナップショットは `ownerEpochAtIssue`（EIP-712 #8）で、`INVALIDATE_ON_TRANSFER` の検証時に現在の `accessEpoch(tokenId)` と比較する。3 語は同一の世代カウンタを指す。`licenseEpoch` は別カウンタ（`bumpLicenseEpoch` でのみ +1）。
 
@@ -380,13 +389,16 @@ R-5 参照。
 現行の `UNIQUE(payment_id, purchase_request_hash)`（複合キー）は「同一 `payment_id` で異なる `purchase_request_hash`」の共存を許してしまい、憲章 V が意図する「同一 `payment_id` の再利用防止」を満たさない。以下に修正する：
 
 - `payment_binding.payment_id` を**単独 PK**にする。
-- INSERT 時に衝突したら、既存行の `purchase_request_hash` と新規リクエストのそれを比較する：一致すれば**冪等応答**（既存の `receiptHash` を返す。未 settle なら settle を再試行）、不一致なら `PAYMENT_ID_PAYLOAD_CONFLICT`。
-- `status`（`pending` / `settled` / `failed`）列を追加し、facilitator タイムアウト後の正当なリトライを可能にする（`failed` は再試行可）。
-- `payment_id` は client の自由入力にせず、facilitator の settle 応答（tx id）または buyer 署名ペイロードの keccak から **決定的に導出**する（client が他人の `payment_id` を先取り INSERT する griefing を防ぐ）。
+- `payment_id` は client の自由入力にせず、**buyer 署名ペイロード（x402 `X-PAYMENT` の署名対象）の keccak** から Gateway 側で決定的に導出する（2026-09-06 訂正、Codex bounded exec レビュー指摘：facilitator の settle 応答〔tx id〕は settle **後**にしか得られないため、settle **前**に行う INSERT の PK には使えない循環依存だった。買い手の署名は決済リクエスト受信時点で既に手元にあるためこの循環を回避できる）。client が他人の `payment_id` を先取り INSERT する griefing は、`payment_id` が署名内容から一意に決まるため成立しない（他人の署名を偽造できない限り同じ `payment_id` は作れない）。
+- INSERT 時に衝突したら、既存行の `purchase_request_hash` と新規リクエストのそれを比較する：不一致なら `PAYMENT_ID_PAYLOAD_CONFLICT`。一致する場合は `status` で分岐する：
+  - `status='settled'` → **冪等応答**（保存済みの `receiptHash` を返す。settle を再実行しない）。
+  - `status='pending'`（2026-09-06 追加、Codex 指摘：元の処理がまだ実行中の可能性がある競合対策）→ **新規に settle を起動しない**。短いポーリング（例 1s 間隔・最大 10s）で `status` の変化を待ち、`settled` になれば冪等応答、変わらなければ `SETTLEMENT_IN_PROGRESS`（補助コード）を返しクライアントに後で再照会させる。
+  - `status='failed'`（facilitator タイムアウト等で前回試行が失敗と確定した場合のみ）→ settle を再試行してよい。
+- `status` の遷移は `pending → settled` または `pending → failed` のみで、**同一行に対して同時に複数の settle 処理を開始しない**（1 行 = 1 度の実行中処理、という不変条件を保つため、settle 開始時に `pending` であることを行ロック下で確認してから進める）。
 
 ### Rationale
 
-複合 UNIQUE は「衝突検知」であって「単一性の保証」ではない。単独 PK + 内容比較 + 状態遷移にすることで、憲章 V の「一回限りの支払い証明」を字義どおり満たしつつ、正当なリトライ（facilitator 側の一時的失敗）を殺さない。
+複合 UNIQUE は「衝突検知」であって「単一性の保証」ではない。単独 PK + 内容比較 + 状態遷移にすることで、憲章 V の「一回限りの支払い証明」を字義どおり満たしつつ、正当なリトライ（facilitator 側の一時的失敗）を殺さない。`status='pending'` を「無条件に再試行してよい」状態から除外することで、同時リクエストによる二重 settle 試行（Codex 指摘）も防ぐ。
 
 ---
 

@@ -72,5 +72,5 @@
       "description": "creatorBps + ownerBps == 10000（zod refine で検証。2 者のみ、FR-022）"
     }
   },
-  "$comment": "policyHash = keccak256(abi.encode(paidAccess.price, paidAccess.durationSec, paidAccess.maxUses, permissionsBitflags, transferModeEnum, revenueSplit.creatorBps, revenueSplit.ownerBps)) — R-6。conditionsHash = keccak256(abi.encode(ownerConditionSelector, licenseConditionSelector, verifyingContract))。"
+  "$comment": "policyHash = keccak256(abi.encode(priceTinybar, paidAccess.durationSec, paidAccess.maxUses, permissionsBitflags, transferModeEnum, revenueSplit.creatorBps, revenueSplit.ownerBps)) — R-6。**priceTinybar = paidAccess.price（weibar 整数文字列） / 1e10** へ変換した値を使う（2026-09-05 R-4/R-6a 改訂：Manifest 上の price は人間可読の weibar 表記のままだが、policyHash の算出・RightsNFT.setPolicy への登録・settleAndIssue での再検証は全て tinybar 単位の同一値で行わないと、契約が保持する policyHash と settleAndIssue が再導出する policyHash が一致しなくなる。Manifest 作成時〔RightsNFT.setPolicy 呼び出し前〕と settle 検証時の両方で、同じ /1e10 変換を通してから policyHash を計算すること）。conditionsHash = keccak256(abi.encode(ownerConditionSelector, licenseConditionSelector, verifyingContract))。"
 }

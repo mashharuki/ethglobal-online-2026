@@ -44,6 +44,7 @@
 | `EXPIRY_MISMATCH` | 403 | **2026-09-05 追加（R-6a）**：`issuedAt` が見積（402 応答）時刻から許容窓を超えている（古い見積の使い回し防止） |
 | `COMMITTED_PARAMS_MISMATCH` | 409 | **2026-09-05 追加（R-2a、Codex #2 Critical）**：R-2 フォールバックの `finalize` で、渡された `receiptParams` が `payFor` 時に固定した `committedParamsHash` と不一致（誰でも呼べる `finalize` による収益転用の防止） |
 | `MCP_SESSION_MISMATCH` | 403 | **2026-09-05 追加（R-9a、Fable H-1 発見）**：MCP `decrypt_content` に渡された `receiptHash` が、呼び出し元と異なる `Mcp-Session-Id` で購入されたもの（`receiptHash` は subgraph 等で公開されるため、この確認が無いと第三者が他人の購入済みコンテンツを読める） |
+| `SETTLEMENT_IN_PROGRESS` | 409 | **2026-09-06 追加（R-10、Codex bounded exec レビュー指摘）**：同一 `payment_id` の別リクエストが `status='pending'` のまま処理中。新規 settle は起動せず、短時間ポーリング後もこの状態なら返す（同時 settle の二重実行防止） |
 
 ## JSON エラー body（Gateway）
 

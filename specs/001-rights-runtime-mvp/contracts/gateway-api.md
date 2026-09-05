@@ -86,9 +86,9 @@
 **payment_binding の一意性・冪等性（2026-09-05 修正、R-10・Codex #5／Fable H-2 対応）**
 1. `payment_id` を PK として `payment_binding` に INSERT を試みる。
    - 衝突なし → 新規行を `status='pending'` で作成し、次のステップへ。
-   - 衝突あり かつ 既存行の `purchase_request_hash` == 今回のもの → **冪等応答**：既存行が `status='settled'` なら保存済みの `receiptHash`/レスポンスをそのまま返す。`status='pending'` または `status='failed'`（facilitator タイムアウト等）なら settle を再試行する。
+   - 衝突あり かつ 既存行の `purchase_request_hash` == 今回のもの → `status='settled'` なら**冪等応答**（保存済みの `receiptHash`/レスポンスをそのまま返す。settle を再実行しない）。**`status='pending'`（2026-09-06 修正、Codex 指摘：元の処理がまだ実行中の可能性がある）→ 新規に settle を起動せず、短いポーリング（1s 間隔・最大 10s）で `status` 変化を待つ。`settled` になれば冪等応答、変わらなければ `SETTLEMENT_IN_PROGRESS`（補助コード）を返す**。`status='failed'`（facilitator タイムアウト等で前回試行の失敗が確定済み）のときのみ settle を再試行する。
    - 衝突あり かつ 既存行の `purchase_request_hash` が異なる → `PAYMENT_ID_PAYLOAD_CONFLICT`。
-   - `payment_id` はクライアントの自由入力にせず、facilitator の settle 応答（tx id）または buyer 署名ペイロードの keccak から Gateway 側で決定的に導出する（他人の `payment_id` の先取り INSERT を防ぐ）。
+   - `payment_id` はクライアントの自由入力にせず、**buyer 署名ペイロード（`X-PAYMENT` の署名対象）の keccak** から Gateway 側で決定的に導出する（2026-09-06 訂正：facilitator の settle 応答〔tx id〕は settle 後にしか得られず、settle 前の INSERT には使えない循環依存だったため撤回。買い手署名は受信時点で既に手元にある）。
 2. Gateway（または facilitator）が `RightsRegistry.settleAndIssue(ReceiptParams)` を submit（R-2 primary）。`ownerEpochAtIssue` は事前に `eth_call accessEpoch` した値
 3. tx 確定 → `receiptHash` を取得、`ReceiptIssued` を確認。`payment_binding.status` を `'settled'` に更新（tx revert なら `'failed'`）
 4. `receipt/issue.ts` が EIP-712 Receipt に **サーバ署名**（利便クレデンシャル）
@@ -100,7 +100,7 @@
 ```
 7. `audit_log`（`action='x402_settle'`）
 
-> R-2 フォールバック時（2026-09-05 修正、R-2a・Codex #2 Critical 対応）：step 2 は「buyer が `RightsRegistry.payFor{value}(paymentId, committedParamsHash)` で HBAR を預け、購入内容のハッシュを入金時点に固定する」→ 別途 `POST /assets/:assetId/finalize` が `RightsRegistry.finalize(paymentId, receiptParams)` を叩く。`finalize` は渡された `receiptParams` から `committedParamsHash` を再計算し一致を検証（不一致は `COMMITTED_PARAMS_MISMATCH`）——これにより「別人の入金を攻撃者の資産の収益として finalize する」転用を防ぐ。`share_G` 要求時に未 finalize なら `SETTLEMENT_NOT_FINALIZED`。
+> R-2 フォールバック時（2026-09-05 修正、R-2a・Codex #2 Critical 対応）：step 2 は「buyer が `RightsRegistry.payFor{value}(paymentId, committedParamsHash)` で HBAR を預け、**`ReceiptParams` 全体（`licensee` を含む全フィールド）のハッシュ**を入金時点に固定する」→ 別途 `POST /assets/:assetId/finalize` が `RightsRegistry.finalize(paymentId, receiptParams)` を叩く。`finalize` は渡された `receiptParams` から `keccak256(abi.encode(p))` を再計算し一致を検証（不一致は `COMMITTED_PARAMS_MISMATCH`）——これにより「別人の入金を攻撃者の資産の収益として finalize する」転用を防ぐ。**`purchaseRequestHash` は `licensee` を含まないため `committedParamsHash` に使ってはならない**（2026-09-05 追記、Codex 指摘・licensee 未束縛のまま finalize される穴が残る）。`share_G` 要求時に未 finalize なら `SETTLEMENT_NOT_FINALIZED`。
 
 ---
 
@@ -124,7 +124,7 @@ Hono ハンドラは `receiptHash` から `env.RECEIPT_LOCK.get(idFromName(recei
 2. **`eth_call RightsRegistry.receiptStatus(receiptHash)`** で `issued` / `expiresAt` / `usedCount` / `transferMode` / `licenseEpochAtIssue` を取得。EIP-712 ドメインの `chainId` チェックで `CHAIN_ID_MISMATCH`。`resourceHash`/`policyHash` を Manifest と照合 → 不一致なら `RESOURCE_HASH_MISMATCH` / `POLICY_HASH_MISMATCH`
 3. `BEGIN; SELECT … FOR UPDATE receipt_consumption WHERE receipt_hash=$1;`（Hyperdrive→Postgres、DO を跨ぐ想定外の競合への defense-in-depth）
 4. **次の `useIndex` は DO 自前の採番カウンタから払い出す**（R-3a：DO 起動時のみ `usedCount`（オンチェーン）で初期化し、以降は DO storage のカウンタをインクリメント。`eth_call usedCount` を都度読まないことで、mirror node の反映遅延による誤った再採番を防ぐ）。`INSERT receipt_consumption(receipt_hash, use_index, status='locked')`（`UNIQUE` 衝突時は下記の復旧ロジックへ）
-5. **`UNIQUE` 衝突時の復旧（2026-09-05 追加、R-3a・Codex #10／Fable H-6 対応）**：既存行が `status='locked'` かつ `now - created_at > 60s` なら、まずオンチェーンの `consumed[receiptHash][useIndex]` を直接確認する。`true` → 既存行を `status='settled'` に補正し既存の再配信規則（TTL 5 分）へ。`false` → 既存行を `status='failed'` にし、DO のカウンタで別の `useIndex` を再採番して 4 へ戻る。`status='locked'` かつ 60s 以内なら `RECEIPT_ALREADY_CONSUMED`（処理中）
+5. **`UNIQUE` 衝突時の復旧（2026-09-05 追加、R-3a・Codex #10／Fable H-6 対応。2026-09-06 訂正：別 `useIndex` への再採番は誤りだったため同一 `useIndex` での再送に修正）**：既存行が `status='locked'` かつ `now - created_at > 60s` なら、まずオンチェーンの `consumed[receiptHash][useIndex]` を直接確認する。`true` → 既存行を `status='settled'` に補正し既存の再配信規則（TTL 5 分）へ。`false` → 既存行を `status='failed'` にし、**同一の `useIndex` で** `consume` を再送する（別の `useIndex` へ進めてはならない ― `maxUses=1` のような境界で、未送信のまま失敗した index 0 を放棄して index 1 を新規採番すると `index 1 >= maxUses` で `USE_LIMIT_EXCEEDED` となり、支払い済みの利用権が消費されずに失われる。Codex bounded exec レビュー指摘）。`status='locked'` かつ 60s 以内なら `RECEIPT_ALREADY_CONSUMED`（処理中）
 6. `COMMIT`
 7. **`RightsRegistry.consume(receiptHash, useIndex)` の送出は `OperatorTxQueue` DO（R-3a）に依頼**（オンチェーン権威。nonce 採番の集約により異なる `receiptHash` 間の tx 競合を防ぐ）。revert 時はその custom error を ErrorCode にマップ（`RECEIPT_EXPIRED` / `USE_LIMIT_EXCEEDED` / `LICENSE_INVALIDATED_ON_TRANSFER` / `LICENSE_EPOCH_MISMATCH` / `RECEIPT_ALREADY_CONSUMED` / `NOT_AUTHORIZED`）→ `receipt_consumption.status='failed'`
 8. tx 確定 → `status='settled'`, `onchain_tx` → **`share_G` を KV から取得・放出**（settle-before-release、憲章 V）

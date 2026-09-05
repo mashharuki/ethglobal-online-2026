@@ -121,7 +121,8 @@ interface IRightsRegistry {
     // 2026-09-05 修正（R-2a）：committedParamsHash で購入内容を入金時点に固定し、finalize による収益転用を防ぐ（Codex #2 Critical）
     function payFor(bytes32 paymentId, bytes32 committedParamsHash) external payable;  // fallback：buyer が HBAR を預ける（pending[paymentId] = {payer, amount, committedParamsHash, ts}）
     function finalize(bytes32 paymentId, ReceiptParams calldata p) external returns (bytes32 receiptHash);
-    // 誰でも可。pending 額 **および** keccak256(abi.encode(p)) と同等の規則で計算した committedParamsHash の一致を検証。
+    // 誰でも可。pending 額 **および** keccak256(abi.encode(p))（p.licensee を含む全フィールド。`purchaseRequestHash` の代用は不可 ―
+    // licensee を含まないため受益者を固定できない、Codex bounded exec レビュー指摘・Critical）と一致する committedParamsHash を検証。
     // 収益配分先は finalize 時点の ownerOf（primary の A-5 と同じ規則）。不一致は revert（CommittedParamsMismatch）
     function refundUnfinalized(bytes32 paymentId) external;        // timeout 後に buyer が HBAR を回収
 

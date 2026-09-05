@@ -221,25 +221,33 @@ table receipt_consumption
                                               -- 同一 use_index への share_G 再配信を許容（consume は再送しない、spec Edge Case #1 / FR-007 / I9）
   created_at          timestamptz
   UNIQUE (receipt_hash, use_index)            -- 憲章 V
-  -- 2026-09-05 追加（R-3a・Codex #10／Fable H-6 対応）：UNIQUE 衝突時の復旧規則
-  --   既存行が status='locked' かつ (now - created_at) > 60s の場合、オンチェーン
+  -- 2026-09-05 追加（R-3a・Codex #10／Fable H-6 対応。2026-09-06 訂正：別 use_index への再採番は誤り）：
+  --   UNIQUE 衝突時の復旧規則。既存行が status='locked' かつ (now - created_at) > 60s の場合、オンチェーン
   --   consumed[receipt_hash][use_index] を直接確認し、true なら 'settled' へ補正（既存 TTL 規則に合流）、
-  --   false なら 'failed' にして DO 自前カウンタで別の use_index を再採番する。
+  --   false なら 'failed' にして **同一の use_index** で consume を再送する（別の use_index へは進めない ―
+  --   maxUses=1 のような境界で、未送信のまま失敗した index 0 を放棄して index 1 を新規採番すると
+  --   USE_LIMIT_EXCEEDED となり支払い済みの利用権が消費されずに失われる。Codex bounded exec レビュー指摘）。
   --   use_index 自体は eth_call usedCount からではなく ReceiptLock DO の自前カウンタから払い出す
-  --   （mirror node の反映遅延による誤再採番を避けるため。DO 起動時のみ usedCount で初期化）
+  --   （mirror node の反映遅延による誤採番を避けるため。DO 起動時のみ usedCount で初期化）
 
 table payment_binding
   payment_id          bytea PRIMARY KEY       -- 2026-09-05 修正（R-10・Codex #5／Fable H-2 対応）：単独 PK に変更。
                                               -- 旧 UNIQUE(payment_id, purchase_request_hash) は「同一 payment_id・
                                               -- 別内容」の共存を許してしまい、憲章 V の一意性要件を満たさなかった。
-                                              -- payment_id は client の自由入力にせず、facilitator の settle 応答
-                                              -- （tx id）または buyer 署名ペイロードの keccak から決定的に導出する。
+                                              -- payment_id は client の自由入力にせず、**buyer 署名ペイロード（X-PAYMENT の
+                                              -- 署名対象）の keccak** から決定的に導出する（2026-09-06 訂正：facilitator の
+                                              -- settle 応答〔tx id〕は settle 後にしか得られず INSERT 時点には使えない循環依存
+                                              -- だったため撤回、Codex 指摘）。
   purchase_request_hash bytea NOT NULL
   receipt_hash        bytea                   -- settle 確定後に埋める（pending 中は NULL）
   amount              numeric NOT NULL
   status              text CHECK (status IN ('pending','settled','failed')) NOT NULL DEFAULT 'pending'
-                                              -- INSERT 衝突時：purchase_request_hash が一致すれば冪等応答
-                                              -- （settled なら保存済み receiptHash を返す、pending/failed なら settle 再試行）。
+                                              -- INSERT 衝突時：purchase_request_hash が一致すれば
+                                              --   settled → 冪等応答（保存済み receiptHash を返す、settle 再実行しない）
+                                              --   pending → 新規 settle を起動せず短時間ポーリング（既存処理が実行中の
+                                              --     可能性があるため。2026-09-06 追加、Codex 指摘）。変化なければ
+                                              --     SETTLEMENT_IN_PROGRESS
+                                              --   failed → settle 再試行可
                                               -- 不一致なら PAYMENT_ID_PAYLOAD_CONFLICT
   created_at          timestamptz
 
@@ -292,8 +300,9 @@ ReceiptLock DO 内（1 リクエストずつ）:
        INSERT INTO receipt_consumption(receipt_hash, use_index, wallet, status)
          VALUES ($1, $n, $wallet, 'locked');            -- UNIQUE 制約で二重を弾く
      COMMIT;
-       -- UNIQUE 衝突時（2026-09-05 追加、R-3a）：既存行が 'locked' かつ 60s 超過なら consumed(on-chain) を確認し
-       -- true→'settled' 補正／false→'failed' にして再採番。60s 以内は RECEIPT_ALREADY_CONSUMED
+       -- UNIQUE 衝突時（2026-09-05 追加、R-3a。2026-09-06 訂正）：既存行が 'locked' かつ 60s 超過なら consumed(on-chain) を確認し
+       -- true→'settled' 補正／false→'failed' にして**同一 use_index で consume 再送**（別 use_index への再採番は不可）。
+       -- 60s 以内は RECEIPT_ALREADY_CONSUMED
   3. OperatorTxQueue DO へ consume($1, $n) の送出を依頼    -- 2026-09-05 追加（R-3a・Fable H-12対応）：
                                                           -- nonce 採番を一元化し、異なる receiptHash 間の tx 競合を防ぐ
   4. tx 確定 → status='settled', onchain_tx=…  →  KV から share_G を取得・放出

@@ -44,12 +44,12 @@ RightsReceipt(
 | `policyHash` | R-6 の policy 正規化ハッシュ | `RightsNFT.policyHash(tokenId)` と一致（`POLICY_HASH_MISMATCH`）**かつ**（2026-09-05 R-6a 追加）`keccak256(abi.encode(price, expiresAt-issuedAt, maxUses, permittedAction, transferMode, creatorBps, ownerBps))` と一致（`POLICY_CONTENT_MISMATCH`）。後者が無いと、正規の `policyHash` を使い回しつつ `price`/`maxUses` 等を自由に指定できてしまう（Critical、Codex #1 / Fable C-1） |
 | `licenseEpoch` | `RightsRegistry.licenseEpoch(tokenId)`（発行時） | `hasValidConsumption` で現在値と一致（`LICENSE_EPOCH_MISMATCH`） |
 | `ownerEpochAtIssue` | `RightsNFT.accessEpoch(tokenId)`（発行時）。＝「Owner Epoch」、実フィールド名は `accessEpoch`（M1） | `INVALIDATE_ON_TRANSFER` のとき現在の `accessEpoch(tokenId)` と一致必須（`LICENSE_INVALIDATED_ON_TRANSFER`）。`SURVIVE_TRANSFER` は監査のみ |
-| `licensee` | 購入者ウォレット | `keyGateSig` の復元アドレスと一致（`LICENSEE_MISMATCH`）。`code.length == 0`（`CONTRACT_WALLET_UNSUPPORTED`） |
+| `licensee` | 購入者ウォレット | `authSig`（`LicenseeAuthChallenge` への署名、R-1a）の復元アドレスと一致（`LICENSEE_MISMATCH`）。`code.length == 0`（`CONTRACT_WALLET_UNSUPPORTED`）。**`keyGateSig`（鍵導出用）はこの検証には使わない**（2026-09-06 訂正：R-1a で認証と鍵導出を分離した後の取り残し記述、Codex 指摘） |
 | `permittedAction` | permissions ビットフラグ（bit0 commercialUse, bit1 aiTraining, bit2 derivativeGeneration）。Manifest `permissions` の 3 ブール（FR-004）を 1 バイトに畳んだもの。※名称は単数だが実体は許諾セット | 表示・監査用（MVP は enforcement しない） |
 | `transferMode` | `0 = SURVIVE_TRANSFER`, `1 = INVALIDATE_ON_TRANSFER` | 上記 `ownerEpochAtIssue` の扱いを決める |
 | `maxUses` | Manifest `paidAccess.maxUses` | `consume` で `useIndex < maxUses`（`USE_LIMIT_EXCEEDED`） |
 | `expiresAt` | `issuedAt + durationSec`（`durationSec` は Manifest 由来、`policyHash` にも入力される） | `hasValidConsumption`（`RECEIPT_EXPIRED`）。加えて（2026-09-05 R-6a）`issuedAt` 自体が「見積（402 応答）時刻から一定窓内であること」を settle 時に検証（`EXPIRY_MISMATCH`、見積から settle までの race を許容しつつ古い見積の使い回しを防ぐ） |
-| `purchaseRequestHash` | `keccak256(abi.encode(httpMethod, canonicalPath, planId, resourceHash, policyHash))` | **アクセス（復号）呼び出し内容を含めない**（憲章 V）。`UNIQUE(payment_id, purchase_request_hash)` |
+| `purchaseRequestHash` | `keccak256(abi.encode(httpMethod, canonicalPath, planId, resourceHash, policyHash))` | **アクセス（復号）呼び出し内容を含めない**（憲章 V）。**`payment_binding.payment_id` は単独 PK（R-10・2026-09-06 訂正：旧 `UNIQUE(payment_id, purchase_request_hash)` の複合キーは「同一 payment_id・別内容」の共存を許してしまうため撤回）。`purchase_request_hash` は同一行内の内容一致確認にのみ使う** |
 | `paymentId` | x402 の支払い ID | 一回限り（`PAYMENT_ID_PAYLOAD_CONFLICT`） |
 | `nonce` | ランダム 32 バイト | `!issued[receiptHash]` と併せ二重発行防止 |
 | `issuedAt` | settle tx の `block.timestamp` | 監査 |
