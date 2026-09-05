@@ -1,0 +1,97 @@
+# MyToken (ERC-721) subgraph schema
+
+"""
+コレクション全体の集計値と現在のオーナー（Ownable）を保持するシングルトン。
+id はコントラクトアドレス。
+"""
+type Collection @entity(immutable: false) {
+  id: ID!
+  "Ownable の現在のオーナー"
+  owner: Bytes!
+  "現在の流通枚数 (mint - burn)"
+  totalSupply: BigInt!
+  "これまでに mint された累計枚数"
+  totalMinted: BigInt!
+  "これまでに burn された累計枚数"
+  totalBurned: BigInt!
+}
+
+"""
+NFT 1 枚ごとの現在の状態。id は tokenId の 10 進文字列。
+"""
+type Token @entity(immutable: false) {
+  id: ID!
+  tokenId: BigInt!
+  "現在の所有者"
+  owner: Owner!
+  "コントラクトが返す tokenURI (baseURI 未設定なら空文字)"
+  tokenURI: String
+  "承認済みアドレス (approve 済みでなければ null)"
+  approved: Bytes
+  burned: Boolean!
+  mintedAt: BigInt!
+  mintedBlock: BigInt!
+  mintedTxHash: Bytes!
+  transfers: [Transfer!]! @derivedFrom(field: "token")
+}
+
+"""
+アドレスごとの保有状況。id はアドレス。
+"""
+type Owner @entity(immutable: false) {
+  id: ID!
+  "現在保有している NFT の枚数"
+  balance: BigInt!
+  tokens: [Token!]! @derivedFrom(field: "owner")
+}
+
+"""
+Transfer イベント履歴。from = 0x0 は mint、to = 0x0 は burn。
+"""
+type Transfer @entity(immutable: true) {
+  id: ID!
+  token: Token!
+  from: Bytes!
+  to: Bytes!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+"""
+単一トークンに対する approve の履歴。
+"""
+type Approval @entity(immutable: true) {
+  id: ID!
+  token: Token!
+  owner: Bytes!
+  approved: Bytes!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+"""
+setApprovalForAll の履歴。
+"""
+type ApprovalForAll @entity(immutable: true) {
+  id: ID!
+  owner: Bytes!
+  operator: Bytes!
+  approved: Boolean!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+"""
+Ownable の owner 移転履歴。
+"""
+type OwnershipTransferred @entity(immutable: true) {
+  id: ID!
+  previousOwner: Bytes!
+  newOwner: Bytes!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  txHash: Bytes!
+}
