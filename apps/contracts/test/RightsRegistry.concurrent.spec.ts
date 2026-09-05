@@ -101,30 +101,44 @@ describe("RightsRegistry concurrent consume", () => {
     );
     await networkHelpers.mine();
     await ethers.provider.send("evm_setAutomine", [true]);
-    const results = await Promise.allSettled(sent.map((tx) => tx.wait()));
-
-    const succeeded = results.filter(
-      (r) => r.status === "fulfilled" && r.value?.status === 1,
-    ).length;
-    const rejected = results.filter(
-      (r) =>
-        r.status === "rejected" ||
-        (r.status === "fulfilled" && r.value?.status === 0),
-    ).length;
+    // all 20 must be MINED (in the same block); losers are status-0 receipts, not client rejections
+    const receipts = await Promise.all(
+      sent.map((tx) => ethers.provider.getTransactionReceipt(tx.hash)),
+    );
+    const blockNumbers = new Set(receipts.map((r) => r?.blockNumber));
+    expect(blockNumbers.size, "all 20 txs mined in one block").to.equal(1);
+    const succeeded = receipts.filter((r) => r?.status === 1).length;
+    const reverted = receipts.filter((r) => r?.status === 0).length;
     expect(succeeded).to.equal(1);
-    expect(rejected).to.equal(19);
+    expect(reverted).to.equal(19);
     expect(await registry.isConsumed(receiptHash, 0)).to.equal(true);
     const status = await registry.receiptStatus(receiptHash);
     expect(status.usedCount).to.equal(1n);
 
-    // every failure must be the expected custom error
-    for (const r of results) {
-      if (r.status === "rejected") {
-        const message = String(
-          (r.reason as { message?: string }).message ?? r.reason,
-        );
-        expect(message, message).to.match(/ReceiptAlreadyConsumed|reverted/);
+    // decode the revert reason of every loser by replaying it against the post-block state:
+    // the only reason left for consume(receiptHash, 0) must be ReceiptAlreadyConsumed()
+    const expectedSelector = registry.interface.getError(
+      "ReceiptAlreadyConsumed",
+    )?.selector;
+    expect(expectedSelector).to.be.a("string");
+    const minedBlock = [...blockNumbers][0] as number;
+    let decoded = 0;
+    for (const r of receipts) {
+      if (r?.status !== 0) continue;
+      try {
+        await ethers.provider.call({
+          to: registry.target,
+          data: calldata,
+          from: operator.address,
+          blockTag: minedBlock,
+        });
+        expect.fail("replay of a losing consume must revert");
+      } catch (error) {
+        const data = String((error as { data?: string }).data ?? "");
+        expect(data.slice(0, 10), "revert selector").to.equal(expectedSelector);
+        decoded += 1;
       }
     }
+    expect(decoded).to.equal(19);
   });
 });

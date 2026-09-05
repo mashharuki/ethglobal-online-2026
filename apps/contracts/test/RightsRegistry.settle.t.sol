@@ -173,6 +173,9 @@ contract RightsRegistrySettleTest is RegistryTestBase {
         // quote is still inside ISSUANCE_WINDOW but the 300s license has already elapsed
         IRightsRegistry.ReceiptParams memory p = _params(buyer, "x1");
         vm.warp(block.timestamp + DURATION + 1);
+        // precondition: the quote itself is still fresh, so only expiry-at-settlement can trip
+        assertLe(block.timestamp - p.issuedAt, reg.ISSUANCE_WINDOW());
+        assertLe(p.expiresAt, block.timestamp);
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.ExpiryMismatch.selector);
         reg.settleAndIssue{value: PRICE_WEIBAR}(p);

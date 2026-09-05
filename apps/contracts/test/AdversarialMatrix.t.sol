@@ -43,11 +43,19 @@ contract AdversarialMatrixTest is RegistryTestBase {
         reg.settleAndIssue{value: PRICE_WEIBAR}(p);
     }
 
-    /// #5 CHAIN_ID_MISMATCH - a receipt hashed under chainId 295 is not the issued receipt on 296
+    /// #5 CHAIN_ID_MISMATCH - contract-side evidence only: the receipt hash is domain-bound, so a
+    ///    receipt hashed under another chainId (or contract) is simply not issued here. The EIP-712
+    ///    signature check that returns CHAIN_ID_MISMATCH lives in the gateway (Phase 7).
     function test_Row05_ChainIdSpoofedReceiptIsNotIssued() public {
         IRightsRegistry.ReceiptParams memory p = _params(buyer, "matrix");
-        bytes32 spoofed = this.hashParams(p, 295, address(reg));
+        // control: the correct-domain hash IS the issued receipt
+        assertEq(this.hashParams(p, block.chainid, address(reg)), h);
+        assertTrue(reg.hasValidConsumption(h, 0));
+        bytes32 spoofed = this.hashParams(p, block.chainid == 295 ? 296 : 295, address(reg));
         assertNotEq(spoofed, h);
+        bytes32 otherContract = this.hashParams(p, block.chainid, address(nft));
+        assertNotEq(otherContract, h);
+        assertFalse(reg.hasValidConsumption(otherContract, 0));
         assertFalse(reg.hasValidConsumption(spoofed, 0));
         vm.prank(operator);
         vm.expectRevert(IRightsRegistry.NotIssued.selector);

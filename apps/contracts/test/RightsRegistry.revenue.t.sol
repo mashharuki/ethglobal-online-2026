@@ -5,13 +5,14 @@ import {IRightsRegistry} from "../contracts/interfaces/IRightsRegistry.sol";
 import {ReceiptLib} from "../contracts/libraries/ReceiptLib.sol";
 import {RevenueLib} from "../contracts/libraries/RevenueLib.sol";
 import {RightsRegistry} from "../contracts/RightsRegistry.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {RegistryTestBase} from "./RegistryTestBase.sol";
 
 /// @dev Re-enters claim() from the payout callback; the second claim must fail.
 contract ReentrantClaimer {
     RightsRegistry internal immutable reg;
     uint256 public reentered;
-    bool public innerReverted;
+    bytes4 public innerSelector;
 
     constructor(RightsRegistry reg_) {
         reg = reg_;
@@ -25,9 +26,9 @@ contract ReentrantClaimer {
         reentered += 1;
         if (reentered == 1) {
             try reg.claim() {
-                innerReverted = false;
-            } catch {
-                innerReverted = true;
+                innerSelector = bytes4(0);
+            } catch (bytes memory reason) {
+                innerSelector = bytes4(reason);
             }
         }
     }
@@ -115,7 +116,9 @@ contract RightsRegistryRevenueTest is RegistryTestBase {
 
         attacker.attack();
         assertEq(attacker.reentered(), 1);
-        assertTrue(attacker.innerReverted()); // CEI + nonReentrant: nested claim failed
+        // the nested claim must be stopped by the reentrancy guard itself (not merely by
+        // the zeroed balance, which would surface as NothingToClaim)
+        assertEq(attacker.innerSelector(), ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
         assertEq(address(attacker).balance, owed * 1e10); // paid exactly once
         assertEq(reg.claimable(address(attacker)), 0);
     }
