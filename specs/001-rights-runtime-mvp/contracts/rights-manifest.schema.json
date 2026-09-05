@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://truecollective.example/schemas/rights-manifest-1.0.json",
+  "title": "Rights Manifest",
+  "description": "資産ごとの機械可読なアクセス条件・利用許諾・収益配分。packages/shared/src/manifest.ts の zod スキーマと 1:1。改ざん検知が必要なフィールドは policyHash / conditionsHash としてオンチェーン固定される。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "assetId", "nftContract", "tokenId",
+    "previewURI", "encryptedContentURI", "contentHash",
+    "keyGate", "ownerAccess", "paidAccess", "permissions",
+    "transferMode", "revenueSplit"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "assetId": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+    "nftContract": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+    "tokenId": { "type": "string", "pattern": "^[0-9]+$" },
+    "previewURI": { "type": "string", "format": "uri", "description": "非保護。誰でも閲覧（FR-019）" },
+    "encryptedContentURI": { "type": "string", "format": "uri", "description": "AES-256-GCM 暗号文（本体）" },
+    "contentHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$", "description": "暗号文の keccak256" },
+    "keyGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "keyGateVersion", "conditionsHash", "ownerCondition", "licenseCondition"],
+      "properties": {
+        "scheme": { "const": "xor-2share" },
+        "keyGateVersion": { "type": "integer", "const": 1 },
+        "conditionsHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+        "ownerCondition": { "type": "string" },
+        "licenseCondition": { "type": "string" }
+      }
+    },
+    "ownerAccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["price", "durationSec"],
+      "properties": {
+        "price": { "const": "0", "description": "所有者は無料" },
+        "durationSec": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "paidAccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["price", "durationSec", "maxUses"],
+      "properties": {
+        "price": { "type": "string", "pattern": "^[1-9][0-9]*$", "description": "ネイティブ HBAR の weibar（10^18 = 1 HBAR）整数文字列。native 精度下限 tinybar のため 10^10 の倍数であること" },
+        "durationSec": { "type": "integer", "minimum": 1 },
+        "maxUses": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commercialUse", "aiTraining", "derivativeGeneration"],
+      "properties": {
+        "commercialUse": { "type": "boolean" },
+        "aiTraining": { "type": "boolean" },
+        "derivativeGeneration": { "type": "boolean" }
+      }
+    },
+    "transferMode": { "enum": ["SURVIVE_TRANSFER", "INVALIDATE_ON_TRANSFER"] },
+    "revenueSplit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["creatorBps", "ownerBps"],
+      "properties": {
+        "creatorBps": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "ownerBps": { "type": "integer", "minimum": 0, "maximum": 10000 }
+      },
+      "description": "creatorBps + ownerBps == 10000（zod refine で検証。2 者のみ、FR-022）"
+    }
+  },
+  "$comment": "policyHash = keccak256(abi.encode(paidAccess.price, paidAccess.durationSec, paidAccess.maxUses, permissionsBitflags, transferModeEnum, revenueSplit.creatorBps, revenueSplit.ownerBps)) — R-6。conditionsHash = keccak256(abi.encode(ownerConditionSelector, licenseConditionSelector, verifyingContract))。"
+}
