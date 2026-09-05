@@ -1,0 +1,22 @@
+{
+  "title": "Exclusive dataset B - Solar micro-grid telemetry sample (synthetic)",
+  "license": "TrueCollective demo asset B (INVALIDATE_ON_TRANSFER)",
+  "columns": [
+    "hour",
+    "siteId",
+    "generationKwh",
+    "consumptionKwh",
+    "batterySocPct"
+  ],
+  "rows": [
+    [6, "site-01", 0.4, 1.1, 62],
+    [9, "site-01", 3.8, 1.6, 71],
+    [12, "site-01", 6.2, 2.3, 88],
+    [15, "site-01", 4.9, 2.0, 95],
+    [18, "site-01", 1.1, 2.8, 84],
+    [21, "site-01", 0.0, 2.1, 70],
+    [12, "site-02", 5.7, 1.9, 80],
+    [15, "site-02", 4.4, 1.7, 90]
+  ],
+  "notes": "Synthetic numbers generated for the ETHOnline 2026 demo. Not real telemetry."
+}
