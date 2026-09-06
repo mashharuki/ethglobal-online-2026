@@ -223,12 +223,20 @@ Stated as precisely as we can (constitution VII):
 Everything below the network boundary is verified locally and in review: contract test suites,
 gateway (workerd + PGlite) suites incl. the 20-parallel replay, web unit tests, e2e tooling
 tests, agent unit tests, biome / knip / jscpd / typecheck all green, every PR reviewed by a second
-model (GPT-6 Astra via Codex) until clean.
+model (GPT-6 Astra via Codex) until clean. CI (`.github/workflows/ci.yml`) runs the same suite on
+every push and PR.
 
-**Not yet verified at the time of writing (needs credentials / deployments):** Hedera Testnet
-day-1 probes, contract deployment + seed on Testnet, Blocky402 settlement, Cloudflare deployment,
-Privy live login, the AWS Graph Node, the live Playwright / Newman / agent runs. Those specs
-**skip with a printed notice and never report success** until the targets exist.
+**Verified live, with a link to check it yourself:** `RightsNFT` and `RightsRegistry` are deployed
+on Hedera Testnet and verified on Sourcify (see the Deployed Contract table above — "Exact Match",
+runtime bytecode). The self-hosted Rights Graph (subgraph) is deployed and reachable at the
+`SUBGRAPH_URL` in `apps/gateway/wrangler.toml`.
+
+**Not yet verified at the time of writing (needs credentials / a completed deployment, or
+hasn't been re-checked against the current state — see issues #31–#37, #40):** the demo
+seed data actually minted on Testnet, Blocky402 settlement, the gateway Cloudflare Workers
+deployment and the web Cloudflare Pages deployment, Privy live login, the day-1 probes'
+recorded results, and the live Playwright / Newman / agent runs. Those specs **skip with a
+printed notice and never report success** until the targets exist.
 
 ## Prior work and disclosure (ETHOnline rules)
 
