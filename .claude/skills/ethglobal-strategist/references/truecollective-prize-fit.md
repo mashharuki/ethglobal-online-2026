@@ -25,7 +25,7 @@ TrueCollective の構成要素：Hedera 上の RightsNFT / RightsRegistry / Reve
 | 要件 | 充足 | 宿題 |
 |---|---|---|
 | Privy を中核統合、Privy ウォレット最低1つ | web の所有者・購入者は `@privy-io/react-auth` 内蔵 EOA（T043）。MCP 決済は Privy server wallet（T126）| — |
-| **完結した金融フロー**（transfers / stablecoin 変換 / swaps / onramps 等のいずれか）| x402 **ネイティブ HBAR** 決済（憲章 v1.3.0 で USDC から変更・Blocky402 の `hedera:testnet`/`exact` はネイティブ資産のみ）＝ 要件の「transfers」に該当する支払いフローが購入→Receipt→収益分配→claim まで完結 | 「Privy が金融フローの中核」と見える導線に（単なる署名役に見せない）|
+| **完結した金融フロー**（transfers / stablecoin 変換 / swaps / onramps 等のいずれか）| x402 **ネイティブ HBAR** 決済（憲章 v1.3.0 で USDC から変更・Blocky402 の `hedera:testnet`/`exact` はネイティブ資産のみ）＝ 要件の「transfers」に該当する支払いフロー（購入→Receipt→収益分配→claim）を実装・ローカル検証済み。**ライブでの 1 回通し（T099 / T119）は未**＝充足の主張はその後 | 「Privy が金融フローの中核」と見える導線に（単なる署名役に見せない）|
 | 動作デモ + ソースコード | T091 / T093 / T078 | — |
 
 ### ③ Privy「Best B2B Financial Product」— $2,500 ／ 適合度 4/5
