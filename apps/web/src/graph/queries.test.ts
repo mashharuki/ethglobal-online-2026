@@ -71,19 +71,18 @@ describe("Rights Graph queries (T106)", () => {
     expect(result?.licenseEpochChanges).toEqual(timeline.licenseEpochChanges);
     // every selection in the query exists on the entity it is selected from, per the REAL
     // subgraph schema (apps/subgraph/schema.graphql): drift there fails here
-    const problems = validateAgainstSchema(TOKEN_TIMELINE_QUERY, {
-      rightsToken: "RightsToken",
-      licenseEpochChanges: "LicenseEpochChange",
-    });
-    expect(problems).toEqual([]);
+    expect(validateAgainstSchema(TOKEN_TIMELINE_QUERY)).toEqual([]);
     expect(
       validateAgainstSchema(
         '{ rightsToken(id: "1") { id nope owner { id } } }',
-        {
-          rightsToken: "RightsToken",
-        },
       ),
     ).toEqual(["RightsToken.nope is not in the schema"]);
+    expect(validateAgainstSchema("{ rightsToken { id { nope } } }")).toEqual([
+      "RightsToken.id is a scalar and has no sub-selection",
+    ]);
+    expect(validateAgainstSchema("{ unicorns { id } }")).toEqual([
+      "unknown root field unicorns",
+    ]);
     const missing = createApi("http://gateway.test", async () =>
       Response.json({ data: { rightsToken: null, licenseEpochChanges: [] } }),
     );
@@ -126,41 +125,66 @@ function loadSchema(): Map<string, Map<string, string>> {
   return entities;
 }
 
-/** Walks the query's selection sets and reports fields the schema does not have. */
-function validateAgainstSchema(
-  query: string,
-  roots: Record<string, string>,
-): string[] {
+/**
+ * Walks the query's selection sets and reports what the schema does not have: unknown root
+ * fields (The Graph derives `rightsToken` / `rightsTokens` from every entity), fields missing
+ * on their entity, and sub-selections under scalars.
+ */
+function validateAgainstSchema(query: string): string[] {
   const schema = loadSchema();
+  const roots = new Map<string, string>();
+  for (const entity of schema.keys()) {
+    const single = entity.charAt(0).toLowerCase() + entity.slice(1);
+    roots.set(single, entity);
+    roots.set(`${single}s`, entity);
+  }
   const problems: string[] = [];
-  // strip the operation header and arguments, keep names + braces
   const body = query
-    .replace(/^query\s+\w+\s*\([^)]*\)/, "")
+    .replace(/^\s*query\s+\w+\s*\([^)]*\)/, "")
     .replace(/\([^)]*\)/g, "");
   const tokens = body.match(/[A-Za-z_]\w*|[{}]/g) ?? [];
-  const stack: Array<string | undefined> = [];
-  let pending: string | undefined;
+  // each frame: the entity whose fields are being selected, or a scalar marker
+  const stack: Array<{ entity: string } | { scalar: string }> = [];
+  let pending: { entity: string } | { scalar: string } | undefined;
   for (const token of tokens) {
     if (token === "{") {
-      stack.push(pending);
+      stack.push(pending ?? { entity: "Query" });
       pending = undefined;
-    } else if (token === "}") {
+      continue;
+    }
+    if (token === "}") {
       stack.pop();
-    } else {
-      const parent = stack.at(-1);
-      let entity: string | undefined;
-      if (stack.length <= 1) {
-        entity = roots[token];
-        if (entity === undefined) problems.push(`unknown root field ${token}`);
-      } else if (parent !== undefined) {
-        const type = schema.get(parent)?.get(token);
-        if (type === undefined) {
-          problems.push(`${parent}.${token} is not in the schema`);
-        } else if (schema.has(type)) {
-          entity = type;
-        }
+      continue;
+    }
+    const frame = stack.at(-1);
+    if (
+      frame === undefined ||
+      ("entity" in frame && frame.entity === "Query")
+    ) {
+      const entity = roots.get(token);
+      if (entity === undefined) problems.push(`unknown root field ${token}`);
+      pending = entity === undefined ? undefined : { entity };
+      continue;
+    }
+    if ("scalar" in frame) {
+      if (
+        !problems.includes(
+          `${frame.scalar} is a scalar and has no sub-selection`,
+        )
+      ) {
+        problems.push(`${frame.scalar} is a scalar and has no sub-selection`);
       }
-      pending = entity;
+      pending = undefined;
+      continue;
+    }
+    const type = schema.get(frame.entity)?.get(token);
+    if (type === undefined) {
+      problems.push(`${frame.entity}.${token} is not in the schema`);
+      pending = undefined;
+    } else if (schema.has(type)) {
+      pending = { entity: type };
+    } else {
+      pending = { scalar: `${frame.entity}.${token}` };
     }
   }
   return problems;

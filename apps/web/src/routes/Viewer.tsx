@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router";
 import type { Address, Hex } from "viem";
 import { type AssetSummary, listAssets } from "../api/client";
@@ -32,17 +32,18 @@ import type { Dataset } from "../keygate/decrypt";
  * licensee path (/keygate/share -> useIndex -> decrypt), the RightsBadge from a fresh chain
  * read, the EpochTimeline from the Rights Graph, and a transfer form for the demo.
  *
- * All screen state belongs to one "session" (asset + path + receipt + wallet, plus a generation
- * counter so A -> B -> A cannot resurrect A's first results). Async work captures its session
- * object and only commits while that object is still current; rendering reads state only when
- * it was produced for the session on screen, so nothing from a previous asset is ever shown -
- * not even for one frame.
+ * All screen state belongs to one "session": a fresh object per (asset, path, receipt, wallet)
+ * tuple, memoised for the render that created it, so A -> B -> A yields a third object and
+ * cannot resurrect A's first results. Handlers are bound to the session they were rendered
+ * with and commit only into that session's screen; rendering reads state only when it was
+ * produced for the session on screen, so nothing from a previous asset is ever shown - not
+ * even for one frame. No ref is mutated during render.
  */
 type Unlocked =
   | { path: "owner"; dataset: Dataset; accessEpochAtGrant: number }
   | { path: "licensee"; dataset: Dataset; useIndex: number; onchainTx: string };
 
-type Session = { tuple: string; gen: number };
+type Session = { tuple: string };
 
 type Screen = {
   session: Session;
@@ -69,22 +70,17 @@ export default function Viewer() {
   const publicClient = usePublicClient();
 
   const tuple = `${assetId.toLowerCase()}|${path}|${receiptHash ?? ""}|${wallet.address ?? ""}`;
-  const sessionRef = useRef<Session>({ tuple, gen: 0 });
-  if (sessionRef.current.tuple !== tuple) {
-    sessionRef.current = { tuple, gen: sessionRef.current.gen + 1 };
-  }
-  const session = sessionRef.current;
+  // a new object whenever the tuple changes (identity is the session; no mutation in render)
+  const session = useMemo<Session>(() => ({ tuple }), [tuple]);
 
   const [screen, setScreen] = useState<Screen>(() => emptyScreen(session));
   // state produced for another session is never rendered
   const view = screen.session === session ? screen : emptyScreen(session);
 
-  /** commit a partial update only while `owner` is still the session on screen */
+  /** commit a partial update only into the screen that belongs to `owner` */
   const commit = useCallback((owner: Session, patch: Partial<Screen>) => {
     setScreen((prev) =>
-      sessionRef.current === owner
-        ? { ...(prev.session === owner ? prev : emptyScreen(owner)), ...patch }
-        : prev,
+      prev.session === owner ? { ...prev, ...patch } : prev,
     );
   }, []);
 
@@ -114,11 +110,11 @@ export default function Viewer() {
     [api, assetId, commit, config.deployment, publicClient],
   );
 
+  // every new session starts from an empty screen and its own refresh
   useEffect(() => {
-    const owner = sessionRef.current;
-    setScreen(emptyScreen(owner));
-    refresh(owner).catch((e: unknown) => commit(owner, { error: e }));
-  }, [refresh, commit]);
+    setScreen(emptyScreen(session));
+    refresh(session).catch((e: unknown) => commit(session, { error: e }));
+  }, [session, refresh, commit]);
 
   const deps = useMemo<AccessDeps | undefined>(
     () =>
@@ -136,7 +132,7 @@ export default function Viewer() {
 
   const unlock = useCallback(async () => {
     if (deps === undefined) return;
-    const owner = sessionRef.current;
+    const owner = session; // bound to the session this handler was rendered for
     commit(owner, {
       error: undefined,
       unlocked: undefined,
@@ -175,11 +171,11 @@ export default function Viewer() {
       commit(owner, { busy: undefined });
       refresh(owner).catch(() => undefined);
     }
-  }, [assetId, commit, deps, path, receiptHash, refresh]);
+  }, [assetId, commit, deps, path, receiptHash, refresh, session]);
 
   const [transferTo, setTransferTo] = useState("");
   const transfer = useCallback(async () => {
-    const owner = sessionRef.current;
+    const owner = session;
     const asset = view.asset;
     if (asset === undefined) return;
     commit(owner, {
@@ -206,6 +202,7 @@ export default function Viewer() {
     config.deployment,
     publicClient,
     refresh,
+    session,
     transferTo,
     view.asset,
     wallet,
