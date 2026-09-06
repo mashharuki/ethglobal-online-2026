@@ -25,12 +25,12 @@ self-hosted Graph Node（`graph-node` + PostgreSQL + IPFS、provider = Hedera JS
 ## コマンド
 
 ```bash
-pnpm --filter @subgraph sync-abis   # contracts をビルドした後に ABI を取り込む
-pnpm --filter @subgraph build       # manifest 生成 → codegen → wasm build
-pnpm --filter @subgraph test        # graph test（matchstick）
-pnpm --filter @subgraph graph-node  # ローカル graph-node を docker compose で起動
-pnpm --filter @subgraph create      # graph create（GRAPH_NODE_ADMIN、既定 http://localhost:8020/）
-pnpm --filter @subgraph deploy      # graph deploy（GRAPH_NODE_ADMIN / GRAPH_NODE_IPFS / SUBGRAPH_VERSION）
+pnpm --filter subgraph sync-abis   # contracts をビルドした後に ABI を取り込む
+pnpm --filter subgraph build       # manifest 生成 → codegen → wasm build
+pnpm --filter subgraph test        # graph test（matchstick）
+pnpm --filter subgraph graph-node  # ローカル graph-node を docker compose で起動
+pnpm --filter subgraph create      # graph create（GRAPH_NODE_ADMIN、既定 http://localhost:8020/）
+pnpm --filter subgraph deploy      # graph deploy（GRAPH_NODE_ADMIN / GRAPH_NODE_IPFS / SUBGRAPH_VERSION）
 ```
 
 デプロイ先 Graph Node の URL は `apps/cdk`（`GraphNodeStack`）の出力から取り、`GRAPH_NODE_ADMIN=http://<EIP>:8020/`

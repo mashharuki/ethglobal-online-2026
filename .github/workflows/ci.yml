@@ -57,7 +57,7 @@ jobs:
         run: pnpm --filter @truenft/openapi lint
 
       - name: typecheck / lint / test (all workspaces except the subgraph)
-        run: pnpm turbo run typecheck lint test --filter='!@subgraph' --continue --force
+        run: pnpm turbo run typecheck lint test --filter='!subgraph' --continue --force
       # apps/web has no standalone typecheck script: `tsc -b` runs inside its build
       - name: web build (tsc -b + vite build)
         run: pnpm --filter web build
