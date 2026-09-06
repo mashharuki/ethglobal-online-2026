@@ -18,9 +18,9 @@ export const ZERO_ADDRESS: Address =
 
 /** @deploy-writeback:start */
 export const DEFAULT_DEPLOYMENT: Deployment = {
-  chainId: HEDERA_TESTNET_CHAIN_ID,
-  rightsNFT: ZERO_ADDRESS,
-  rightsRegistry: ZERO_ADDRESS,
+  chainId: 296,
+  rightsNFT: "0x3524049309DC3F7f1dE83a8687a55Afa927dAe7A",
+  rightsRegistry: "0xf397F1C1697Fe777AEE97994a4b686519bD26877",
 };
 /** @deploy-writeback:end */
 

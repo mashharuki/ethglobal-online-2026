@@ -147,6 +147,13 @@ Stated as precisely as we can (constitution VII):
 | Gateway | `pnpm --filter gateway deploy`, then `pnpm --filter gateway exec tsx scripts/load-shares.ts` (loads the seeded key shares into KV / secrets), then `pnpm --filter gateway deploy` again | secrets in `apps/gateway/CONFIG.md` |
 | Web | `pnpm --filter web build` → Cloudflare Pages | `VITE_*` in `apps/web/README.md` |
 
+## Deployed Contract
+
+|Contract Name|Address|Verify|
+|:----|:----|:----|
+|RightsNFT|[0x3524049309DC3F7f1dE83a8687a55Afa927dAe7A](https://explorer.arkhia.io/testnet/contract/0.0.10391301)|[0x3524049309DC3F7f1dE83a8687a55Afa927dAe7A](https://sourcify.dev/server/repo-ui/296/0x3524049309DC3F7f1dE83a8687a55Afa927dAe7A)|
+|RightsRegistry|[0xf397f1c1697fe777aee97994a4b686519bd26877](https://explorer.arkhia.io/testnet/contract/0.0.10391305)|[0xf397F1C1697Fe777AEE97994a4b686519bD26877](https://sourcify.dev/server/repo-ui/296/0xf397F1C1697Fe777AEE97994a4b686519bD26877)|
+
 ## Verification status (honest)
 
 Everything below the network boundary is verified locally and in review: contract test suites,
