@@ -1,0 +1,283 @@
+name: CI
+
+# tasks.md T017: install -> openapi generate (drift check) -> typecheck / lint / test across the
+# workspace -> knip -> jscpd -> redocly lint -> no-mocks audit. Live jobs (Hedera Testnet,
+# newman against the deployed gateway, Playwright, the agent's autonomous run) only run when the
+# corresponding secrets exist; otherwise a visible "BLOCKED" job says so - a green run without
+# those secrets does NOT mean the live path was verified (constitution III / SC-009).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  CI: "true"
+  TURBO_TELEMETRY_DISABLED: "1"
+  DO_NOT_TRACK: "1"
+  HARDHAT_DISABLE_TELEMETRY_PROMPT: "true"
+
+jobs:
+  quality:
+    name: typecheck / lint / test / audits
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4 # version from package.json "packageManager"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2 # apps/contracts runs hardhat through bunx
+        with:
+          bun-version: "1.3.8"
+      - run: pnpm install --frozen-lockfile
+
+      - name: OpenAPI types are generated from openapi.yaml (no drift)
+        run: |
+          git ls-files --error-unmatch packages/openapi/src/types.ts
+          pnpm --filter @truenft/openapi generate
+          if [ -n "$(git status --porcelain -- packages/openapi/src/types.ts)" ]; then
+            git --no-pager diff -- packages/openapi/src/types.ts
+            echo '::error::generated OpenAPI types drifted from openapi.yaml'
+            exit 1
+          fi
+      - name: OpenAPI ErrorCode enum in sync with packages/shared
+        run: pnpm --filter @truenft/openapi check-errors
+      - name: OpenAPI lint (redocly)
+        run: pnpm --filter @truenft/openapi lint
+
+      - name: typecheck / lint / test (all workspaces except the subgraph)
+        run: pnpm turbo run typecheck lint test --filter='!@subgraph' --continue --force
+      # apps/web has no standalone typecheck script: `tsc -b` runs inside its build
+      - name: web build (tsc -b + vite build)
+        run: pnpm --filter web build
+
+      - name: biome ci
+        run: pnpm exec biome ci .
+      - name: knip
+        run: pnpm knip
+      - name: jscpd
+        run: pnpm jscpd
+      - name: no-mocks audit on the core path (SC-009; strict = a core path without sources is a failure)
+        run: AUDIT_STRICT=1 bash scripts/audit-no-mocks.sh
+
+  subgraph:
+    name: subgraph build + matchstick
+    runs-on: ubuntu-24.04 # matchstick ships a native binary per distro; do not float to -latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: graph codegen + build
+        run: pnpm --filter subgraph build
+      - name: matchstick unit tests
+        run: pnpm --filter subgraph test
+
+  live-config:
+    # secrets are not readable from a job-level `if`, so this job turns their presence into outputs
+    name: live secrets present?
+    runs-on: ubuntu-latest
+    outputs:
+      hedera: ${{ steps.probe.outputs.hedera }}
+      gateway: ${{ steps.probe.outputs.gateway }}
+      agent: ${{ steps.probe.outputs.agent }}
+    steps:
+      - id: probe
+        env:
+          HEDERA_RPC_URL: ${{ secrets.HEDERA_RPC_URL }}
+          HEDERA_OPERATOR_KEY: ${{ secrets.HEDERA_OPERATOR_KEY }}
+          GATEWAY_URL: ${{ secrets.GATEWAY_URL }}
+          WEB_URL: ${{ secrets.WEB_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          {
+            echo "hedera=$([ -n "$HEDERA_RPC_URL" ] && [ -n "$HEDERA_OPERATOR_KEY" ] && echo true || echo false)"
+            echo "gateway=$([ -n "$GATEWAY_URL" ] && [ -n "$WEB_URL" ] && echo true || echo false)"
+            echo "agent=$([ -n "$GATEWAY_URL" ] && [ -n "$ANTHROPIC_API_KEY" ] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+
+  hedera-testnet:
+    name: contracts against Hedera Testnet (constitution III)
+    needs: [quality, live-config]
+    if: needs.live-config.outputs.hedera == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.8"
+      - run: pnpm install --frozen-lockfile
+      - name: day-1 probe (native HBAR value semantics, R-4)
+        run: pnpm --filter contracts probe:hedera
+        env:
+          HEDERA_RPC_URL: ${{ secrets.HEDERA_RPC_URL }}
+          HEDERA_OPERATOR_KEY: ${{ secrets.HEDERA_OPERATOR_KEY }}
+
+  live-e2e:
+    name: newman + Playwright against the deployed gateway / web
+    needs: [quality, live-config]
+    if: needs.live-config.outputs.gateway == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with: # the tested tree is the head commit, the same one DEPLOYED_SHA is compared with
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: the deployed revision must be this commit (repository variable DEPLOYED_SHA)
+        env:
+          DEPLOYED_SHA: ${{ vars.DEPLOYED_SHA }}
+          LIVE_REQUIRED: ${{ vars.LIVE_REQUIRED }}
+          THIS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ -z "$DEPLOYED_SHA" ] && [ "$LIVE_REQUIRED" = "true" ]; then
+            echo "::error::DEPLOYED_SHA is not set while LIVE_REQUIRED=true: cannot certify $THIS_SHA against an unknown deployment"
+            exit 1
+          elif [ -z "$DEPLOYED_SHA" ]; then
+            echo "::warning::DEPLOYED_SHA is not set: these live results apply to whatever is deployed, not provably to $THIS_SHA"
+          elif [ "$DEPLOYED_SHA" != "$THIS_SHA" ]; then
+            echo "::error::deployed revision $DEPLOYED_SHA is not this commit $THIS_SHA - redeploy (and update DEPLOYED_SHA) before certifying"
+            exit 1
+          fi
+      - name: seeded test accounts (from secret, never printed)
+        env:
+          E2E_ACCOUNTS_JSON: ${{ secrets.E2E_ACCOUNTS_JSON }}
+        run: |
+          if [ -n "$E2E_ACCOUNTS_JSON" ]; then
+            printf '%s' "$E2E_ACCOUNTS_JSON" > apps/e2e/.accounts.json
+          else
+            echo "::warning::E2E_ACCOUNTS_JSON not set - node-side specs will fail to load the seeded accounts"
+          fi
+      - name: newman API contract suite (T099)
+        run: >
+          pnpm --filter e2e exec newman run postman/gateway.postman_collection.json
+          -e postman/hedera-testnet.postman_environment.json
+          --env-var GATEWAY_URL="$GATEWAY_URL" --env-var ASSET_ID="$ASSET_ID" --env-var OWNER_WALLET="$OWNER_WALLET"
+        env:
+          GATEWAY_URL: ${{ secrets.GATEWAY_URL }}
+          ASSET_ID: ${{ secrets.ASSET_ID }}
+          OWNER_WALLET: ${{ secrets.OWNER_WALLET }}
+      - name: Playwright browsers
+        run: pnpm --filter e2e exec playwright install --with-deps chromium
+      - name: Playwright specs (T119) - E2E_REQUIRED so a skip is a failure here
+        run: pnpm --filter e2e test
+        env:
+          E2E_REQUIRED: "1"
+          GATEWAY_URL: ${{ secrets.GATEWAY_URL }}
+          WEB_URL: ${{ secrets.WEB_URL }}
+          SUBGRAPH_URL: ${{ secrets.SUBGRAPH_URL }}
+          HEDERA_RPC_URL: ${{ secrets.HEDERA_RPC_URL }}
+          RIGHTS_NFT_ADDRESS: ${{ secrets.RIGHTS_NFT_ADDRESS }}
+          RIGHTS_REGISTRY_ADDRESS: ${{ secrets.RIGHTS_REGISTRY_ADDRESS }}
+          E2E_PRIVY_EMAIL: ${{ secrets.E2E_PRIVY_EMAIL }}
+          E2E_PRIVY_OTP: ${{ secrets.E2E_PRIVY_OTP }}
+      - name: latency thresholds for this run (T117; no samples = BLOCKED = failure)
+        run: pnpm --filter e2e metrics
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: e2e-results
+          path: |
+            apps/e2e/test-results
+            apps/e2e/metrics.json
+          if-no-files-found: ignore
+
+  agent-autonomous:
+    name: agent discover -> buy -> decrypt -> analyze -> verify (SC-007)
+    needs: [quality, live-config]
+    if: needs.live-config.outputs.agent == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with: # same head commit as the DEPLOYED_SHA comparison
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: the deployed revision must be this commit (repository variable DEPLOYED_SHA)
+        env:
+          DEPLOYED_SHA: ${{ vars.DEPLOYED_SHA }}
+          LIVE_REQUIRED: ${{ vars.LIVE_REQUIRED }}
+          THIS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ -z "$DEPLOYED_SHA" ] && [ "$LIVE_REQUIRED" = "true" ]; then
+            echo "::error::DEPLOYED_SHA is not set while LIVE_REQUIRED=true: cannot certify $THIS_SHA against an unknown deployment"
+            exit 1
+          elif [ -z "$DEPLOYED_SHA" ]; then
+            echo "::warning::DEPLOYED_SHA is not set: these live results apply to whatever is deployed, not provably to $THIS_SHA"
+          elif [ "$DEPLOYED_SHA" != "$THIS_SHA" ]; then
+            echo "::error::deployed revision $DEPLOYED_SHA is not this commit $THIS_SHA - redeploy (and update DEPLOYED_SHA) before certifying"
+            exit 1
+          fi
+      - name: no stale answer.json may satisfy the freshness check below
+        run: |
+          node -e "require('node:fs').rmSync('apps/agent/out/answer.json', { force: true })"
+      - name: autonomous run (real HBAR settlement, real KeyGate, real inference) - a skip is a failure here
+        run: pnpm --filter agent test
+        env:
+          AGENT_LIVE_REQUIRED: "1"
+          GATEWAY_URL: ${{ secrets.GATEWAY_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HEDERA_MIRROR_URL: ${{ secrets.HEDERA_MIRROR_URL }}
+      - name: a fresh, verified answer was written by this run
+        run: |
+          test -s apps/agent/out/answer.json
+          node -e "const r=require('./apps/agent/out/answer.json'); if(r.verification?.ok!==true||!r.verifiedAnswer){console.error('answer.json is not a verified record');process.exit(1)} console.log('verified:', r.verifiedAnswer)"
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: agent-answer
+          path: apps/agent/out/answer.json
+          if-no-files-found: ignore
+
+  live-blocked:
+    # makes the absence of live verification visible in the check list instead of silently green;
+    # set the repository variable LIVE_REQUIRED=true once the deployment exists and this job FAILS
+    # whenever any live secret is missing (the submission branch must not go green without them)
+    name: live verification BLOCKED (secrets not configured)
+    needs: [live-config]
+    if: needs.live-config.outputs.hedera != 'true' || needs.live-config.outputs.gateway != 'true' || needs.live-config.outputs.agent != 'true'
+    runs-on: ubuntu-latest
+    env:
+      LIVE_REQUIRED: ${{ vars.LIVE_REQUIRED }}
+      HEDERA_OK: ${{ needs.live-config.outputs.hedera }}
+      GATEWAY_OK: ${{ needs.live-config.outputs.gateway }}
+      AGENT_OK: ${{ needs.live-config.outputs.agent }}
+    steps:
+      - run: |
+          msg="Live jobs skipped - hedera=$HEDERA_OK gateway=$GATEWAY_OK agent=$AGENT_OK. A green CI without these does NOT verify Hedera settlement, the deployed gateway, or the autonomous agent."
+          if [ "$LIVE_REQUIRED" = "true" ]; then
+            echo "::error::$msg (LIVE_REQUIRED=true, so this is a failure)"
+            exit 1
+          fi
+          echo "::notice::$msg"

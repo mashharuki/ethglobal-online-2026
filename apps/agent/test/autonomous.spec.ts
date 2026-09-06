@@ -18,9 +18,13 @@ const mirrorUrl =
 const ready = gatewayUrl !== "" && hasApiKey;
 
 if (!ready) {
-  console.warn(
-    "[agent] GATEWAY_URL / ANTHROPIC_API_KEY not set: the autonomous run is SKIPPED (not verified).",
-  );
+  const message =
+    "[agent] GATEWAY_URL / ANTHROPIC_API_KEY not set: the autonomous run is SKIPPED (not verified).";
+  // CI's live job sets AGENT_LIVE_REQUIRED=1: there a skip must be a failure, never a green run
+  if (process.env.AGENT_LIVE_REQUIRED === "1") {
+    throw new Error(`${message} AGENT_LIVE_REQUIRED=1 so this is a failure.`);
+  }
+  console.warn(message);
 }
 
 /** The transaction the gateway reported must exist on Hedera and have succeeded. */

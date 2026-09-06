@@ -60,8 +60,7 @@
       "Read(**/.ssh/*)",
       "Edit(.env*)",
       "Edit(**/*.pem)",
-      "Edit(**/*.key)",
-      "Edit(/.github/workflows/**)"
+      "Edit(**/*.key)"
     ]
   },
   "enabledPlugins": {
