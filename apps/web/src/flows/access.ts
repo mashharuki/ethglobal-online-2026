@@ -63,12 +63,14 @@ async function unlock(
     contentHash: string;
   },
 ): Promise<Dataset> {
-  const shareU = await deriveShareU({
-    blindedU: release.blindedU as Hex,
-    keyGateSig,
-    assetId,
-  });
+  // everything that can hold key material lives inside one wipe boundary
+  let shareU: Uint8Array | undefined;
   try {
+    shareU = await deriveShareU({
+      blindedU: release.blindedU as Hex,
+      keyGateSig,
+      assetId,
+    });
     const ciphertext = await fetchEncryptedContent(
       release.encryptedContentURI,
       deps.ipfsGateway,
@@ -81,7 +83,7 @@ async function unlock(
       contentHash: release.contentHash as Hex,
     });
   } finally {
-    shareU.fill(0);
+    shareU?.fill(0);
   }
 }
 

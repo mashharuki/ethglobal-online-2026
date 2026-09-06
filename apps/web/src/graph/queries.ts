@@ -16,8 +16,9 @@ type GraphReceipt = {
   id: string;
   licensee: string;
   transferMode: number;
-  usedCount: number;
-  maxUses: number;
+  /** BigInt in the subgraph schema: decimal strings */
+  usedCount: string;
+  maxUses: string;
   expiresAt: string;
 };
 

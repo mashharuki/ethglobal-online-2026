@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createApi } from "../api/client";
 import {
@@ -66,39 +68,22 @@ describe("Rights Graph queries (T106)", () => {
       query: TOKEN_TIMELINE_QUERY,
       variables: { id: "1" },
     });
-    // every requested field exists in contracts/subgraph-schema.md (no invented fields)
-    const schemaFields = new Set([
-      "id",
-      "accessEpoch",
-      "licenseEpoch",
-      "owner",
-      "transfers",
-      "from",
-      "to",
-      "blockNumber",
-      "timestamp",
-      "receipts",
-      "licensee",
-      "transferMode",
-      "usedCount",
-      "maxUses",
-      "expiresAt",
-      "allocations",
-      "ownerAmount",
-      "creator",
-      "creatorAmount",
-      "licenseEpochChanges",
-      "newEpoch",
-      "rightsToken",
-    ]);
-    const requested =
-      TOKEN_TIMELINE_QUERY.replace(/\(.*?\)/g, "")
-        .replace(/query\s+\w+/, "")
-        .match(/[A-Za-z]+/g) ?? [];
-    for (const field of requested) {
-      expect(schemaFields.has(field), `unknown field ${field}`).toBe(true);
-    }
     expect(result?.licenseEpochChanges).toEqual(timeline.licenseEpochChanges);
+    // every selection in the query exists on the entity it is selected from, per the REAL
+    // subgraph schema (apps/subgraph/schema.graphql): drift there fails here
+    const problems = validateAgainstSchema(TOKEN_TIMELINE_QUERY, {
+      rightsToken: "RightsToken",
+      licenseEpochChanges: "LicenseEpochChange",
+    });
+    expect(problems).toEqual([]);
+    expect(
+      validateAgainstSchema(
+        '{ rightsToken(id: "1") { id nope owner { id } } }',
+        {
+          rightsToken: "RightsToken",
+        },
+      ),
+    ).toEqual(["RightsToken.nope is not in the schema"]);
     const missing = createApi("http://gateway.test", async () =>
       Response.json({ data: { rightsToken: null, licenseEpochChanges: [] } }),
     );
@@ -118,3 +103,65 @@ describe("Rights Graph queries (T106)", () => {
     expect(short("short")).toBe("short");
   });
 });
+
+/** `type X @entity { field: Type }` blocks -> entity -> field -> base type name */
+function loadSchema(): Map<string, Map<string, string>> {
+  const text = readFileSync(
+    resolve(import.meta.dirname, "../../../subgraph/schema.graphql"),
+    "utf8",
+  );
+  const entities = new Map<string, Map<string, string>>();
+  for (const block of text.matchAll(
+    /type\s+(\w+)\s+@entity[^{]*\{([^}]*)\}/g,
+  )) {
+    const fields = new Map<string, string>();
+    for (const line of (block[2] ?? "").split("\n")) {
+      const field = /^\s*(\w+)\s*:\s*([\w[\]!]+)/.exec(line);
+      if (field?.[1] !== undefined && field[2] !== undefined) {
+        fields.set(field[1], field[2].replace(/[[\]!]/g, ""));
+      }
+    }
+    entities.set(block[1] ?? "", fields);
+  }
+  return entities;
+}
+
+/** Walks the query's selection sets and reports fields the schema does not have. */
+function validateAgainstSchema(
+  query: string,
+  roots: Record<string, string>,
+): string[] {
+  const schema = loadSchema();
+  const problems: string[] = [];
+  // strip the operation header and arguments, keep names + braces
+  const body = query
+    .replace(/^query\s+\w+\s*\([^)]*\)/, "")
+    .replace(/\([^)]*\)/g, "");
+  const tokens = body.match(/[A-Za-z_]\w*|[{}]/g) ?? [];
+  const stack: Array<string | undefined> = [];
+  let pending: string | undefined;
+  for (const token of tokens) {
+    if (token === "{") {
+      stack.push(pending);
+      pending = undefined;
+    } else if (token === "}") {
+      stack.pop();
+    } else {
+      const parent = stack.at(-1);
+      let entity: string | undefined;
+      if (stack.length <= 1) {
+        entity = roots[token];
+        if (entity === undefined) problems.push(`unknown root field ${token}`);
+      } else if (parent !== undefined) {
+        const type = schema.get(parent)?.get(token);
+        if (type === undefined) {
+          problems.push(`${parent}.${token} is not in the schema`);
+        } else if (schema.has(type)) {
+          entity = type;
+        }
+      }
+      pending = entity;
+    }
+  }
+  return problems;
+}
