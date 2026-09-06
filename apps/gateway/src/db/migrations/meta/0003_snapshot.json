@@ -328,10 +328,7 @@
         "receipt_consumption_receipt_hash_use_index_unique": {
           "name": "receipt_consumption_receipt_hash_use_index_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "receipt_hash",
-            "use_index"
-          ]
+          "columns": ["receipt_hash", "use_index"]
         }
       },
       "policies": {},
@@ -432,11 +429,7 @@
       "compositePrimaryKeys": {
         "wallet_blinded_shares_asset_id_wallet_path_pk": {
           "name": "wallet_blinded_shares_asset_id_wallet_path_pk",
-          "columns": [
-            "asset_id",
-            "wallet",
-            "path"
-          ]
+          "columns": ["asset_id", "wallet", "path"]
         }
       },
       "uniqueConstraints": {},
