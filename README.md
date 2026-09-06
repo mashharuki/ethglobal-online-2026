@@ -15,11 +15,12 @@ Two independent epoch counters keep ownership and usage in sync:
 
 A transfer revokes the old owner, grants the new owner, keeps `SURVIVE_TRANSFER` licenses alive
 until their own expiry, invalidates `INVALIDATE_ON_TRANSFER` ones, and reassigns *future* revenue
-to the new owner. Purchases are x402 payments in **native HBAR**, settled in one Hedera transaction
-that also issues an EIP-712 **Rights Receipt**; decryption keys are released only after the
-on-chain state says so (settle-before-release), and every release is re-derived from chain reads
-on every request — the Rights Graph (subgraph) is discovery and audit only, never an authorization
-source.
+to the new owner. Purchases are x402 payments in **native HBAR** settled through the Blocky402
+facilitator and anchored on `RightsRegistry` as an EIP-712 **Rights Receipt** before any key is
+released (settle-before-release); every release is re-derived from chain reads on every request —
+the Rights Graph (subgraph) is discovery and audit only, never an authorization source. Whether
+payment and anchoring share one transaction depends on the rail (see below); the live settlement
+path is not yet verified.
 
 ## Repository layout
 
@@ -52,24 +53,35 @@ pnpm -r test      # unit tests of every package (network-bound specs skip with a
 2. The buyer signs a Hedera `TransferTransaction` for that amount — from the browser with the
    Privy embedded wallet, from Node with the seeded account, or from the MCP server with the
    gateway's Privy **server wallet** (session signer + spend cap, never a raw key).
-3. `POST /assets/{assetId}/paid` with `X-PAYMENT` → the gateway verifies and settles through the
-   **Blocky402** facilitator, anchors the receipt on `RightsRegistry` (`ReceiptIssued`,
-   `RevenueAllocated` to creator + *current* owner), records the payment binding idempotently,
-   and returns the server-signed receipt.
+3. `POST /assets/{assetId}/paid` with `X-PAYMENT` → the gateway verifies and settles the HBAR
+   transfer through the **Blocky402** facilitator, then its operator anchors the receipt on
+   `RightsRegistry` in a second transaction (`ReceiptIssued`, `RevenueAllocated` to creator +
+   *current* owner). The receipt is returned only after that anchor is confirmed, and the payment
+   binding (`payment_id`, stage, claim) makes retries idempotent. This is the default
+   **custodial rail**; the contract also implements the single-transaction
+   `settleAndIssue{value}` rail (payment and receipt in one call) and the `payFor` + `finalize`
+   rail, selectable by `SETTLEMENT_MODE`. **None of the three has been exercised against the live
+   facilitator yet** (day-1 probe pending).
 4. `POST /keygate/share` (licensee path) → `ReceiptLock` serialises the receipt, `consume` is
    submitted on-chain by the operator queue, and only then the blinded key share is released;
    the client recovers `K = share_G XOR share_U` and decrypts AES-256-GCM locally.
 
-Twenty concurrent shares of the same receipt end with **1 settled / 19 rejected**
+Twenty concurrent shares of the same receipt must end with **1 settled / 19 rejected**
 (`RECEIPT_ALREADY_CONSUMED` / `SETTLEMENT_IN_PROGRESS`, HTTP 409), enforced by three layers:
 Durable Object serialisation, a Postgres uniqueness constraint, and the contract's `consume`.
+This is verified today with real parallelism in the contract suite (Hardhat) and the gateway suite
+(workerd + PGlite); the same burst against the deployed gateway is the pending acceptance
+criterion in `apps/e2e/attacks.e2e.ts`.
 
 ## AI agent through MCP
 
 The gateway hosts an MCP server (Streamable HTTP) with three tools: `discover_assets`,
-`buy_access`, `decrypt_content`. Any MCP client can run the whole flow with no human step; the
-receipt bought in a session can only be decrypted by that session (`MCP_SESSION_MISMATCH`
-otherwise), and spending is capped per session (`MCP_SESSION_SPEND_CAP_TINYBAR`).
+`buy_access`, `decrypt_content`, designed so an MCP client can run the whole flow with no human
+step; the receipt bought in a session can only be decrypted by that session
+(`MCP_SESSION_MISMATCH` otherwise), and spending is capped per session
+(`MCP_SESSION_SPEND_CAP_TINYBAR`). The tools, the session binding and the cap are covered by the
+gateway's unit suite (real MCP SDK transport, in-process); the zero-human live run is the pending
+acceptance criterion in `apps/agent`.
 
 `mcp.json` for a generic client:
 
@@ -86,7 +98,7 @@ otherwise), and spending is capped per session (`MCP_SESSION_SPEND_CAP_TINYBAR`)
 
 With Claude Code the same server is registered by the `claude mcp add --transport http rights-runtime https://<your-gateway>.workers.dev/mcp` command.
 `apps/agent` reproduces this in CI and verifies the model's answer against the decrypted data
-itself (see its README).
+itself (see its README); it skips, with a notice, until a gateway and an API key are configured.
 
 ## Trust model (please read before judging)
 
@@ -113,8 +125,9 @@ Stated as precisely as we can (constitution VII):
   anyone who can reach the URL can spend up to the cap.
 - **Rights Graph:** self-hosted Graph Node on AWS EC2 (`apps/cdk`), **runs only for the hackathon
   and is destroyed afterwards** with `pnpm --filter cdk destroy`. It is discovery / audit only.
-- **Not supported:** contract wallets (Safe / ERC-4337, no ERC-1271), refunds, ERC-1155,
-  multi-chain, ZK (design only), any DRM claim, legal copyright transfer.
+- **Not supported:** contract wallets (Safe / ERC-4337, no ERC-1271), refunds of completed
+  purchases (the fallback rail's `refundUnfinalized` only returns a deposit that was never
+  finalized), ERC-1155, multi-chain, ZK (design only), any DRM claim, legal copyright transfer.
 - **Claim scope:** TrueCollective implements request-binding, idempotency, settle-before-release
   and concurrency control in a Rights Gateway. It does not claim to have "made x402 safe".
 
@@ -122,9 +135,9 @@ Stated as precisely as we can (constitution VII):
 
 | Layer | Command | Notes |
 |---|---|---|
-| Contracts | `pnpm --filter contracts exec hardhat run scripts/deploy.ts --network testnet` then `scripts/seed.ts` | writes addresses back to `packages/shared` / subgraph config; verify on HashScan |
+| Contracts | `pnpm --filter contracts exec hardhat run scripts/deploy.ts --network testnet`, then `pnpm --filter contracts exec hardhat run scripts/seed.ts --network testnet` | writes addresses back to `packages/shared` / subgraph config; verify on HashScan |
 | Graph Node | `pnpm --filter cdk deploy` → `pnpm --filter subgraph deploy` | hackathon only; **`pnpm --filter cdk destroy` after the event** |
-| Gateway | `pnpm --filter gateway deploy` then `scripts/load-shares.ts`, redeploy | secrets in `apps/gateway/CONFIG.md` |
+| Gateway | `pnpm --filter gateway deploy`, then `pnpm --filter gateway exec tsx scripts/load-shares.ts` (loads the seeded key shares into KV / secrets), then `pnpm --filter gateway deploy` again | secrets in `apps/gateway/CONFIG.md` |
 | Web | `pnpm --filter web build` → Cloudflare Pages | `VITE_*` in `apps/web/README.md` |
 
 ## Verification status (honest)
@@ -141,12 +154,19 @@ Privy live login, the AWS Graph Node, the live Playwright / Newman / agent runs.
 
 ## Prior work and disclosure (ETHOnline rules)
 
-- Implementation commits start on **2026-09-05** (`git log --reverse`); nothing in `apps/` or
-  `packages/` predates the event.
+- Commits in this repository start on **2026-09-05** (`git log --reverse`): every file under
+  `apps/` and `packages/` was committed after the event opened. That is a statement about
+  repository timing, not authorship — the boilerplate listed next predates the event and was
+  not written by us.
 - Before the event: the design and spec documents under `specs/` and `.specify/` (written
   2026-09-02 → 03 with Spec Kit, allowed by the ETHOnline AI policy), the `.claude/` agent
-  configuration, and public boilerplate from `hedra-sample` (Hardhat ERC-721 mint, Hedera
-  subgraph example, x402 + Privy web sample) used as starting templates.
+  configuration, and public boilerplate copied from the `hedra-sample` collection of Hedera
+  examples: `hardhat-erc-721-mint` (the base of `apps/contracts`' Hardhat config and the first
+  mint script), `hedera-subgraph-example` (the base of `apps/subgraph`'s manifest, mappings
+  pattern and Graph Node docker-compose, and of `apps/cdk`'s EC2 stack), and an x402 + Privy web
+  sample (the base of `apps/web`'s Privy signer / Hedera transfer helpers). Everything specific
+  to TrueCollective (contracts, gateway, MCP server, KeyGate, web routes, e2e, agent) was
+  written during the event.
 - AI tools: Claude Code (implementation) and Codex (review) were used throughout.
 
 ## Sponsor tracks

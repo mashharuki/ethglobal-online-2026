@@ -10,13 +10,13 @@
 
 ## 2. Gateway は何を握っているのか、本番ではどう分散するのか
 
-**答え**: 握っているのは 3 つ。① Rights Receipt のサーバ署名鍵（利便クレデンシャル。認可の権威はチェーン上の `receiptStatus`）② `consume` を送る operator 鍵 ③ owner パスの `share_U`（ウォレット毎にブラインド化）。認可判定そのものは毎回 `ownerOf` / `accessEpoch` / `receiptStatus` を直読み。本番は ①②を複数 operator に分散、③は Shamir 2-of-3 で Gateway 単体が鍵素材を復元できない構成にする（設計のみ、未実装と明言）。
+**答え**: 握っているのは 4 つ。① Rights Receipt のサーバ署名鍵（利便クレデンシャル。認可の権威はチェーン上の `receiptStatus`）② `consume` を送る operator 鍵 ③ owner パスの `share_U`（ウォレット毎にブラインド化）④ KeyGate の素の fallback 経路が有効な間は平文／完全鍵そのもの（デモはブラインド分割経路で動かす）。認可判定そのものは毎回 `ownerOf` / `accessEpoch` / `receiptStatus` を直読み。本番は ①②を複数 operator に分散、③は Shamir 2-of-3 で Gateway 単体が鍵素材を復元できない構成にし、④は撤去する（設計のみ、未実装と明言）。
 
 根拠: README「Trust model」、`apps/gateway/src/keygate/release.ts`、`chain/reads.ts`。
 
 ## 3. R-2 フォールバック（非原子でも安全と言える理由）
 
-**答え**: primary は Blocky402 経由の 1 tx 決済（custodial rail）。fallback は `payFor{value}(paymentId, committedParamsHash)` + permissionless `finalize`。HBAR は `RightsRegistry` が保持し Gateway は custody しない、`finalize` は誰でも呼べるが `committedParamsHash`（licensee を含む ReceiptParams 全体のハッシュ）に一致する params でしか確定しない、timeout 後は `refundUnfinalized` で返金。「非原子」なのは決済と anchor の間だけで、資金の所在は常にコントラクト。
+**答え**: 既定の custodial rail は Blocky402 が HBAR 送金を settle し、その後 operator が `RightsRegistry` に Receipt を anchor する 2 tx（決済と anchor は別 tx。Receipt は anchor 確定後にしか返さない）。コントラクトには 1 tx の `settleAndIssue{value}` と、fallback の `payFor{value}(paymentId, committedParamsHash)` + permissionless `finalize` も実装済みで `SETTLEMENT_MODE` で切替。fallback では HBAR は `RightsRegistry` が保持し Gateway は custody しない、`finalize` は誰でも呼べるが `committedParamsHash`（licensee を含む ReceiptParams 全体のハッシュ）に一致する params でしか確定しない、timeout 後は `refundUnfinalized` で**未確定の入金だけ**返金する（完了済み購入の返金経路は無い）。「非原子」なのは決済と anchor の間だけで、資金の所在は常にコントラクト。**3 レールとも実 facilitator に対するライブ検証は未実施**（day-1 probe 待ち）。
 
 根拠: `RightsRegistry.sol`（`payFor` / `finalize` / `refundUnfinalized`）、`test/RightsRegistry.fallback.spec.ts`、`research.md` R-2a。
 
@@ -28,19 +28,19 @@
 
 ## 5. 並行性の証明（20 並列）
 
-**答え**: 3 層。① `ReceiptLock` Durable Object が `receiptHash` 単位で直列化し、`useIndex` を自前採番 ② Postgres `receipt_consumption` の `UNIQUE(receipt_hash, use_index)` ③ コントラクトの `consume` が `consumed[receiptHash][useIndex]` で二重消費を revert。テストは 3 層とも**実並列**（contract: Hardhat で 20 tx 同時送信、gateway: workerd で 20 リクエスト同時、e2e: 実 gateway に 20 並列で `1 settled / 19 × 409`、最遅拒否 < 3 s を要求）。
+**答え**: 3 層。① `ReceiptLock` Durable Object が `receiptHash` 単位で直列化し、`useIndex` を自前採番 ② Postgres `receipt_consumption` の `UNIQUE(receipt_hash, use_index)` ③ コントラクトの `consume` が `consumed[receiptHash][useIndex]` で二重消費を revert。**ローカルで検証済み**なのは contract 層（Hardhat で 20 tx 同時送信）と gateway 層（workerd + PGlite で 20 リクエスト同時）の実並列テスト。実 gateway への 20 並列（`1 settled / 19 × 409`、最遅拒否 < 3 s）は `apps/e2e/attacks.e2e.ts` の**ライブ受入条件として未実施**。
 
 根拠: `apps/contracts/test/RightsRegistry.concurrent.spec.ts`、`apps/gateway/test/receiptLock.do.spec.ts`、`apps/e2e/attacks.e2e.ts` + `lib/gateway.ts` の `assertReplay`。
 
 ## 6. 「復号後は右クリック保存できるのでは」
 
-**答え**: できる。主張は「静的データのコピー防止（DRM）」ではない。守っているのは**権利状態の同期**——誰が今アクセスでき、誰に将来収益が入り、どの Receipt が有効か。コピーされた平文は「その時点で正当に持っていた人のスナップショット」であり、移転後にその人が新しい版・新しい利用権・収益を得ることはない。
+**答え**: できる。主張は「静的データのコピー防止（DRM）」ではない。守っているのは**権利状態の同期**——誰が今アクセスでき、誰に将来収益が入り、どの Receipt が有効か。コピーされた平文は「その時点で正当に持っていた人のスナップショット」であり、移転後にその人が**所有権に由来する**特権（無料アクセス）と owner 分の将来収益を得ることはない。別途ライセンスを買う・手持ちの SURVIVE ライセンスを使い切る・creator として creator 分配を受けることは妨げない（それらは所有権とは別の権利）。
 
 根拠: 憲章「非ゴール」（DRM としての主張なし）、README「Not supported」。
 
 ## 7. owner パスの `share_U` 残存信頼点
 
-**答え**: 正直に言うと、owner（無料）パスでは Gateway が `share_U` を保持しているので、Gateway 侵害 = owner パスのコンテンツ流出。緩和として ①ウォレット毎の HKDF ブラインド化（`blindedU`、Gateway は wallet の署名を持たず K を組み立てられない設計だが `share_U` 自体は持つ）②監査ログに全 allow/deny ③計画は Shamir 2-of-3（creator / gateway / recovery）。購入者パスは `consume` の on-chain 確定が前提なので、Gateway 単独では useIndex を捏造できない。
+**答え**: 正直に言うと、通常運転と侵害時を分けて答える。**通常運転**では Gateway は wallet の KeyGate 署名を持たないので `blindedU` から `share_U'` を戻せず、K を組み立てない。**Gateway が侵害された場合**は、攻撃者が `share_U`（Secrets）と `share_G`（KV）を両方読めるので owner パス・購入者パスとも K を復元でき、コンテンツは流出する——これが残存信頼点。on-chain の `consume` が守るのは「正当な利用回数の帳簿」（Gateway 単独で useIndex や収益を捏造できない）であって、鍵流出を防ぐものではない。緩和は ①ウォレット毎の HKDF ブラインド化 ②監査ログに全 allow/deny ③計画は Shamir 2-of-3（creator / gateway / recovery）で Gateway 単体が鍵素材を持たない構成。
 
 根拠: `apps/gateway/src/keygate/split.ts`、`packages/shared/src/keygate.ts`、README「Trust model」。
 
