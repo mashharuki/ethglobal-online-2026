@@ -1,14 +1,26 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "tags": ["-lintignore"],
-  "ignore": ["packages/openapi/src/types.ts"],
+  "tags": [
+    "-lintignore"
+  ],
+  "ignore": [
+    "packages/openapi/src/types.ts"
+  ],
   "workspaces": {
     "apps/cdk": {
-      "entry": ["bin/*.ts", "test/**/*.test.ts"],
-      "ignoreDependencies": ["tsx"]
+      "entry": [
+        "bin/*.ts",
+        "test/**/*.test.ts"
+      ],
+      "ignoreDependencies": [
+        "tsx"
+      ]
     },
     "apps/contracts": {
-      "entry": ["scripts/*.ts", "test/**/*.ts"],
+      "entry": [
+        "scripts/*.ts",
+        "test/**/*.ts"
+      ],
       "ignoreDependencies": [
         "forge-std",
         "@types/chai-as-promised",
@@ -16,24 +28,40 @@
       ]
     },
     "apps/gateway": {
-      "entry": ["test/**/*.ts", "scripts/*.ts", "src/keygate/ports.ts"],
-      "ignoreDependencies": ["cloudflare"]
+      "entry": [
+        "test/**/*.ts",
+        "scripts/*.ts",
+        "src/keygate/ports.ts"
+      ],
+      "ignoreDependencies": [
+        "cloudflare"
+      ]
     },
     "apps/agent": {
-      "entry": ["test/**/*.ts"]
+      "entry": [
+        "test/**/*.ts"
+      ]
     },
     "apps/e2e": {
-      "entry": ["wallets.ts"]
+      "entry": [
+        "wallets.ts"
+      ]
     },
-    "apps/web": {
-      "ignoreDependencies": ["dotenv"]
-    },
+    "apps/web": {},
     "apps/subgraph": {
-      "entry": ["src/mappings/*.ts", "tests/**/*.ts", "scripts/*.mjs"],
-      "ignoreDependencies": ["assemblyscript"]
+      "entry": [
+        "src/mappings/*.ts",
+        "tests/**/*.ts",
+        "scripts/*.mjs"
+      ],
+      "ignoreDependencies": [
+        "assemblyscript"
+      ]
     },
     "packages/shared": {
-      "entry": ["test/**/*.ts"]
+      "entry": [
+        "test/**/*.ts"
+      ]
     },
     "packages/openapi": {}
   }
