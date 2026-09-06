@@ -118,8 +118,9 @@ Stated as precisely as we can (constitution VII):
   `licenseEpoch`, or issue a receipt without the contract's required payment.
 - **KeyGate fallback:** while the plain fallback release path is enabled the gateway handles the
   full key; the demo runs the blinded-share path.
-- **Availability:** the gateway is a single point of failure for key release (not for ownership
-  or revenue, which stay on-chain).
+- **Availability:** the gateway is a single point of failure for key release and, on the
+  custodial rail, for anchoring a settled payment (not for ownership, epochs, or revenue already
+  allocated in the contract, which stay on-chain).
 - **Payment rail:** the default rail is the custodial x402 settlement through Blocky402 (native
   HBAR only — the Hedera "AI & Agentic Payments" track's facilitator does not settle HTS tokens):
   between settlement and anchoring the HBAR sits with the facilitator / operator, not in the

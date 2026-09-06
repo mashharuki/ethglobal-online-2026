@@ -40,7 +40,7 @@
 
 ## 7. owner パスの `share_U` 残存信頼点
 
-**答え**: 正直に言うと、通常運転と侵害時を分けて答える。**通常運転**では Gateway は wallet の KeyGate 署名を持たないので `blindedU` から `share_U'` を戻せず、K を組み立てない。**Gateway が侵害された場合**は、攻撃者が `share_U`（Secrets）と `share_G`（KV）を両方読めるので owner パス・購入者パスとも K を復元でき、コンテンツは流出する——これが残存信頼点。on-chain の `consume` が守るのはコントラクトが強制する不変条件だけ——同じ `(receiptHash, useIndex)` は二度消費できない、`maxUses`／期限／`licenseEpoch` を超えた消費は revert、Receipt の発行には契約が要求する `msg.value` が要る。侵害された operator 鍵でも実在する Receipt の `consume` は送れる（帳簿上の利用回数は減る）ので、守られるのは「二重計上と偽 Receipt」であって鍵流出や不正利用の全てではない。緩和は ①ウォレット毎の HKDF ブラインド化 ②監査ログに全 allow/deny ③計画は Shamir 2-of-3（creator / gateway / recovery）で Gateway 単体が鍵素材を持たない構成。
+**答え**: 正直に言うと、通常運転と侵害時を分けて答える。**通常運転**では Gateway は wallet の KeyGate 署名を持たないので `blindedU` から `share_U'` を戻せず、K を組み立てない。**Gateway が侵害された場合**は、攻撃者が `share_U`（Secrets）と `share_G`（KV）を両方読めるので owner パス・購入者パスとも K を復元でき、コンテンツは流出する——これが残存信頼点。on-chain の `consume` が守るのはコントラクトが強制する不変条件だけ——同じ `(receiptHash, useIndex)` は二度消費できない、`maxUses`／期限／`licenseEpoch` を超えた消費は revert、Receipt の発行には契約が要求する `msg.value` が要る。侵害された operator 鍵でも実在する Receipt の `consume` は送れる（帳簿上の利用回数は減る）ので、守られるのは「二重計上」と「必要な支払いなしの Receipt 発行」であって、鍵流出や不正利用の全てではない。緩和は ①ウォレット毎の HKDF ブラインド化 ②監査ログに全 allow/deny ③計画は Shamir 2-of-3（creator / gateway / recovery）で Gateway 単体が鍵素材を持たない構成。
 
 根拠: `apps/gateway/src/keygate/split.ts`、`packages/shared/src/keygate.ts`、README「Trust model」。
 
