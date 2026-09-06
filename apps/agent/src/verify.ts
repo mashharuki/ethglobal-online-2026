@@ -5,10 +5,13 @@ import type { Analysis } from "./analyze";
  * answer is *about the decrypted data*). Layers, all computed here without the model:
  *  1. every citation must be non-empty and appear verbatim in the dataset;
  *  2. for a deterministic question ("which <label> has the highest <value>?") the harness
- *     tabulates the dataset itself, computes the winning row, and requires the model's
- *     structured `result` to equal that row exactly, one citation to be bound to that row
- *     (same label and value), and the answer text to carry both.
- * A run whose answer fails any layer is a failure - no answer.json, non-zero exit.
+ *     tabulates the dataset itself (strict RFC 4180 CSV or the seed JSON table, exact decimal
+ *     comparison), computes the winning row, and requires the model's structured `result` to
+ *     equal that row exactly, one citation whose label IS that row's label and whose value IS
+ *     that row's value, and the answer text to open with the verified conclusion
+ *     `<label>: <value>` so a denial cannot hide behind the right words.
+ * The verdict carries the harness-generated `statement`; consumers should quote that, not the
+ * free text. A run whose answer fails any layer is a failure - no answer.json, non-zero exit.
  */
 export type ExtremeCheck = {
   labelColumn: string;
@@ -25,7 +28,7 @@ export const DEFAULT_CHECK: ExtremeCheck = {
 
 export function questionFor(check: ExtremeCheck): string {
   const superlative = check.op === "max" ? "highest" : "lowest";
-  return `Which ${check.labelColumn} has the ${superlative} ${check.valueColumn} in a single row of the dataset, and what is that ${check.valueColumn} value? Put the winning ${check.labelColumn} and its exact ${check.valueColumn} in \`result\`, cite that row in \`evidence\`, and quote both in \`answer\`.`;
+  return `Which ${check.labelColumn} has the ${superlative} ${check.valueColumn} in a single row of the dataset, and what is that ${check.valueColumn} value? Put the winning ${check.labelColumn} and its exact ${check.valueColumn} in \`result\`; in \`evidence\` cite that row with label = the ${check.labelColumn} exactly as written and value = the ${check.valueColumn} exactly as written; and begin \`answer\` with "<${check.labelColumn}>: <${check.valueColumn}>" before any explanation.`;
 }
 
 export function parseCheck(raw: string | undefined): ExtremeCheck {
@@ -49,35 +52,68 @@ export function parseCheck(raw: string | undefined): ExtremeCheck {
 
 export type Table = { columns: string[]; rows: string[][] };
 
-/** RFC 4180-style line split: quoted fields may contain commas and doubled quotes. */
-export function splitCsvLine(line: string): string[] {
-  const cells: string[] = [];
-  let cell = "";
+/**
+ * Strict RFC 4180 parser over the whole stream: quoted fields may contain commas, doubled
+ * quotes and line breaks; a quote inside an unquoted field, or text after a closing quote, is
+ * an error (never silently normalised).
+ */
+export function parseCsv(text: string): string[][] {
+  const records: string[][] = [];
+  let record: string[] = [];
+  let field = "";
   let quoted = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const ch = line[i];
+  let wasQuoted = false;
+  let i = 0;
+  const endField = (): void => {
+    record.push(field);
+    field = "";
+    wasQuoted = false;
+  };
+  const endRecord = (): void => {
+    endField();
+    records.push(record);
+    record = [];
+  };
+  while (i < text.length) {
+    const ch = text[i] as string;
     if (quoted) {
-      if (ch === '"' && line[i + 1] === '"') {
-        cell += '"';
-        i += 1;
+      if (ch === '"' && text[i + 1] === '"') {
+        field += '"';
+        i += 2;
       } else if (ch === '"') {
         quoted = false;
+        wasQuoted = true;
+        i += 1;
       } else {
-        cell += ch;
+        field += ch;
+        i += 1;
       }
-    } else if (ch === '"') {
+      continue;
+    }
+    if (ch === '"') {
+      if (field !== "" || wasQuoted)
+        throw new Error(`csv: misplaced quote at offset ${i}`);
       quoted = true;
+      i += 1;
     } else if (ch === ",") {
-      cells.push(cell);
-      cell = "";
+      endField();
+      i += 1;
+    } else if (ch === "\r" && text[i + 1] === "\n") {
+      endRecord();
+      i += 2;
+    } else if (ch === "\n") {
+      endRecord();
+      i += 1;
     } else {
-      cell += ch;
+      if (wasQuoted)
+        throw new Error(`csv: text after closing quote at offset ${i}`);
+      field += ch;
+      i += 1;
     }
   }
-  if (quoted)
-    throw new Error(`csv: unterminated quote in ${JSON.stringify(line)}`);
-  cells.push(cell);
-  return cells.map((c) => c.trim());
+  if (quoted) throw new Error("csv: unterminated quote");
+  if (field !== "" || wasQuoted || record.length > 0) endRecord();
+  return records.filter((r) => !(r.length === 1 && r[0] === ""));
 }
 
 /** `{columns, rows}` JSON (the seed format) or a CSV with a header row; ragged rows are errors. */
@@ -96,11 +132,10 @@ export function parseTable(format: string, content: string): Table {
       return r.map((c) => (c === null || c === undefined ? "" : String(c)));
     });
   } else if (format === "csv") {
-    const lines = content.split(/\r?\n/).filter((l) => l.trim() !== "");
-    const [header, ...body] = lines;
+    const [header, ...body] = parseCsv(content);
     if (header === undefined) throw new Error("csv dataset is empty");
-    columns = splitCsvLine(header);
-    rows = body.map(splitCsvLine);
+    columns = header.map((c) => c.trim());
+    rows = body.map((r) => r.map((c) => c.trim()));
   } else {
     throw new Error(`cannot tabulate a ${format} dataset`);
   }
@@ -114,9 +149,30 @@ export function parseTable(format: string, content: string): Table {
   return { columns, rows };
 }
 
+const DECIMAL = /^(-?)(\d+)(?:\.(\d+))?$/;
+
+/** Exact comparison of plain decimal strings (no float rounding, any magnitude). */
+export function compareDecimal(a: string, b: string): number {
+  const pa = DECIMAL.exec(a);
+  const pb = DECIMAL.exec(b);
+  if (pa === null || pb === null)
+    throw new Error(
+      `not a plain decimal: ${JSON.stringify(pa === null ? a : b)}`,
+    );
+  const scale = Math.max(pa[3]?.length ?? 0, pb[3]?.length ?? 0);
+  const toScaled = (m: RegExpExecArray): bigint => {
+    const frac = (m[3] ?? "").padEnd(scale, "0");
+    const magnitude = BigInt(`${m[2]}${frac}`);
+    return m[1] === "-" ? -magnitude : magnitude;
+  };
+  const x = toScaled(pa);
+  const y = toScaled(pb);
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
 export type Expected = { label: string; value: string };
 
-/** The winning row; every candidate row must have a non-empty label and a numeric value. */
+/** The winning row; every candidate row must have a non-empty label and a plain decimal value. */
 export function expectedExtreme(table: Table, check: ExtremeCheck): Expected {
   const labelAt = table.columns.indexOf(check.labelColumn);
   const valueAt = table.columns.indexOf(check.valueColumn);
@@ -125,28 +181,36 @@ export function expectedExtreme(table: Table, check: ExtremeCheck): Expected {
       `dataset has no ${check.labelColumn} / ${check.valueColumn} columns`,
     );
   }
-  let best: { label: string; value: number; raw: string } | undefined;
+  let best: Expected | undefined;
   table.rows.forEach((row, i) => {
-    const raw = row[valueAt] ?? "";
+    const value = row[valueAt] ?? "";
     const label = row[labelAt] ?? "";
-    const value = Number(raw);
-    if (raw === "" || !Number.isFinite(value)) {
+    if (!DECIMAL.test(value)) {
       throw new Error(
-        `dataset row ${i}: ${check.valueColumn} ${JSON.stringify(raw)} is not numeric`,
+        `dataset row ${i}: ${check.valueColumn} ${JSON.stringify(value)} is not a plain decimal`,
       );
     }
     if (label === "")
       throw new Error(`dataset row ${i}: empty ${check.labelColumn}`);
-    const better =
-      best === undefined ||
-      (check.op === "max" ? value > best.value : value < best.value);
-    if (better) best = { label, value, raw };
+    const cmp = best === undefined ? 1 : compareDecimal(value, best.value);
+    if (best === undefined || (check.op === "max" ? cmp > 0 : cmp < 0))
+      best = { label, value };
   });
   if (best === undefined) throw new Error("dataset has no rows");
-  return { label: best.label, value: best.raw };
+  return best;
 }
 
-export type Verdict = { ok: boolean; problems: string[]; expected?: Expected };
+export type Verdict = {
+  ok: boolean;
+  problems: string[];
+  expected?: Expected;
+  /** the harness-generated conclusion (what a consumer should quote, not the free text) */
+  statement?: string;
+};
+
+function statementFor(check: ExtremeCheck, expected: Expected): string {
+  return `${expected.label}: ${expected.value} (${check.op === "max" ? "highest" : "lowest"} ${check.valueColumn} per ${check.labelColumn})`;
+}
 
 function citationProblems(analysis: Analysis, dataset: string): string[] {
   const problems: string[] = [];
@@ -163,9 +227,9 @@ function citationProblems(analysis: Analysis, dataset: string): string[] {
 }
 
 /**
- * The gate `runAgent` applies before it reports success. With a `check` the model's structured
- * `result` must equal the computed row, a citation must be bound to that row, and the answer
- * text must name both; without one, the citations alone decide.
+ * The gate `runAgent` applies before it reports success. With a `check`: the model's structured
+ * `result` must equal the computed row, a citation must carry exactly that row's label and
+ * value, and the answer must open with `<label>: <value>`; without one, citations alone decide.
  */
 export function verifyAnalysis(
   analysis: Analysis,
@@ -190,17 +254,20 @@ export function verifyAnalysis(
     );
   }
   const bound = analysis.evidence.some(
-    (e) => e.value === expected.value && e.label.includes(expected.label),
+    (e) => e.value === expected.value && e.label === expected.label,
   );
   if (!bound)
-    problems.push(`no citation bound to ${expected.label}=${expected.value}`);
-  if (
-    !analysis.answer.includes(expected.label) ||
-    !analysis.answer.includes(expected.value)
-  ) {
     problems.push(
-      `answer does not quote ${expected.label} and ${expected.value}`,
+      `no citation with label ${expected.label} and value ${expected.value}`,
     );
+  const opening = `${expected.label}: ${expected.value}`;
+  if (!analysis.answer.trimStart().startsWith(opening)) {
+    problems.push(`answer does not open with "${opening}"`);
   }
-  return { ok: problems.length === 0, problems, expected };
+  return {
+    ok: problems.length === 0,
+    problems,
+    expected,
+    statement: statementFor(check, expected),
+  };
 }

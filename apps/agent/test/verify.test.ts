@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  compareDecimal,
   DEFAULT_CHECK,
   expectedExtreme,
   parseCheck,
+  parseCsv,
   parseTable,
   questionFor,
-  splitCsvLine,
   verifyAnalysis,
 } from "../src/verify";
 
@@ -22,15 +23,13 @@ const JSON_DATASET = JSON.stringify({
 const CSV_DATASET =
   "district,visitors\nShibuya,1842\nShinjuku,2401\nNakameguro,811\n";
 const dataset = { format: "json", content: JSON_DATASET };
+const EXPECTED = { label: "Shinjuku", value: "2401" };
 
 describe("verify (SC-007 answer gate)", () => {
   it("should tabulate the seed json and csv formats and find the extreme row", () => {
     expect(
       expectedExtreme(parseTable("json", JSON_DATASET), DEFAULT_CHECK),
-    ).toEqual({
-      label: "Shinjuku",
-      value: "2401",
-    });
+    ).toEqual(EXPECTED);
     expect(
       expectedExtreme(parseTable("csv", CSV_DATASET), {
         ...DEFAULT_CHECK,
@@ -49,13 +48,13 @@ describe("verify (SC-007 answer gate)", () => {
     ).toThrow(/no district \/ x columns/);
   });
 
-  it("should accept an answer whose structured result, bound citation and text all name the row", () => {
+  it("should accept an answer whose result, exact citation and opening all state the row", () => {
     const verdict = verifyAnalysis(
       {
         answer:
-          "Shinjuku had the highest visitors in a single row: 2401 on 2026-08-03.",
-        evidence: [{ label: "Shinjuku 2026-08-03 visitors", value: "2401" }],
-        result: { label: "Shinjuku", value: "2401" },
+          "Shinjuku: 2401 - the highest single-row visitors, on 2026-08-03.",
+        evidence: [{ label: "Shinjuku", value: "2401" }],
+        result: EXPECTED,
         confidence: "high",
       },
       dataset,
@@ -64,7 +63,8 @@ describe("verify (SC-007 answer gate)", () => {
     expect(verdict).toEqual({
       ok: true,
       problems: [],
-      expected: { label: "Shinjuku", value: "2401" },
+      expected: EXPECTED,
+      statement: "Shinjuku: 2401 (highest visitors per district)",
     });
   });
 
@@ -81,7 +81,6 @@ describe("verify (SC-007 answer gate)", () => {
         undefined,
       ).problems,
     ).toEqual(["empty citation"]);
-    // no evidence at all
     expect(
       verifyAnalysis(
         { answer: "x", evidence: [], confidence: "low" },
@@ -89,7 +88,6 @@ describe("verify (SC-007 answer gate)", () => {
         undefined,
       ).ok,
     ).toBe(false);
-    // value not in the dataset
     expect(
       verifyAnalysis(
         {
@@ -101,10 +99,10 @@ describe("verify (SC-007 answer gate)", () => {
         undefined,
       ).problems,
     ).toEqual(['evidence "9999" not in the dataset']);
-    // real citations, wrong conclusion: the deterministic check catches it
+    // real citations, wrong conclusion
     const wrong = verifyAnalysis(
       {
-        answer: "Shibuya had the highest visitors with 1842.",
+        answer: "Shibuya: 1842 had the highest visitors.",
         evidence: [{ label: "Shibuya", value: "1842" }],
         result: { label: "Shibuya", value: "1842" },
         confidence: "high",
@@ -112,33 +110,50 @@ describe("verify (SC-007 answer gate)", () => {
       dataset,
       DEFAULT_CHECK,
     );
-    expect(wrong.ok).toBe(false);
     expect(wrong.problems).toEqual([
       "result Shibuya=1842 is not the max row Shinjuku=2401",
-      "no citation bound to Shinjuku=2401",
-      "answer does not quote Shinjuku and 2401",
+      "no citation with label Shinjuku and value 2401",
+      'answer does not open with "Shinjuku: 2401"',
     ]);
-    // the right words in the wrong places: text mentions the row but denies it, and the
-    // citation attributes the value to another district
-    const twisted = verifyAnalysis(
+  });
+
+  it("should reject the right words in the wrong places", () => {
+    // correct result and citation, but the text denies the conclusion
+    const denial = verifyAnalysis(
       {
         answer: "Shinjuku (2401) is not the maximum; Shibuya is.",
-        evidence: [{ label: "Shibuya", value: "2401" }],
-        result: { label: "Shibuya", value: "2401" },
+        evidence: [{ label: "Shinjuku", value: "2401" }],
+        result: EXPECTED,
         confidence: "high",
       },
       dataset,
       DEFAULT_CHECK,
     );
-    expect(twisted.problems).toEqual([
-      "result Shibuya=2401 is not the max row Shinjuku=2401",
-      "no citation bound to Shinjuku=2401",
+    expect(denial.problems).toEqual([
+      'answer does not open with "Shinjuku: 2401"',
+    ]);
+    // the value attributed to another district, and a label that merely contains the winner
+    const misattributed = verifyAnalysis(
+      {
+        answer: "Shinjuku: 2401",
+        evidence: [
+          { label: "Shibuya", value: "2401" },
+          { label: "West Shinjuku", value: "2401" },
+        ],
+        result: EXPECTED,
+        confidence: "high",
+      },
+      dataset,
+      DEFAULT_CHECK,
+    );
+    expect(misattributed.problems).toEqual([
+      "no citation with label Shinjuku and value 2401",
     ]);
     // no structured result at all
     expect(
       verifyAnalysis(
         {
-          answer: "Shinjuku 2401",
+          answer: "Shinjuku: 2401",
           evidence: [{ label: "Shinjuku", value: "2401" }],
           confidence: "high",
         },
@@ -148,12 +163,21 @@ describe("verify (SC-007 answer gate)", () => {
     ).toEqual(["no structured result"]);
   });
 
-  it("should parse quoted csv cells and refuse ragged, non-numeric or unlabeled rows", () => {
-    expect(splitCsvLine('"West, End",10,"say ""hi"""')).toEqual([
-      "West, End",
-      "10",
-      'say "hi"',
+  it("should parse RFC 4180 csv strictly", () => {
+    expect(
+      parseCsv('a,b\n"West, End",10\n"multi\nline","say ""hi"""\n'),
+    ).toEqual([
+      ["a", "b"],
+      ["West, End", "10"],
+      ["multi\nline", 'say "hi"'],
     ]);
+    expect(parseCsv("a,b\r\n1,2")).toEqual([
+      ["a", "b"],
+      ["1", "2"],
+    ]);
+    expect(() => parseCsv('a\n1"0"\n')).toThrow(/misplaced quote/);
+    expect(() => parseCsv('a\n"1"0\n')).toThrow(/text after closing quote/);
+    expect(() => parseCsv('a\n"1\n')).toThrow(/unterminated quote/);
     const quoted = 'district,visitors\n"West, End",10\nEast,5\n';
     expect(expectedExtreme(parseTable("csv", quoted), DEFAULT_CHECK)).toEqual({
       label: "West, End",
@@ -162,12 +186,24 @@ describe("verify (SC-007 answer gate)", () => {
     expect(() => parseTable("csv", "district,visitors\nEast\n")).toThrow(
       /row 0 has 1 cells/,
     );
+  });
+
+  it("should compare values exactly and refuse non-decimal or unlabeled rows", () => {
+    expect(compareDecimal("9007199254740993", "9007199254740992")).toBe(1);
+    expect(compareDecimal("1.50", "1.5")).toBe(0);
+    expect(compareDecimal("-0.1", "0")).toBe(-1);
+    expect(() => compareDecimal("1e3", "1")).toThrow(/not a plain decimal/);
+    const huge = "district,visitors\nA,9007199254740992\nB,9007199254740993\n";
+    expect(expectedExtreme(parseTable("csv", huge), DEFAULT_CHECK)).toEqual({
+      label: "B",
+      value: "9007199254740993",
+    });
     expect(() =>
       expectedExtreme(
         parseTable("csv", "district,visitors\nEast,n/a\n"),
         DEFAULT_CHECK,
       ),
-    ).toThrow(/not numeric/);
+    ).toThrow(/not a plain decimal/);
     expect(() =>
       expectedExtreme(
         parseTable(
@@ -187,6 +223,9 @@ describe("verify (SC-007 answer gate)", () => {
 
   it("should derive the question from the check and parse AGENT_CHECK strictly", () => {
     expect(questionFor(DEFAULT_CHECK)).toContain("highest visitors");
+    expect(questionFor(DEFAULT_CHECK)).toContain(
+      'begin `answer` with "<district>: <visitors>"',
+    );
     expect(parseCheck(undefined)).toEqual(DEFAULT_CHECK);
     expect(
       parseCheck('{"labelColumn":"a","valueColumn":"b","op":"min"}'),
