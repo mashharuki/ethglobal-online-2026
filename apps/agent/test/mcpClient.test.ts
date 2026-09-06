@@ -7,20 +7,33 @@ import {
   McpToolError,
   parseToolResult,
   RIGHTS_RUNTIME_TOOLS,
+  validateDecrypted,
+  validatePurchase,
 } from "../src/mcpClient";
 
 /**
  * Client plumbing against the REAL MCP SDK server transport, in-process: session header
- * round-trip, tool-list gate, JSON / error decoding. The tools here are stand-ins for the
- * gateway (this is the harness's own unit test, not the demo path - the live gateway is
- * exercised by test/autonomous.spec.ts).
+ * round-trip, tool-list gate, JSON / error decoding, field validation. The tools here are
+ * stand-ins for the gateway (this is the harness's own unit test, not the demo path - the
+ * live gateway, including the cross-session refusal, is exercised by test/autonomous.spec.ts).
  */
 const ASSET = `0x${"a1".repeat(32)}` as const;
 const RECEIPT = `0x${"b2".repeat(32)}` as const;
+const TX = `0x${"c3".repeat(32)}`;
+const SIG = `0x${"11".repeat(65)}`;
 
-function standInServer(
-  options: { tools?: readonly string[]; failBuy?: boolean } = {},
-): {
+type Options = {
+  tools?: readonly string[];
+  failBuy?: boolean;
+  noSession?: boolean;
+  purchase?: Record<string, unknown>;
+};
+
+const text = (value: unknown) => ({
+  content: [{ type: "text" as const, text: JSON.stringify(value) }],
+});
+
+function standInServer(options: Options = {}): {
   fetch: typeof fetch;
   calls: Array<{ tool: string; session: string | null }>;
 } {
@@ -36,25 +49,18 @@ function standInServer(
         { inputSchema: z.object({}) },
         () => {
           calls.push({ tool: "discover_assets", session });
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify([
-                  {
-                    assetId: ASSET,
-                    tokenId: "1",
-                    paidAccess: {
-                      price: "5000000000000000000",
-                      durationSec: 300,
-                      maxUses: 5,
-                    },
-                    transferMode: "SURVIVE_TRANSFER",
-                  },
-                ]),
+          return text([
+            {
+              assetId: ASSET,
+              tokenId: "1",
+              paidAccess: {
+                price: "5000000000000000000",
+                durationSec: 300,
+                maxUses: 5,
               },
-            ],
-          };
+              transferMode: "SURVIVE_TRANSFER",
+            },
+          ]);
         },
       );
     }
@@ -64,34 +70,22 @@ function standInServer(
         { inputSchema: z.object({ assetId: z.string() }) },
         () => {
           calls.push({ tool: "buy_access", session });
-          return options.failBuy
-            ? {
-                isError: true,
-                content: [
-                  {
-                    type: "text",
-                    text: JSON.stringify({
-                      code: "SPEND_LIMIT_EXCEEDED",
-                      message: "cap",
-                    }),
-                  },
-                ],
-              }
-            : {
-                content: [
-                  {
-                    type: "text",
-                    text: JSON.stringify({
-                      receiptHash: RECEIPT,
-                      receipt: {},
-                      serverSignature: `0x${"11".repeat(65)}`,
-                      onchainTx: "0xtx",
-                      maxUses: 5,
-                      expiresAt: 1,
-                    }),
-                  },
-                ],
-              };
+          if (options.failBuy) {
+            return {
+              isError: true,
+              ...text({ code: "SPEND_LIMIT_EXCEEDED", message: "cap" }),
+            };
+          }
+          return text(
+            options.purchase ?? {
+              receiptHash: RECEIPT,
+              receipt: {},
+              serverSignature: SIG,
+              onchainTx: TX,
+              maxUses: 5,
+              expiresAt: 1,
+            },
+          );
         },
       );
     }
@@ -106,21 +100,11 @@ function standInServer(
         },
         () => {
           calls.push({ tool: "decrypt_content", session });
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  useIndex: 0,
-                  onchainTx: "0xconsume",
-                  dataset: {
-                    format: "csv",
-                    content: "region,mrr\\nemea,10\\n",
-                  },
-                }),
-              },
-            ],
-          };
+          return text({
+            useIndex: 0,
+            onchainTx: "0.0.1234@1757000000.000000001",
+            dataset: { format: "csv", content: "region,mrr\nemea,10\n" },
+          });
         },
       );
     }
@@ -129,8 +113,8 @@ function standInServer(
     });
     await server.connect(transport);
     const response = await transport.handleRequest(request);
-    // the gateway mints the session on initialize; a stand-in header shows the round-trip
-    if (session === null) {
+    // the gateway mints the session on initialize; the stand-in shows the round-trip
+    if (session === null && !options.noSession) {
       const headers = new Headers(response.headers);
       headers.set("mcp-session-id", "0xsession");
       return new Response(response.body, { status: response.status, headers });
@@ -150,12 +134,24 @@ describe("mcpClient (T120)", () => {
     const assets = await runtime.discoverAssets();
     expect(assets[0]?.assetId).toBe(ASSET);
     const bought = await runtime.buyAccess(ASSET);
-    expect(bought.receiptHash).toBe(RECEIPT);
+    expect(bought).toMatchObject({
+      receiptHash: RECEIPT,
+      onchainTx: TX,
+      maxUses: 5,
+    });
     const decrypted = await runtime.decryptContent(ASSET, bought.receiptHash);
     expect(decrypted.dataset.content).toContain("emea,10");
     expect(server.calls.map((c) => c.tool)).toEqual(RIGHTS_RUNTIME_TOOLS);
     expect(server.calls.every((c) => c.session === "0xsession")).toBe(true);
     await runtime.close();
+  });
+
+  it("should refuse to proceed when initialize mints no session id", async () => {
+    const server = standInServer({ noSession: true });
+    await expect(
+      connectRightsRuntime("http://gateway.test/mcp", { fetch: server.fetch }),
+    ).rejects.toThrow(/minted no Mcp-Session-Id/);
+    expect(server.calls).toEqual([]); // nothing was bought
   });
 
   it("should surface a tool error as McpToolError with the gateway code", async () => {
@@ -168,6 +164,25 @@ describe("mcpClient (T120)", () => {
       tool: "buy_access",
       code: "SPEND_LIMIT_EXCEEDED",
     });
+    await runtime.close();
+  });
+
+  it("should reject a purchase result that lacks the on-chain transaction", async () => {
+    const server = standInServer({
+      purchase: {
+        receiptHash: RECEIPT,
+        receipt: {},
+        serverSignature: SIG,
+        maxUses: 5,
+        expiresAt: 1,
+      },
+    });
+    const runtime = await connectRightsRuntime("http://gateway.test/mcp", {
+      fetch: server.fetch,
+    });
+    await expect(runtime.buyAccess(ASSET)).rejects.toThrow(
+      /onchainTx is missing or invalid/,
+    );
     await runtime.close();
   });
 
@@ -192,5 +207,40 @@ describe("mcpClient (T120)", () => {
         content: [{ type: "text", text: '{"code":"X"}' }],
       }),
     ).toThrow(/X/);
+  });
+
+  it("should validate every field the harness relies on", () => {
+    const good = {
+      receiptHash: RECEIPT,
+      receipt: {},
+      serverSignature: SIG,
+      onchainTx: TX,
+      maxUses: 1,
+      expiresAt: 0,
+    };
+    expect(validatePurchase(good)).toEqual(good);
+    expect(() => validatePurchase({ ...good, receiptHash: "0x12" })).toThrow(
+      /receiptHash/,
+    );
+    expect(() => validatePurchase({ ...good, onchainTx: "pending" })).toThrow(
+      /onchainTx/,
+    );
+    expect(() => validatePurchase({ ...good, maxUses: 0 })).toThrow(/maxUses/);
+    expect(() => validatePurchase("nope")).toThrow(/not an object/);
+    const decrypted = {
+      useIndex: 2,
+      onchainTx: TX,
+      dataset: { format: "json", content: "{}" },
+    };
+    expect(validateDecrypted(decrypted)).toEqual(decrypted);
+    expect(() =>
+      validateDecrypted({
+        ...decrypted,
+        dataset: { format: "json", content: "" },
+      }),
+    ).toThrow(/content/);
+    expect(() => validateDecrypted({ ...decrypted, useIndex: -1 })).toThrow(
+      /useIndex/,
+    );
   });
 });

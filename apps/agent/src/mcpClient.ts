@@ -3,10 +3,11 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 
 /**
  * MCP client side of the verification harness (tasks.md T120, mcp-tools.md): connects to the
- * gateway's `/mcp` (Streamable HTTP), checks the three tools are advertised, and wraps them in
- * typed calls. Tool failures come back as `McpToolError` carrying the gateway's ErrorCode.
- * The session id the gateway mints on `initialize` rides along on every later call - that is
- * what binds `decrypt_content` to the `buy_access` of the same session (R-9a).
+ * gateway's `/mcp` (Streamable HTTP), requires the session id the gateway mints on
+ * `initialize` (it is what binds `decrypt_content` to the `buy_access` of the same session,
+ * R-9a), checks the three tools are advertised, and wraps them in typed calls whose results
+ * are validated field by field. Tool failures come back as `McpToolError` carrying the
+ * gateway's ErrorCode.
  */
 export type Hex = `0x${string}`;
 
@@ -27,7 +28,7 @@ export type DiscoveredAsset = {
   permissions?: Record<string, boolean>;
 };
 
-type PurchasedAccess = {
+export type PurchasedAccess = {
   receiptHash: Hex;
   receipt: Record<string, unknown>;
   serverSignature: Hex;
@@ -36,7 +37,7 @@ type PurchasedAccess = {
   expiresAt: number;
 };
 
-type DecryptedDataset = {
+export type DecryptedDataset = {
   useIndex: number;
   onchainTx: string;
   dataset: { format: "json" | "csv" | "text" | "base64"; content: string };
@@ -54,8 +55,8 @@ export class McpToolError extends Error {
 }
 
 export type RightsRuntimeClient = {
-  /** the `Mcp-Session-Id` the gateway minted on initialize */
-  sessionId: string | undefined;
+  /** the `Mcp-Session-Id` the gateway minted on initialize (present, or connect() failed) */
+  sessionId: string;
   discoverAssets: () => Promise<DiscoveredAsset[]>;
   buyAccess: (assetId: Hex) => Promise<PurchasedAccess>;
   decryptContent: (assetId: Hex, receiptHash: Hex) => Promise<DecryptedDataset>;
@@ -93,12 +94,120 @@ export function parseToolResult<T>(tool: string, result: ToolResult): T {
 }
 
 const HEX32 = /^0x[0-9a-fA-F]{64}$/;
+const TX_REF = /^0x[0-9a-fA-F]{64}$|^\d+\.\d+\.\d+[@-]\d+(\.\d+)?$/; // EVM hash or Hedera tx id
 
-function assertHex32(tool: string, field: string, value: unknown): Hex {
-  if (typeof value !== "string" || !HEX32.test(value)) {
-    throw new McpToolError(tool, "MALFORMED_RESULT", `${field} is not bytes32`);
+type Rec = Record<string, unknown>;
+
+function record(tool: string, value: unknown): Rec {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new McpToolError(tool, "MALFORMED_RESULT", "not an object");
   }
-  return value as Hex;
+  return value as Rec;
+}
+
+function field(
+  tool: string,
+  rec: Rec,
+  key: string,
+  test: (v: unknown) => boolean,
+): unknown {
+  const value = rec[key];
+  if (!test(value))
+    throw new McpToolError(
+      tool,
+      "MALFORMED_RESULT",
+      `${key} is missing or invalid`,
+    );
+  return value;
+}
+
+const isHex32 = (v: unknown): boolean => typeof v === "string" && HEX32.test(v);
+const isTxRef = (v: unknown): boolean =>
+  typeof v === "string" && TX_REF.test(v);
+const isNonNegInt = (v: unknown): boolean =>
+  Number.isInteger(v) && (v as number) >= 0;
+
+/** Validates every field the harness (and its live assertions) relies on. */
+export function validatePurchase(value: unknown): PurchasedAccess {
+  const tool = "buy_access";
+  const rec = record(tool, value);
+  return {
+    receiptHash: field(tool, rec, "receiptHash", isHex32) as Hex,
+    receipt: record(tool, rec.receipt),
+    serverSignature: field(
+      tool,
+      rec,
+      "serverSignature",
+      (v) => typeof v === "string" && /^0x[0-9a-fA-F]{130}$/.test(v),
+    ) as Hex,
+    onchainTx: field(tool, rec, "onchainTx", isTxRef) as string,
+    maxUses: field(
+      tool,
+      rec,
+      "maxUses",
+      (v) => Number.isInteger(v) && (v as number) >= 1,
+    ) as number,
+    expiresAt: field(tool, rec, "expiresAt", isNonNegInt) as number,
+  };
+}
+
+export function validateDecrypted(value: unknown): DecryptedDataset {
+  const tool = "decrypt_content";
+  const rec = record(tool, value);
+  const dataset = record(tool, rec.dataset);
+  const format = field(
+    tool,
+    dataset,
+    "format",
+    (v) => v === "json" || v === "csv" || v === "text" || v === "base64",
+  ) as DecryptedDataset["dataset"]["format"];
+  const content = field(
+    tool,
+    dataset,
+    "content",
+    (v) => typeof v === "string" && v !== "",
+  ) as string;
+  return {
+    useIndex: field(tool, rec, "useIndex", isNonNegInt) as number,
+    onchainTx: field(tool, rec, "onchainTx", isTxRef) as string,
+    dataset: { format, content },
+  };
+}
+
+function validateAssets(value: unknown): DiscoveredAsset[] {
+  const tool = "discover_assets";
+  if (!Array.isArray(value))
+    throw new McpToolError(tool, "MALFORMED_RESULT", "not an array");
+  return value.map((item) => {
+    const rec = record(tool, item);
+    const paid = record(tool, rec.paidAccess);
+    return {
+      ...(rec as Partial<DiscoveredAsset>),
+      assetId: field(tool, rec, "assetId", isHex32) as Hex,
+      tokenId: field(
+        tool,
+        rec,
+        "tokenId",
+        (v) => typeof v === "string" && /^\d+$/.test(v),
+      ) as string,
+      paidAccess: {
+        price: field(
+          tool,
+          paid,
+          "price",
+          (v) => typeof v === "string" && /^\d+$/.test(v),
+        ) as string,
+        durationSec: field(tool, paid, "durationSec", isNonNegInt) as number,
+        maxUses: field(tool, paid, "maxUses", isNonNegInt) as number,
+      },
+      transferMode: field(
+        tool,
+        rec,
+        "transferMode",
+        (v) => v === "SURVIVE_TRANSFER" || v === "INVALIDATE_ON_TRANSFER",
+      ) as DiscoveredAsset["transferMode"],
+    };
+  });
 }
 
 export async function connectRightsRuntime(
@@ -113,6 +222,13 @@ export async function connectRightsRuntime(
     version: "0.1.0",
   });
   await client.connect(transport);
+  const sessionId = transport.sessionId;
+  if (sessionId === undefined || sessionId === "") {
+    await client.close();
+    throw new Error(
+      "MCP server minted no Mcp-Session-Id on initialize: refusing to buy without a session",
+    );
+  }
   const advertised = (await client.listTools()).tools.map((t) => t.name);
   const missing = RIGHTS_RUNTIME_TOOLS.filter((t) => !advertised.includes(t));
   if (missing.length > 0) {
@@ -122,52 +238,33 @@ export async function connectRightsRuntime(
     );
   }
 
-  const call = async <T>(
+  const call = async (
     tool: string,
     args: Record<string, unknown>,
-  ): Promise<T> =>
-    parseToolResult<T>(
+  ): Promise<unknown> => {
+    if (transport.sessionId !== sessionId) {
+      throw new McpToolError(
+        tool,
+        "SESSION_CHANGED",
+        "the MCP session id changed mid-run",
+      );
+    }
+    return parseToolResult<unknown>(
       tool,
       (await client.callTool({ name: tool, arguments: args })) as ToolResult,
     );
+  };
 
   return {
-    get sessionId() {
-      return transport.sessionId;
-    },
-    discoverAssets: async () => {
-      const assets = await call<DiscoveredAsset[]>("discover_assets", {});
-      if (!Array.isArray(assets)) {
-        throw new McpToolError(
-          "discover_assets",
-          "MALFORMED_RESULT",
-          "not an array",
-        );
-      }
-      return assets;
-    },
-    buyAccess: async (assetId) => {
-      const bought = await call<PurchasedAccess>("buy_access", { assetId });
-      assertHex32("buy_access", "receiptHash", bought.receiptHash);
-      return bought;
-    },
-    decryptContent: async (assetId, receiptHash) => {
-      const decrypted = await call<DecryptedDataset>("decrypt_content", {
-        assetId,
-        receiptHash,
-      });
-      if (
-        typeof decrypted.dataset?.content !== "string" ||
-        decrypted.dataset.content === ""
-      ) {
-        throw new McpToolError(
-          "decrypt_content",
-          "MALFORMED_RESULT",
-          "empty dataset",
-        );
-      }
-      return decrypted;
-    },
+    sessionId,
+    discoverAssets: async () =>
+      validateAssets(await call("discover_assets", {})),
+    buyAccess: async (assetId) =>
+      validatePurchase(await call("buy_access", { assetId })),
+    decryptContent: async (assetId, receiptHash) =>
+      validateDecrypted(
+        await call("decrypt_content", { assetId, receiptHash }),
+      ),
     close: () => client.close(),
   };
 }

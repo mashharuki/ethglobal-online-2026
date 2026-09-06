@@ -1,29 +1,38 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { type Analysis, analyzeDataset, ungroundedEvidence } from "./analyze";
+import Anthropic from "@anthropic-ai/sdk";
+import { type Analysis, analyzeDataset } from "./analyze";
 import {
   connectRightsRuntime,
   type DiscoveredAsset,
   type Hex,
 } from "./mcpClient";
+import {
+  type ExtremeCheck,
+  parseCheck,
+  questionFor,
+  type Verdict,
+  verifyAnalysis,
+} from "./verify";
 
 /**
  * apps/agent - CI verification harness entrypoint (tasks.md T120, SC-007 / SC-009).
  *
- * `pnpm --filter agent start -- --question "<question>" [--asset 0x…] [--out path]`
+ * `pnpm --filter agent start -- [--question "<question>"] [--asset 0x…] [--out path]`
  *
  * Connects to `${GATEWAY_URL}/mcp`, runs discover_assets -> buy_access -> decrypt_content on
  * the live gateway (real x402 settlement through the gateway's Privy server wallet, real
- * KeyGate), asks Claude to analyze the decrypted dataset, and writes the whole run to
- * `apps/agent/out/answer.json`. There is no prompt, no confirmation and no retry loop that a
- * human would drive: one process, zero human intervention.
+ * KeyGate), asks Claude to analyze the decrypted dataset, verifies the answer against the data
+ * itself, and only then writes the run to `apps/agent/out/answer.json`. There is no prompt,
+ * no confirmation and no retry loop that a human would drive: one process, zero human
+ * intervention. Inference configuration is checked BEFORE any HBAR is spent.
  */
 export type Step = { step: string; at: string; ms: number };
 
 export type AnswerRecord = {
   question: string;
   gatewayUrl: string;
-  mcpSession: string | undefined;
+  mcpSession: string;
   asset: DiscoveredAsset;
   receiptHash: Hex;
   onchainTx: { settle: string; consume: string };
@@ -31,24 +40,30 @@ export type AnswerRecord = {
   dataset: { format: string; chars: number; truncated: boolean };
   model: string;
   analysis: Analysis;
-  ungroundedEvidence: Analysis["evidence"];
+  verification: Verdict;
   steps: Step[];
 };
 
 export type AgentArgs = { question?: string; assetId?: Hex; out?: string };
 
+/** Strict: a flag given without a value, or a malformed --asset, is an error (never a silent default). */
 export function parseArgs(argv: readonly string[]): AgentArgs {
+  const known = new Set(["--question", "--asset", "--out"]);
   const valueOf = (flag: string): string | undefined => {
     const index = argv.indexOf(flag);
-    return index === -1 ? undefined : argv[index + 1];
+    if (index === -1) return undefined;
+    const value = argv[index + 1];
+    if (value === undefined || known.has(value))
+      throw new Error(`${flag} needs a value`);
+    return value;
   };
   const asset = valueOf("--asset");
+  if (asset !== undefined && !/^0x[0-9a-fA-F]{64}$/.test(asset)) {
+    throw new Error("--asset must be a bytes32 assetId (0x + 64 hex)");
+  }
   return {
     question: valueOf("--question"),
-    assetId:
-      asset !== undefined && /^0x[0-9a-fA-F]{64}$/.test(asset)
-        ? (asset as Hex)
-        : undefined,
+    assetId: asset as Hex | undefined,
     out: valueOf("--out"),
   };
 }
@@ -72,13 +87,35 @@ export function chooseAsset(
   return chosen;
 }
 
+export class VerificationError extends Error {
+  override readonly name = "VerificationError";
+  readonly record: AnswerRecord;
+  constructor(record: AnswerRecord) {
+    super(
+      `answer failed verification: ${record.verification.problems.join("; ")}`,
+    );
+    this.record = record;
+  }
+}
+
 export async function runAgent(input: {
-  question: string;
   gatewayUrl: string;
+  question?: string;
+  /** deterministic check the answer must satisfy; undefined = citations only */
+  check?: ExtremeCheck;
   assetId?: Hex;
+  anthropic?: Anthropic;
   log?: (line: string) => void;
 }): Promise<AnswerRecord> {
   const log = input.log ?? (() => {});
+  // inference must be configured before a single tinybar moves (throws without an API key)
+  const anthropic = input.anthropic ?? new Anthropic();
+  const question =
+    input.question ??
+    (input.check === undefined ? undefined : questionFor(input.check));
+  if (question === undefined)
+    throw new Error("a --question or an AGENT_CHECK is required");
+
   const steps: Step[] = [];
   const started = performance.now();
   const mark = (step: string): void => {
@@ -112,15 +149,25 @@ export async function runAgent(input: {
     );
 
     const { analysis, model, truncated } = await analyzeDataset({
-      question: input.question,
+      question,
       dataset: decrypted.dataset,
+      client: anthropic,
     });
     mark(
       `analyze (${model}): ${analysis.confidence} confidence, ${analysis.evidence.length} evidence`,
     );
 
-    return {
-      question: input.question,
+    const verification = verifyAnalysis(
+      analysis,
+      decrypted.dataset,
+      input.check,
+    );
+    mark(
+      `verify: ${verification.ok ? "grounded" : verification.problems.join("; ")}`,
+    );
+
+    const record: AnswerRecord = {
+      question,
       gatewayUrl: input.gatewayUrl,
       mcpSession: runtime.sessionId,
       asset,
@@ -134,12 +181,11 @@ export async function runAgent(input: {
       },
       model,
       analysis,
-      ungroundedEvidence: ungroundedEvidence(
-        analysis,
-        decrypted.dataset.content,
-      ),
+      verification,
       steps,
     };
+    if (!verification.ok) throw new VerificationError(record);
+    return record;
   } finally {
     await runtime.close();
   }
@@ -148,6 +194,8 @@ export async function runAgent(input: {
 export const DEFAULT_OUT = resolve(import.meta.dirname, "../out/answer.json");
 
 export function writeAnswer(record: AnswerRecord, path = DEFAULT_OUT): string {
+  if (!record.verification.ok)
+    throw new Error("refusing to write an unverified answer");
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(record, null, 2)}\n`);
   return path;
@@ -155,17 +203,27 @@ export function writeAnswer(record: AnswerRecord, path = DEFAULT_OUT): string {
 
 const isDirectRun = process.argv[1]?.endsWith("src/index.ts") ?? false;
 if (isDirectRun) {
-  const args = parseArgs(process.argv.slice(2));
+  const usage =
+    'usage: GATEWAY_URL=<url> ANTHROPIC_API_KEY=<key> [AGENT_CHECK=\'{"labelColumn","valueColumn","op"}\'] agent [--question <text>] [--asset 0x…] [--out path]';
+  let args: AgentArgs;
+  let check: ExtremeCheck;
+  try {
+    args = parseArgs(process.argv.slice(2));
+    check = parseCheck(process.env.AGENT_CHECK);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    console.error(usage);
+    process.exit(2);
+  }
   const gatewayUrl = process.env.GATEWAY_URL ?? "";
-  if (args.question === undefined || gatewayUrl === "") {
-    console.error(
-      "usage: GATEWAY_URL=<url> ANTHROPIC_API_KEY=<key> agent --question <text> [--asset 0x…] [--out path]",
-    );
+  if (gatewayUrl === "" || (process.env.ANTHROPIC_API_KEY ?? "") === "") {
+    console.error(usage);
     process.exit(2);
   }
   runAgent({
-    question: args.question,
     gatewayUrl,
+    question: args.question,
+    check,
     assetId: args.assetId,
     log: console.error,
   })
