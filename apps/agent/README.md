@@ -20,8 +20,10 @@ GATEWAY_URL=https://gateway.<host>.workers.dev ANTHROPIC_API_KEY=… \
 ```
 
 One process, no prompt, no confirmation: the run either reaches a **verified** answer or exits
-non-zero. Inference configuration (the API key) is checked before any HBAR is spent, a malformed
-`--asset` is an error rather than a silent fallback to the first listing, and `out/answer.json`
+non-zero. Inference configuration (the API key) is checked before any HBAR is spent; only
+`--flag value` pairs of the three known flags are accepted (a malformed `--asset`, an
+`--asset=…` form, an unknown flag or a duplicate is an error rather than a silent fallback to
+the first listing); and `out/answer.json`
 is written only after verification passed. It records the MCP session, the receipt hash and both
 Hedera transactions (settle and consume), the dataset size, the model, the structured answer with
 its evidence, the verification verdict and the timestamps of each leg.
@@ -32,10 +34,12 @@ its evidence, the verification verdict and the timestamps of each leg.
    or malformed citation is an error, not something to drop.
 2. Every cited value must appear verbatim in the decrypted dataset.
 3. With `AGENT_CHECK` (default `{"labelColumn":"district","valueColumn":"visitors","op":"max"}`,
-   the shape of the seeded demo dataset A) the harness computes the expected row itself and
-   requires the answer and the evidence to carry that label and value. The question is derived
-   from the check unless `--question` overrides it. A check whose columns are absent from the
-   dataset fails the run (no silent skip).
+   the shape of the seeded demo dataset A) the harness tabulates the dataset itself (JSON
+   `{columns, rows}` or RFC 4180 CSV; ragged, non-numeric or unlabeled rows are errors),
+   computes the winning row, and requires the model's structured `result` to equal it exactly,
+   one citation to be bound to that row (same label and value), and the answer text to quote
+   both. The question is derived from the check unless `--question` overrides it. A check whose
+   columns are absent from the dataset fails the run (no silent skip).
 
 The decrypted dataset is treated as untrusted input: it is sent in its own `<dataset>` block,
 separated from the instructions, with a system prompt that says its content is never an

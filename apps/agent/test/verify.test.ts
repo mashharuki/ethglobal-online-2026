@@ -5,6 +5,7 @@ import {
   parseCheck,
   parseTable,
   questionFor,
+  splitCsvLine,
   verifyAnalysis,
 } from "../src/verify";
 
@@ -48,12 +49,13 @@ describe("verify (SC-007 answer gate)", () => {
     ).toThrow(/no district \/ x columns/);
   });
 
-  it("should accept a grounded answer that names the expected row", () => {
+  it("should accept an answer whose structured result, bound citation and text all name the row", () => {
     const verdict = verifyAnalysis(
       {
         answer:
           "Shinjuku had the highest visitors in a single row: 2401 on 2026-08-03.",
         evidence: [{ label: "Shinjuku 2026-08-03 visitors", value: "2401" }],
+        result: { label: "Shinjuku", value: "2401" },
         confidence: "high",
       },
       dataset,
@@ -104,6 +106,7 @@ describe("verify (SC-007 answer gate)", () => {
       {
         answer: "Shibuya had the highest visitors with 1842.",
         evidence: [{ label: "Shibuya", value: "1842" }],
+        result: { label: "Shibuya", value: "1842" },
         confidence: "high",
       },
       dataset,
@@ -111,10 +114,75 @@ describe("verify (SC-007 answer gate)", () => {
     );
     expect(wrong.ok).toBe(false);
     expect(wrong.problems).toEqual([
-      'answer does not name district "Shinjuku"',
-      "answer does not carry visitors 2401",
-      "evidence does not cite 2401",
+      "result Shibuya=1842 is not the max row Shinjuku=2401",
+      "no citation bound to Shinjuku=2401",
+      "answer does not quote Shinjuku and 2401",
     ]);
+    // the right words in the wrong places: text mentions the row but denies it, and the
+    // citation attributes the value to another district
+    const twisted = verifyAnalysis(
+      {
+        answer: "Shinjuku (2401) is not the maximum; Shibuya is.",
+        evidence: [{ label: "Shibuya", value: "2401" }],
+        result: { label: "Shibuya", value: "2401" },
+        confidence: "high",
+      },
+      dataset,
+      DEFAULT_CHECK,
+    );
+    expect(twisted.problems).toEqual([
+      "result Shibuya=2401 is not the max row Shinjuku=2401",
+      "no citation bound to Shinjuku=2401",
+    ]);
+    // no structured result at all
+    expect(
+      verifyAnalysis(
+        {
+          answer: "Shinjuku 2401",
+          evidence: [{ label: "Shinjuku", value: "2401" }],
+          confidence: "high",
+        },
+        dataset,
+        DEFAULT_CHECK,
+      ).problems,
+    ).toEqual(["no structured result"]);
+  });
+
+  it("should parse quoted csv cells and refuse ragged, non-numeric or unlabeled rows", () => {
+    expect(splitCsvLine('"West, End",10,"say ""hi"""')).toEqual([
+      "West, End",
+      "10",
+      'say "hi"',
+    ]);
+    const quoted = 'district,visitors\n"West, End",10\nEast,5\n';
+    expect(expectedExtreme(parseTable("csv", quoted), DEFAULT_CHECK)).toEqual({
+      label: "West, End",
+      value: "10",
+    });
+    expect(() => parseTable("csv", "district,visitors\nEast\n")).toThrow(
+      /row 0 has 1 cells/,
+    );
+    expect(() =>
+      expectedExtreme(
+        parseTable("csv", "district,visitors\nEast,n/a\n"),
+        DEFAULT_CHECK,
+      ),
+    ).toThrow(/not numeric/);
+    expect(() =>
+      expectedExtreme(
+        parseTable(
+          "json",
+          JSON.stringify({
+            columns: ["district", "visitors"],
+            rows: [[null, 3]],
+          }),
+        ),
+        DEFAULT_CHECK,
+      ),
+    ).toThrow(/empty district/);
+    expect(() =>
+      expectedExtreme(parseTable("csv", "district,visitors\n"), DEFAULT_CHECK),
+    ).toThrow(/no rows/);
   });
 
   it("should derive the question from the check and parse AGENT_CHECK strictly", () => {

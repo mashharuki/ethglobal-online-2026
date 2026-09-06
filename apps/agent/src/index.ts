@@ -46,25 +46,34 @@ export type AnswerRecord = {
 
 export type AgentArgs = { question?: string; assetId?: Hex; out?: string };
 
-/** Strict: a flag given without a value, or a malformed --asset, is an error (never a silent default). */
+const FLAGS = new Set(["--question", "--asset", "--out"]);
+
+/**
+ * Strict argv: only `--flag value` pairs of the three known flags, each at most once. Anything
+ * else (`--asset=0x…`, an unknown flag, a missing value, a duplicate) is an error - never a
+ * silent fall-through to "buy the first listed asset".
+ */
 export function parseArgs(argv: readonly string[]): AgentArgs {
-  const known = new Set(["--question", "--asset", "--out"]);
-  const valueOf = (flag: string): string | undefined => {
-    const index = argv.indexOf(flag);
-    if (index === -1) return undefined;
-    const value = argv[index + 1];
-    if (value === undefined || known.has(value))
+  const seen = new Map<string, string>();
+  for (let i = 0; i < argv.length; i += 1) {
+    const flag = argv[i] ?? "";
+    if (!FLAGS.has(flag))
+      throw new Error(`unsupported argument ${JSON.stringify(flag)}`);
+    if (seen.has(flag)) throw new Error(`${flag} given twice`);
+    const value = argv[i + 1];
+    if (value === undefined || value.startsWith("--"))
       throw new Error(`${flag} needs a value`);
-    return value;
-  };
-  const asset = valueOf("--asset");
+    seen.set(flag, value);
+    i += 1;
+  }
+  const asset = seen.get("--asset");
   if (asset !== undefined && !/^0x[0-9a-fA-F]{64}$/.test(asset)) {
     throw new Error("--asset must be a bytes32 assetId (0x + 64 hex)");
   }
   return {
-    question: valueOf("--question"),
+    question: seen.get("--question"),
     assetId: asset as Hex | undefined,
-    out: valueOf("--out"),
+    out: seen.get("--out"),
   };
 }
 

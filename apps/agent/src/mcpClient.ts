@@ -242,17 +242,23 @@ export async function connectRightsRuntime(
     tool: string,
     args: Record<string, unknown>,
   ): Promise<unknown> => {
-    if (transport.sessionId !== sessionId) {
-      throw new McpToolError(
-        tool,
-        "SESSION_CHANGED",
-        "the MCP session id changed mid-run",
-      );
-    }
-    return parseToolResult<unknown>(
-      tool,
-      (await client.callTool({ name: tool, arguments: args })) as ToolResult,
-    );
+    const assertSameSession = (when: string): void => {
+      if (transport.sessionId !== sessionId) {
+        throw new McpToolError(
+          tool,
+          "SESSION_CHANGED",
+          `the MCP session id changed ${when} the call`,
+        );
+      }
+    };
+    assertSameSession("before");
+    const result = (await client.callTool({
+      name: tool,
+      arguments: args,
+    })) as ToolResult;
+    // a server that swapped the session on this very response is not the session that bought
+    assertSameSession("during");
+    return parseToolResult<unknown>(tool, result);
   };
 
   return {

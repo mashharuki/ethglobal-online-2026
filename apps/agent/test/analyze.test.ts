@@ -49,6 +49,7 @@ describe("analyze (T120)", () => {
           input: {
             answer: "Shinjuku: 2401",
             evidence: [{ label: "Shinjuku visitors", value: "2401" }],
+            result: { label: "Shinjuku", value: "2401" },
             confidence: "weird",
           },
         },
@@ -57,8 +58,25 @@ describe("analyze (T120)", () => {
     expect(analysis).toEqual({
       answer: "Shinjuku: 2401",
       evidence: [{ label: "Shinjuku visitors", value: "2401" }],
+      result: { label: "Shinjuku", value: "2401" },
       confidence: "low",
     });
+    // an empty or malformed result is dropped (verify.ts then reports "no structured result")
+    expect(
+      extractAnswer({
+        content: [
+          {
+            type: "tool_use",
+            name: "answer",
+            input: {
+              answer: "x",
+              evidence: [{ label: "a", value: "1" }],
+              result: { label: "", value: "1" },
+            },
+          },
+        ],
+      }).result,
+    ).toBeUndefined();
   });
 
   it("should refuse a reply without an answer, without evidence, or with malformed evidence", () => {

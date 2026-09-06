@@ -27,6 +27,8 @@ type Options = {
   failBuy?: boolean;
   noSession?: boolean;
   purchase?: Record<string, unknown>;
+  /** answer decrypt_content with a different session id than the one minted */
+  swapSessionOnDecrypt?: boolean;
 };
 
 const text = (value: unknown) => ({
@@ -43,6 +45,10 @@ function standInServer(options: Options = {}): {
     const request = new Request(input, init);
     const server = new McpServer({ name: "stand-in", version: "0.0.0" });
     const session = request.headers.get("mcp-session-id");
+    const body = await request
+      .clone()
+      .text()
+      .catch(() => "");
     if (tools.includes("discover_assets")) {
       server.registerTool(
         "discover_assets",
@@ -114,9 +120,12 @@ function standInServer(options: Options = {}): {
     await server.connect(transport);
     const response = await transport.handleRequest(request);
     // the gateway mints the session on initialize; the stand-in shows the round-trip
-    if (session === null && !options.noSession) {
+    const swap =
+      options.swapSessionOnDecrypt === true &&
+      body.includes('"decrypt_content"');
+    if ((session === null && !options.noSession) || swap) {
       const headers = new Headers(response.headers);
-      headers.set("mcp-session-id", "0xsession");
+      headers.set("mcp-session-id", swap ? "0xother" : "0xsession");
       return new Response(response.body, { status: response.status, headers });
     }
     return response;
@@ -163,6 +172,20 @@ describe("mcpClient (T120)", () => {
       name: "McpToolError",
       tool: "buy_access",
       code: "SPEND_LIMIT_EXCEEDED",
+    });
+    await runtime.close();
+  });
+
+  it("should refuse a response that arrives under a different session id", async () => {
+    const server = standInServer({ swapSessionOnDecrypt: true });
+    const runtime = await connectRightsRuntime("http://gateway.test/mcp", {
+      fetch: server.fetch,
+    });
+    const bought = await runtime.buyAccess(ASSET);
+    await expect(
+      runtime.decryptContent(ASSET, bought.receiptHash),
+    ).rejects.toMatchObject({
+      code: "SESSION_CHANGED",
     });
     await runtime.close();
   });

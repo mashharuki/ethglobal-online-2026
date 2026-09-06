@@ -9,11 +9,13 @@ import type Anthropic from "@anthropic-ai/sdk";
  * says so, and the harness verifies the answer independently (`verify.ts`) - the model is
  * never the judge of its own output.
  */
-export type Evidence = { label: string; value: string };
+type Evidence = { label: string; value: string };
 
 export type Analysis = {
   answer: string;
   evidence: Evidence[];
+  /** the winning row for "which X has the highest Y" questions, verified against the data */
+  result?: { label: string; value: string };
   confidence: "high" | "medium" | "low";
 };
 
@@ -50,6 +52,16 @@ export const ANSWER_TOOL = {
           },
           required: ["label", "value"],
         },
+      },
+      result: {
+        type: "object",
+        description:
+          "For questions asking which row wins (highest / lowest): the winning row's label and its exact value, copied from the dataset.",
+        properties: {
+          label: { type: "string" },
+          value: { type: "string" },
+        },
+        required: ["label", "value"],
       },
       confidence: { type: "string", enum: ["high", "medium", "low"] },
     },
@@ -107,6 +119,7 @@ export function extractAnswer(message: { content: ContentBlock[] }): Analysis {
   ) as {
     answer?: unknown;
     evidence?: unknown;
+    result?: unknown;
     confidence?: unknown;
   };
   if (typeof input.answer !== "string" || input.answer.trim() === "") {
@@ -136,7 +149,20 @@ export function extractAnswer(message: { content: ContentBlock[] }): Analysis {
     input.confidence === "low"
       ? input.confidence
       : "low";
-  return { answer: input.answer, evidence, confidence };
+  const rawResult = (
+    typeof input.result === "object" && input.result !== null
+      ? input.result
+      : undefined
+  ) as { label?: unknown; value?: unknown } | undefined;
+  const result =
+    rawResult !== undefined &&
+    typeof rawResult.label === "string" &&
+    typeof rawResult.value === "string" &&
+    rawResult.label.trim() !== "" &&
+    rawResult.value.trim() !== ""
+      ? { label: rawResult.label, value: rawResult.value }
+      : undefined;
+  return { answer: input.answer, evidence, result, confidence };
 }
 
 export async function analyzeDataset(input: {

@@ -27,11 +27,26 @@ describe("parseArgs", () => {
   });
 
   it("should leave absent flags undefined", () => {
-    expect(parseArgs(["--verbose"])).toEqual({
+    expect(parseArgs([])).toEqual({
       question: undefined,
       assetId: undefined,
       out: undefined,
     });
+  });
+
+  it("should reject unknown flags, equals syntax and duplicates before anything is bought", () => {
+    expect(() => parseArgs(["--verbose"])).toThrow(
+      /unsupported argument "--verbose"/,
+    );
+    expect(() => parseArgs([`--asset=${ASSET}`])).toThrow(
+      /unsupported argument/,
+    );
+    expect(() => parseArgs(["--asset", ASSET, "--asset", ASSET])).toThrow(
+      /--asset given twice/,
+    );
+    expect(() => parseArgs(["--question", "q", "stray"])).toThrow(
+      /unsupported argument "stray"/,
+    );
   });
 
   it("should reject a malformed --asset instead of silently buying the first asset", () => {
