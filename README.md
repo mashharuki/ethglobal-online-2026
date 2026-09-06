@@ -22,6 +22,40 @@ the Rights Graph (subgraph) is discovery and audit only, never an authorization 
 payment and anchoring share one transaction depends on the rail (see below); the live settlement
 path is not yet verified.
 
+## System architecture
+
+![TrueCollective system architecture](docs/architecture.png)
+
+Editable source: [`docs/architecture.drawio`](docs/architecture.drawio) (draw.io / diagrams.net) —
+also exported as [`docs/architecture.svg`](docs/architecture.svg).
+
+Components are grouped by hosting boundary — **Client** (an autonomous MCP client or the
+`apps/agent` CI harness), **Cloudflare** (`apps/gateway`: Workers + Durable Objects + KV +
+Secrets + Hyperdrive/Postgres), **Hedera Testnet** (`RightsNFT` = Owner Epoch, `RightsRegistry`
+= License Epoch), **AWS** (the self-hosted Rights Graph, hackathon only), and **external
+services** (Privy, Blocky402). The numbered path is the autonomous MCP `buy → decrypt` flow with
+zero human steps:
+
+1. `discover_assets` — Workers queries the Rights Graph for published assets
+2. `buy_access` — Workers quotes x402 (HTTP 402 + Rights Receipt terms), reading the current
+   Owner / License epochs from Hedera
+3. the Privy server wallet signs a native-HBAR transfer (session signer + per-session spend cap;
+   no raw key on Workers)
+4. Workers settles the payment through the Blocky402 facilitator
+5. `OperatorTxQueue` anchors it — `RightsRegistry.settleAndIssue` → `ReceiptIssued` +
+   `RevenueAllocated` (creator + current owner)
+6. `decrypt_content` — Workers re-reads `ownerOf` / `receiptStatus` from Hedera (authorization is
+   never taken from cache or the subgraph)
+7. `ReceiptLock` serialises the use — `RightsRegistry.consume(receiptHash, useIndex)` →
+   `ReceiptConsumed` (exactly-once, even under 20-way replay)
+8. KeyGate releases the blinded key share from KV (`share_G`) + Secrets (`share_U`)
+9. the MCP client rebuilds `K = share_G ⊕ share_U`, fetches ciphertext from IPFS, decrypts
+   AES-256-GCM locally
+10. the Rights Graph indexes the new events — discovery / audit only, never gates access
+
+The browser owner path (`apps/web`) is the same shape without steps 2–5: prove ownership,
+re-read `accessEpoch`, release the share.
+
 ## Repository layout
 
 | Package | Role | Docs |
@@ -46,6 +80,36 @@ pnpm -r test      # unit tests of every package (network-bound specs skip with a
 ```
 
 ## How a purchase works (x402, native HBAR)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Buyer / MCP agent
+    participant G as Access Gateway
+    participant F as Blocky402 facilitator
+    participant R as RightsRegistry (Hedera)
+    participant DO as ReceiptLock DO
+
+    B->>G: GET /assets/{id}/paid
+    G-->>B: 402 Payment Required — x402 accepts + receiptQuote
+    B->>B: sign Hedera TransferTransaction (native HBAR)
+    B->>G: POST /assets/{id}/paid  (X-PAYMENT)
+    G->>F: verify + settle HBAR transfer
+    F-->>G: settled
+    G->>R: operator anchors receipt (ReceiptIssued, RevenueAllocated → creator + current owner)
+    R-->>G: confirmed
+    G-->>B: Rights Receipt (EIP-712, receiptHash)
+    B->>G: POST /keygate/share
+    G->>DO: acquire lock (receiptHash)
+    DO->>R: consume(receiptHash, useIndex)
+    R-->>DO: confirmed
+    G-->>B: blinded key share
+    B->>B: recover K = share_G XOR share_U, decrypt AES-256-GCM locally
+```
+
+Steps 4–8 describe the default **custodial rail**; the `settleAndIssue{value}` and
+`payFor` + `finalize` rails collapse or move the anchoring step (see the trust model below). None
+of the three is live-verified against the facilitator yet.
 
 1. `GET /assets/{assetId}/paid` → **402** with an x402 v2 `accepts` entry: `scheme: exact`,
    `network: hedera:testnet`, `amount` in tinybar, `payTo`, and the exact Rights Receipt quote
