@@ -24,7 +24,11 @@ export type PaymentRequirements = {
   scheme: "exact";
   network: string;
   asset: string;
-  /** x402 v2 name of the amount (weibar); `maxAmountRequired` is the v1 alias kept in parallel */
+  /**
+   * x402 v2 amount in the asset's smallest unit = TINYBAR for native HBAR (@x402/hedera builds
+   * `Hbar.fromTinybars(amount)`); `maxAmountRequired` / `extra.value` stay weibar (v1 naming,
+   * gateway-api.md).
+   */
   amount: string;
   maxAmountRequired: string;
   payTo: string;

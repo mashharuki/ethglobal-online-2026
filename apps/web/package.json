@@ -8,28 +8,31 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run",
-    "fund": "tsx scripts/fund-wallet.ts"
+    "test": "vitest run"
   },
   "dependencies": {
     "@hiero-ledger/sdk": "2.85.0",
     "@noble/curves": "^1.9.0",
     "@noble/hashes": "^1.8.0",
     "@privy-io/react-auth": "^3.38.0",
+    "@truenft/openapi": "workspace:*",
     "@truenft/shared": "workspace:*",
     "@x402/core": "2.18.0",
-    "@x402/fetch": "2.18.0",
     "@x402/hedera": "2.18.0",
+    "openapi-fetch": "0.17.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "react-router": "8.3.1",
+    "viem": "^2.56.3"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "4.3.3",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
-    "dotenv": "^17.2.3",
     "oxlint": "^1.79.0",
+    "tailwindcss": "4.3.3",
     "tsx": "^4.21.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.2",

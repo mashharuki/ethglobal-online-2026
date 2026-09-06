@@ -441,6 +441,8 @@ export interface components {
             network: "hedera:testnet";
             /** @description Native asset marker fixed by the day1 probe (T020) */
             asset: string;
+            /** @description x402 v2 amount in the asset's smallest unit - tinybar for native HBAR (what @x402/hedera transfers) */
+            amount: components["schemas"]["UintString"];
             maxAmountRequired: components["schemas"]["Weibar"];
             /** @description RightsRegistry (primary/fallback) or the gateway settlement account (custodial rail) */
             payTo: string;

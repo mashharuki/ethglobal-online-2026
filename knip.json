@@ -25,9 +25,7 @@
     "apps/e2e": {
       "entry": ["wallets.ts"]
     },
-    "apps/web": {
-      "ignoreDependencies": ["dotenv"]
-    },
+    "apps/web": {},
     "apps/subgraph": {
       "entry": ["src/mappings/*.ts", "tests/**/*.ts", "scripts/*.mjs"],
       "ignoreDependencies": ["assemblyscript"]

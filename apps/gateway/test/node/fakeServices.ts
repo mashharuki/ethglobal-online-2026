@@ -100,7 +100,9 @@ export function paymentHeader(
       scheme: "exact",
       network: "hedera:testnet",
       asset: "0.0.0",
-      amount: asset.manifest.paidAccess.price,
+      amount: (
+        BigInt(asset.manifest.paidAccess.price) / 10_000_000_000n
+      ).toString(),
       maxAmountRequired: asset.manifest.paidAccess.price,
       payTo: "0.0.9999",
       resource: `/assets/${asset.assetId}/paid`,

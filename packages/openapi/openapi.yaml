@@ -931,7 +931,7 @@ components:
 
     PaymentAccept:
       type: object
-      required: [scheme, network, asset, maxAmountRequired, payTo, resource]
+      required: [scheme, network, asset, amount, maxAmountRequired, payTo, resource]
       properties:
         scheme:
           type: string
@@ -942,6 +942,9 @@ components:
         asset:
           type: string
           description: Native asset marker fixed by the day1 probe (T020)
+        amount:
+          $ref: "#/components/schemas/UintString"
+          description: x402 v2 amount in the asset's smallest unit - tinybar for native HBAR (what @x402/hedera transfers)
         maxAmountRequired:
           $ref: "#/components/schemas/Weibar"
         payTo:

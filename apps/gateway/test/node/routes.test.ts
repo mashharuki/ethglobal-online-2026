@@ -318,6 +318,7 @@ describe("x402 (T088 / T063)", () => {
       scheme: "exact",
       network: "hedera:testnet",
       asset: "0.0.0",
+      amount: "500000000", // tinybar (x402 v2)
       maxAmountRequired: asset.manifest.paidAccess.price,
       payTo: "0.0.9999",
       resource: `/assets/${asset.assetId}/paid`,
