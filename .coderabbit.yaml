@@ -1,8 +1,9 @@
 # yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
 #
-# CodeRabbit configuration for shipaton2026.
-# pnpm monorepo: apps/backend (Hono on Cloudflare Workers) + apps/frontend
-# (Expo/React Native, RevenueCat) for the RevenueCat Shipaton hackathon.
+# CodeRabbit configuration for TrueCollective (ETHGlobal ETHOnline 2026).
+# pnpm monorepo: apps/gateway (Hono on Cloudflare Workers + MCP server), apps/web
+# (Vite/React + Privy), apps/contracts (Hardhat 3 / Hedera), apps/subgraph, apps/cdk,
+# apps/e2e, apps/agent, packages/shared, packages/openapi.
 # Root tooling is Biome (format/lint) + knip (unused code) + TypeScript strict.
 
 language: "ja"
@@ -49,24 +50,34 @@ reviews:
     - "!.codegraph/**"
 
   path_instructions:
-    - path: "apps/backend/**/*.ts"
+    - path: "apps/gateway/**/*.ts"
       instructions: >
-        Cloudflare Workers + Hono backend. Confirm Node.js built-ins are only
-        used when the `nodejs_compat` compatibility flag is enabled in
-        wrangler.jsonc. When a Cloudflare binding (KV/R2/D1/AI/vars) is
-        added, check that wrangler.jsonc was updated and that
-        `npm run cf-typegen` was re-run so the `CloudflareBindings` type
-        stays in sync. Secrets/API keys must come from env bindings, never
-        be hardcoded.
+        Cloudflare Workers + Hono Access Gateway. Authorization must be re-derived
+        from on-chain reads (ownerOf / accessEpoch / receiptStatus) on every
+        request; the subgraph cache is never an authorization source. Key
+        material (share_U, receipt signer, operator key) comes from Workers
+        Secrets, never from code or logs. New bindings (KV / DO / Hyperdrive /
+        vars) must be reflected in wrangler.toml and CONFIG.md.
 
-    - path: "apps/frontend/**/*.{ts,tsx}"
+    - path: "apps/web/**/*.{ts,tsx}"
       instructions: >
-        Expo (SDK 57) / React Native app using expo-router and RevenueCat
-        for monetization as part of a Shipaton hackathon submission. Check
-        that RevenueCat purchase, restore, and entitlement-check flows
-        handle errors and user cancellation, and that no RevenueCat or
-        store API keys are hardcoded. Navigation should follow expo-router
-        file-based routing conventions.
+        Vite + React + Privy embedded wallet. Decryption happens client-side
+        only; content keys and key shares must be wiped after use and never
+        logged. Gateway calls go through src/api/client.ts (openapi-fetch typed
+        by packages/openapi), never hand-written fetch shapes.
+
+    - path: "apps/contracts/**/*.sol"
+      instructions: >
+        Solidity 0.8.34 on Hedera Testnet. accessEpoch may only change in
+        RightsNFT._update; settleAndIssue must keep the tinybar accounting
+        (msg.value / 1e10) and creator-only dust rule; custom error names must
+        match packages/shared error codes.
+
+    - path: "apps/e2e/**/*.ts"
+      instructions: >
+        Live-network specs must skip (never pass) without their targets, and
+        latency metrics must be recorded only after the scenario's own
+        assertions passed.
 
     - path: "**/*.{test,spec}.{ts,tsx}"
       instructions: >
