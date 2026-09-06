@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { assertReplay, buyWithHbar, concurrentReplay } from "./lib/gateway";
 import {
-  loginAsOwnerOf,
+  restoreAfterEach,
   skipWithoutPrivy,
   splitScreen,
   transferViaViewer,
   unlockAsOwner,
+  withOwnedAsset,
 } from "./lib/ui";
 import { recordMetric } from "./metrics";
 import { loadTestAccounts } from "./wallets";
@@ -16,6 +17,8 @@ import { loadTestAccounts } from "./wallets";
  * leg is exercised by apps/agent) -> 2:30 concurrent replay counter. Every step is the live
  * system; the timestamps are recorded so the recording can be checked against the script.
  */
+restoreAfterEach();
+
 test("3-minute demo script runs end to end", async ({ page }) => {
   skipWithoutPrivy();
   test.setTimeout(600_000);
@@ -24,9 +27,8 @@ test("3-minute demo script runs end to end", async ({ page }) => {
   const t0 = performance.now();
   const mark = (label: string) =>
     recordMetric("demo_step_ms", performance.now() - t0, label);
-  const session = await loginAsOwnerOf(page, accounts, "SURVIVE_TRANSFER");
-  const { env, asset } = session;
-  try {
+  await withOwnedAsset(page, accounts, "SURVIVE_TRANSFER", async (session) => {
+    const { env, asset } = session;
     // 0:40 owner-A decrypts asset A (SC-001)
     await page.goto(`/viewer/${asset.assetId}?path=owner`);
     await unlockAsOwner(page);
@@ -47,7 +49,7 @@ test("3-minute demo script runs end to end", async ({ page }) => {
     expect(purchase.settled.receiptHash).toMatch(/^0x[0-9a-f]{64}$/);
     mark("1:40 x402 purchase");
 
-    // 2:30 concurrent replay: 1 settled / 19 rejected with replay codes, inside the budget
+    // 2:30 concurrent replay: 1 settled / 19 rejected (409 + replay code), inside the budget
     const replay = await concurrentReplay(
       env,
       buyer,
@@ -55,10 +57,8 @@ test("3-minute demo script runs end to end", async ({ page }) => {
       purchase.settled.receiptHash,
       20,
     );
-    recordMetric("replay_reject_ms", replay.rejectMs, "demo");
     assertReplay(replay, 20);
+    recordMetric("replay_reject_ms", replay.rejectMs, "demo");
     mark("2:30 concurrent replay");
-  } finally {
-    await session.restore();
-  }
+  });
 });

@@ -879,16 +879,16 @@
               "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
               "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
               "}",
-              "if (pm.response.code === 502 && pm.response.json().error === 'subgraph_unreachable') {",
-              "  pm.test.skip('graph passthrough BLOCKED: subgraph_unreachable (Graph Node down, not verified)', () => {});",
-              "} else {",
-              "  pm.test('status 200', () => pm.response.to.have.status(200));",
-              "  pm.test('GraphQLResponse with data', () => {",
-              "    const b = pm.response.json();",
-              "    pm.expect(b.errors, JSON.stringify(b.errors)).to.be.undefined;",
-              "    pm.expect(b.data.rightsTokens).to.be.an('array');",
-              "  });",
-              "}"
+              "// a Graph Node outage is a RED result with an explicit reason (never a silent skip / pass)",
+              "pm.test('subgraph reachable (BLOCKED otherwise)', () => {",
+              "  pm.expect(pm.response.code, 'BLOCKED: gateway answered ' + pm.response.code + ' ' + pm.response.text().slice(0, 120)).to.not.eql(502);",
+              "});",
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('GraphQLResponse with data', () => {",
+              "  const b = pm.response.json();",
+              "  pm.expect(b.errors, JSON.stringify(b.errors)).to.be.undefined;",
+              "  pm.expect(b.data.rightsTokens).to.be.an('array');",
+              "});"
             ]
           }
         }
@@ -1265,7 +1265,7 @@
       ]
     },
     {
-      "name": "rate limit: 61st /assets/* request within a minute -> RATE_LIMITED (row facet)",
+      "name": "rate limit: 61st /assets/* request within a fresh minute -> RATE_LIMITED (row facet)",
       "request": {
         "method": "GET",
         "header": [],
@@ -1281,13 +1281,25 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "// 60 requests inside the window from this IP (the limiter counts every /assets/* hit), then the 61st below",
-              "pm.environment.set('RATE_BURST_DONE', '0');",
+              "// 1) let the sliding window empty (earlier items of this collection consumed /assets/* quota),",
+              "// 2) 60 requests that must all be accepted, 3) the 61st (this item) must be refused - all in one window",
               "const url = pm.environment.get('GATEWAY_URL') + '/assets/' + pm.environment.get('ASSET_ID') + '/preview';",
-              "let done = 0;",
-              "for (let i = 0; i < 60; i += 1) {",
-              "  pm.sendRequest(url, () => { done += 1; pm.environment.set('RATE_BURST_DONE', String(done)); });",
-              "}"
+              "const burst = { startedAt: 0, ok: 0, limited: 0, other: 0 };",
+              "pm.environment.set('RATE_BURST', JSON.stringify(burst));",
+              "setTimeout(() => {",
+              "  burst.startedAt = Date.now();",
+              "  let done = 0;",
+              "  for (let i = 0; i < 60; i += 1) {",
+              "    pm.sendRequest(url, (err, res) => {",
+              "      if (err || !res) burst.other += 1;",
+              "      else if (res.code === 200) burst.ok += 1;",
+              "      else if (res.code === 429) burst.limited += 1;",
+              "      else burst.other += 1;",
+              "      done += 1;",
+              "      if (done === 60) pm.environment.set('RATE_BURST', JSON.stringify(burst));",
+              "    });",
+              "  }",
+              "}, 61000);"
             ]
           }
         },
@@ -1312,7 +1324,12 @@
               "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
               "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
               "}",
-              "pm.test('burst completed', () => pm.expect(pm.environment.get('RATE_BURST_DONE')).to.eql('60'));",
+              "const burst = JSON.parse(pm.environment.get('RATE_BURST') || '{}');",
+              "pm.test('burst: 60 requests all answered 200 inside one window', () => {",
+              "  pm.expect(burst.ok, JSON.stringify(burst)).to.eql(60);",
+              "  pm.expect(burst.other, JSON.stringify(burst)).to.eql(0);",
+              "  pm.expect(Date.now() - burst.startedAt, 'burst + 61st must fit in the 60 s window').to.be.below(55000);",
+              "});",
               "expectDomainError(429, 'RATE_LIMITED');",
               "pm.test('Retry-After header', () => pm.expect(Number(pm.response.headers.get('Retry-After'))).to.be.above(0));"
             ]

@@ -1,13 +1,14 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 /**
  * Latency evidence for SC-001 / SC-002 / SC-003 / SC-005 (tasks.md T117, quickstart §1).
  * Specs append samples with `recordMetric`; every sample carries the `runId` of the Playwright
- * run that produced it (playwright.config.ts sets E2E_RUN_ID), and the report only reads ONE
- * run - the current one, or the latest in the file - so stale samples from an earlier run can
- * never turn a skipped run into a pass. `pnpm --filter e2e metrics` prints the table and exits
- * non-zero on a violation or on a metric without samples (BLOCKED).
+ * run that produced it. playwright.config.ts mints E2E_RUN_ID and persists it to
+ * .e2e-run-id BEFORE any spec runs, so a run that skipped everything still leaves
+ * its id behind and the report (which reads exactly one run: E2E_RUN_ID, else that file) finds
+ * zero samples for it -> BLOCKED, never the previous run's pass. `pnpm --filter e2e metrics`
+ * prints the table and exits non-zero on a violation or on a metric without samples.
  */
 export type Sample = {
   metric: string;
@@ -28,9 +29,23 @@ export const THRESHOLDS: Record<string, Threshold> = {
 };
 
 export const METRICS_PATH = resolve(import.meta.dirname, "metrics.json");
+// NOT under test-results/: Playwright wipes that directory at the start of every run
+export const RUN_ID_PATH = resolve(import.meta.dirname, ".e2e-run-id");
 
 export function currentRunId(): string {
   return process.env.E2E_RUN_ID ?? "unset";
+}
+
+/** Written by playwright.config.ts at startup: the id of the most recent run, samples or not. */
+export function recordRunId(runId: string, path = RUN_ID_PATH): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${runId}\n`);
+}
+
+export function readRecordedRunId(path = RUN_ID_PATH): string | undefined {
+  if (!existsSync(path)) return undefined;
+  const id = readFileSync(path, "utf8").trim();
+  return id === "" ? undefined : id;
 }
 
 export function loadSamples(path = METRICS_PATH): Sample[] {
@@ -39,19 +54,9 @@ export function loadSamples(path = METRICS_PATH): Sample[] {
   return Array.isArray(parsed) ? (parsed as Sample[]) : [];
 }
 
-/**
- * Samples of one run. `runId` undefined = the run of the last sample written (the latest);
- * `runId` given = exactly that run, empty when it produced nothing.
- */
-export function samplesOfRun(
-  samples: Sample[],
-  runId?: string,
-): { runId: string | undefined; samples: Sample[] } {
-  const wanted = runId ?? samples.at(-1)?.runId;
-  return {
-    runId: wanted,
-    samples: samples.filter((s) => s.runId === wanted),
-  };
+/** Exactly the samples of `runId` - empty when that run recorded nothing. */
+export function samplesOfRun(samples: Sample[], runId: string): Sample[] {
+  return samples.filter((s) => s.runId === runId);
 }
 
 export function recordMetric(
@@ -152,8 +157,14 @@ export function renderReport(verdicts: Verdict[], runId?: string): string {
 
 const isDirectRun = process.argv[1]?.endsWith("metrics.ts") ?? false;
 if (isDirectRun) {
-  const run = samplesOfRun(loadSamples(), process.env.E2E_RUN_ID);
-  const verdicts = checkThresholds(summarize(run.samples));
-  console.log(renderReport(verdicts, run.runId));
+  const runId = process.env.E2E_RUN_ID ?? readRecordedRunId();
+  if (runId === undefined) {
+    console.log("BLOCKED: no Playwright run recorded (.e2e-run-id missing)");
+    process.exit(1);
+  }
+  const verdicts = checkThresholds(
+    summarize(samplesOfRun(loadSamples(), runId)),
+  );
+  console.log(renderReport(verdicts, runId));
   process.exit(verdicts.every((v) => v.ok) ? 0 : 1);
 }

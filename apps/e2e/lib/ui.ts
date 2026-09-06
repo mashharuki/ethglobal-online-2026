@@ -54,9 +54,11 @@ export async function login(page: Page): Promise<Hex> {
 }
 
 /**
- * Counts every user click in the tab from now on, across navigations (SC-008: wallet
- * connection included, 3 clicks to the plaintext). Install BEFORE `login`. Clicks inside
- * cross-origin iframes (Privy's wallet iframe) are invisible to the page and not counted.
+ * Counts every user click in the tab from now on, across navigations and in every frame
+ * (SC-008: wallet connection included, 3 clicks to the plaintext). The init script runs in
+ * each frame, including cross-origin ones (Privy), and stores the count in that frame's
+ * sessionStorage; the reader sums all frames so wallet-iframe clicks are not lost.
+ * Install BEFORE `login`.
  */
 export async function installClickCounter(
   page: Page,
@@ -71,8 +73,15 @@ export async function installClickCounter(
       true,
     );
   });
-  return () =>
-    page.evaluate(() => Number(sessionStorage.getItem("e2e.clicks") ?? "0"));
+  return async () => {
+    let total = 0;
+    for (const frame of page.frames()) {
+      total += await frame
+        .evaluate(() => Number(sessionStorage.getItem("e2e.clicks") ?? "0"))
+        .catch(() => 0);
+    }
+    return total;
+  };
 }
 
 /** The Market card of one token (exact id: `token #1` must not match `token #10`). */
@@ -113,22 +122,36 @@ export type OwnedSession = {
   wallet: Hex;
   asset: AssetSummary;
   tokenId: bigint;
-  /**
-   * Puts the token back with the seeded owner-A whoever holds it now (browser wallet via the
-   * viewer form, a seeded account via a direct transfer). Call from `finally`.
-   */
-  restore: () => Promise<void>;
 };
 
+const RESTORE_TIMEOUT_MS = 180_000;
+const pendingRestores: Array<() => Promise<void>> = [];
+
 /**
- * Login, then move an asset the seeded owner-A holds to the browser wallet so the Privy
- * wallet is the current owner. Shared by every owner-side browser spec.
+ * Call once at the top of every spec that uses `withOwnedAsset`: the restore runs in an
+ * afterEach hook with its own timeout budget, so it still executes when the test body itself
+ * timed out (a `finally` inside the body would be cut off with it).
  */
-export async function loginAsOwnerOf(
+export function restoreAfterEach(): void {
+  test.afterEach(async () => {
+    test.setTimeout(RESTORE_TIMEOUT_MS);
+    const restores = pendingRestores.splice(0);
+    for (const restore of restores) await restore();
+  });
+}
+
+/**
+ * Login, hand an asset the seeded owner-A holds to the browser wallet, run `fn` with the
+ * session, and put the token back with owner-A whoever holds it afterwards (browser wallet
+ * via the viewer form, a seeded account via a direct transfer). The restore is registered
+ * BEFORE the first transfer is submitted, so a transfer that times out is cleaned up too.
+ */
+export async function withOwnedAsset(
   page: Page,
   accounts: TestAccounts,
-  mode?: AssetSummary["transferMode"],
-): Promise<OwnedSession> {
+  mode: AssetSummary["transferMode"] | undefined,
+  fn: (session: OwnedSession) => Promise<void>,
+): Promise<void> {
   const env = envFromProcess();
   const deployment = deploymentFromProcess();
   const client = publicClient();
@@ -136,8 +159,7 @@ export async function loginAsOwnerOf(
   const wallet = await login(page);
   const asset = await findAssetOwnedBy(env, ownerA.address, mode);
   const tokenId = BigInt(asset.tokenId);
-  await transferNft(client, deployment, ownerA, wallet, tokenId);
-  const restore = async (): Promise<void> => {
+  pendingRestores.push(async () => {
     const holder = (
       await readEpochs(client, deployment, tokenId)
     ).owner.toLowerCase();
@@ -156,8 +178,9 @@ export async function loginAsOwnerOf(
       );
     }
     await transferNft(client, deployment, seeded, ownerA.address, tokenId);
-  };
-  return { env, deployment, wallet, asset, tokenId, restore };
+  });
+  await transferNft(client, deployment, ownerA, wallet, tokenId);
+  await fn({ env, deployment, wallet, asset, tokenId });
 }
 
 export async function unlockAsOwner(page: Page): Promise<void> {

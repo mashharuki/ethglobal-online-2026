@@ -6,7 +6,9 @@ import {
   checkThresholds,
   loadSamples,
   percentile,
+  readRecordedRunId,
   recordMetric,
+  recordRunId,
   renderReport,
   samplesOfRun,
   summarize,
@@ -98,20 +100,32 @@ describe("metrics (T117)", () => {
     ]);
     expect(JSON.parse(readFileSync(path, "utf8"))).toHaveLength(2);
 
-    // the latest run only: the old owner sample must not leak into the new run's verdicts
-    const latest = samplesOfRun(all);
-    expect(latest.runId).toBe("run-new");
-    expect(latest.samples.map((s) => s.metric)).toEqual(["replay_reject_ms"]);
-    const verdicts = checkThresholds(summarize(latest.samples));
+    // one run only: the old owner sample must not leak into the new run's verdicts
+    expect(samplesOfRun(all, "run-new").map((s) => s.metric)).toEqual([
+      "replay_reject_ms",
+    ]);
+    const verdicts = checkThresholds(summarize(samplesOfRun(all, "run-new")));
     expect(verdicts.find((v) => v.metric === "owner_access_ms")?.detail).toBe(
       "BLOCKED: no samples recorded",
     );
-    // an explicit run that recorded nothing is empty, not "the latest"
-    expect(samplesOfRun(all, "run-skipped")).toEqual({
-      runId: "run-skipped",
-      samples: [],
-    });
-    // and a run id nobody recorded under reads as BLOCKED, not as the previous run's pass
-    expect(samplesOfRun([])).toEqual({ runId: undefined, samples: [] });
+    // a run that skipped every spec recorded nothing -> every metric BLOCKED, nothing borrowed
+    const skipped = checkThresholds(
+      summarize(samplesOfRun(all, "run-skipped")),
+    );
+    expect(skipped.every((v) => !v.ok && v.detail.startsWith("BLOCKED"))).toBe(
+      true,
+    );
+  });
+
+  it("should persist the run id independently of samples so a skipped run is still the current run", () => {
+    const path = join(
+      mkdtempSync(join(tmpdir(), "e2e-run-")),
+      "nested",
+      "e2e-run-id",
+    );
+    expect(readRecordedRunId(path)).toBeUndefined();
+    recordRunId("run-2026", path);
+    expect(readRecordedRunId(path)).toBe("run-2026");
+    expect(readFileSync(path, "utf8")).toBe("run-2026\n");
   });
 });

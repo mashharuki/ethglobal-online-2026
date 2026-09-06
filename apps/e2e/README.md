@@ -11,7 +11,7 @@ talks to a real gateway on Hedera Testnet; nothing is mocked (constitution princ
 | `pnpm test:unit` | Vitest over the tooling itself: `metrics.ts` maths and the Postman-vs-OpenAPI coverage check (`collection.test.ts`) | nothing |
 | `pnpm test` | Playwright specs `*.e2e.ts` (skipped, with a printed notice, unless `WEB_URL` + `GATEWAY_URL` are set; `E2E_REQUIRED=1` turns the skip into a failure) | see below |
 | `pnpm test:api` | Newman over `postman/gateway.postman_collection.json` (every item asserts the OpenAPI envelope / error code it expects) | `GATEWAY_URL` + `ASSET_ID` in the environment file |
-| `pnpm metrics` | Prints the latency report of ONE run (`E2E_RUN_ID`, else the latest recorded) from `metrics.json` and exits non-zero when a threshold in `metrics.ts` is missed or has no sample in that run (BLOCKED, never PASS) | a previous Playwright run |
+| `pnpm metrics` | Prints the latency report of ONE run (`E2E_RUN_ID`, else the id `playwright.config.ts` wrote to `.e2e-run-id` at startup) from `metrics.json` and exits non-zero when a threshold in `metrics.ts` is missed or has no sample in that run (BLOCKED, never PASS) | a previous Playwright run |
 
 ## Specs
 
@@ -40,10 +40,18 @@ concurrent replay. `lib/chain.ts` reads epochs and transfers the NFT directly on
 | `E2E_PRIVY_EMAIL`, `E2E_PRIVY_OTP` | browser specs: a Privy **test account** (dashboard → Test accounts, fixed OTP). Absent → browser specs skip as BLOCKED. The embedded wallet must hold Testnet HBAR for `buyerFlow` |
 | `TEST_ACCOUNTS_PATH` | overrides `.accounts.json` (owner-A / owner-B / buyer keys from the seed script) |
 
-A skipped spec is reported as skipped, never as passed: every sample carries the run id
-Playwright assigned (`E2E_RUN_ID`), the report reads one run only, and it refuses to declare a
-threshold met without samples from that run. Browser specs put the seeded token back with
-owner-A in `finally`, so a failed run does not strand the fixture.
+A skipped spec is reported as skipped, never as passed: the run id is persisted before any
+spec runs, every sample carries it, the report reads that one run only, and it refuses to
+declare a threshold met without samples from it (a fully skipped run is all-BLOCKED, not the
+previous run's pass). Latency samples are written only after the scenario's own assertions
+passed. Browser specs register the fixture restore before the first transfer and run it in an
+`afterEach` hook with its own timeout, so a failed or timed-out test does not strand the seeded
+token.
+
+Newman: the graph passthrough item FAILS with an explicit "BLOCKED" message when the Graph Node
+is unreachable (a red run, never a silent skip), and the rate-limit item waits for a fresh
+60 s window, sends 60 requests that must all be 200, then expects the 61st to be 429 inside
+the same window.
 
 Known gap (SC-008): `ownerFlow` counts every click from the first page load. The Privy email +
 OTP login is two clicks, "Access as owner" and "Unlock as owner" two more, so the assertion

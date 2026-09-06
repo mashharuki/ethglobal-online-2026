@@ -3,8 +3,9 @@ import {
   assetCard,
   expectDecrypted,
   installClickCounter,
-  loginAsOwnerOf,
+  restoreAfterEach,
   skipWithoutPrivy,
+  withOwnedAsset,
 } from "./lib/ui";
 import { recordMetric } from "./metrics";
 import { loadTestAccounts } from "./wallets";
@@ -14,6 +15,8 @@ import { loadTestAccounts } from "./wallets";
  * <= 3 clicks counted from the first page load (wallet connection included, per SC-008), and
  * owner_access_ms recorded from the unlock click to the plaintext.
  */
+restoreAfterEach();
+
 test("owner unlocks in three clicks and under the latency budget", async ({
   page,
 }) => {
@@ -21,8 +24,7 @@ test("owner unlocks in three clicks and under the latency budget", async ({
   test.setTimeout(240_000);
   const accounts = loadTestAccounts();
   const clicks = await installClickCounter(page);
-  const session = await loginAsOwnerOf(page, accounts);
-  try {
+  await withOwnedAsset(page, accounts, undefined, async (session) => {
     await page.goto("/market");
     await assetCard(page, session.asset.tokenId)
       .getByRole("button", { name: "Access as owner (free)" })
@@ -30,19 +32,15 @@ test("owner unlocks in three clicks and under the latency budget", async ({
     const started = performance.now();
     await page.getByRole("button", { name: "Unlock as owner" }).click();
     await expectDecrypted(page);
-    recordMetric(
-      "owner_access_ms",
-      performance.now() - started,
-      "browser owner path",
-    );
+    const elapsed = performance.now() - started;
     await expect(page.getByText("current owner")).toBeVisible();
     const total = await clicks();
-    recordMetric("owner_clicks", total, "SC-008: login + market + unlock");
     expect(
       total,
       "SC-008: wallet connection + access within 3 clicks",
     ).toBeLessThanOrEqual(3);
-  } finally {
-    await session.restore();
-  }
+    // evidence only once the scenario is verified
+    recordMetric("owner_access_ms", elapsed, "browser owner path");
+    recordMetric("owner_clicks", total, "SC-008: login + market + unlock");
+  });
 });

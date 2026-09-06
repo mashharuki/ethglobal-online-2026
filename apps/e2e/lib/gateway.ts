@@ -349,7 +349,7 @@ export async function licenseeDecrypt(
 
 type ReplayOutcome =
   | { ok: true; useIndex: number; ms: number }
-  | { ok: false; code: string; ms: number };
+  | { ok: false; code: string; status: number; ms: number };
 
 export type ReplayResult = {
   outcomes: ReplayOutcome[];
@@ -401,6 +401,7 @@ export async function concurrentReplay(
         return {
           ok: false,
           code: error instanceof GatewayError ? error.code : "NETWORK",
+          status: error instanceof GatewayError ? error.status : 0,
           ms: performance.now() - started,
         };
       }
@@ -416,7 +417,8 @@ export async function concurrentReplay(
 
 /**
  * The SC-005 verdict: exactly one settled use, every other call refused with a replay code
- * (never a network error / 5xx), and the slowest refusal inside the quickstart budget.
+ * AND its 409 status (never a network error / 5xx), and the slowest refusal inside the
+ * quickstart budget. Callers record the latency metric only after this passes.
  */
 export function assertReplay(result: ReplayResult, parallelism: number): void {
   const settled = result.outcomes.filter((o) => o.ok);

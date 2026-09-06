@@ -2,10 +2,11 @@ import { expect, test } from "@playwright/test";
 import { listAssets } from "./lib/gateway";
 import {
   expectOwnerRefused,
-  loginAsOwnerOf,
+  restoreAfterEach,
   skipWithoutPrivy,
   transferViaViewer,
   unlockAsOwner,
+  withOwnedAsset,
 } from "./lib/ui";
 import { recordMetric } from "./metrics";
 import { loadTestAccounts } from "./wallets";
@@ -14,14 +15,15 @@ import { loadTestAccounts } from "./wallets";
  * SC-003 / FR-015 (tasks.md T101): the browser wallet (owner-A) unlocks, the NFT moves to
  * owner-B, the same screen is refused within 10 s, and the ciphertext CID never changed.
  */
+restoreAfterEach();
+
 test("transfer revokes the old owner within 10 s and keeps the ciphertext CID", async ({
   page,
 }) => {
   skipWithoutPrivy();
   test.setTimeout(300_000);
   const accounts = loadTestAccounts();
-  const session = await loginAsOwnerOf(page, accounts);
-  try {
+  await withOwnedAsset(page, accounts, undefined, async (session) => {
     const cidOf = async (): Promise<string> => {
       const uri = (await listAssets(session.env)).find(
         (a) => a.assetId === session.asset.assetId,
@@ -39,11 +41,10 @@ test("transfer revokes the old owner within 10 s and keeps the ciphertext CID", 
     await transferViaViewer(page, accounts.ownerB.address);
     const transferred = performance.now();
     const code = await expectOwnerRefused(page);
-    recordMetric("transfer_revoke_ms", performance.now() - transferred, code);
+    const revokeMs = performance.now() - transferred;
 
     // the CID is unchanged: the content was never re-encrypted
     expect(await cidOf()).toBe(cidBefore);
-  } finally {
-    await session.restore();
-  }
+    recordMetric("transfer_revoke_ms", revokeMs, code);
+  });
 });

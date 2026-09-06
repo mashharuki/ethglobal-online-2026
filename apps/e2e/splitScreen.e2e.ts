@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { buyWithHbar } from "./lib/gateway";
 import {
-  loginAsOwnerOf,
+  restoreAfterEach,
   skipWithoutPrivy,
   splitScreen,
   transferViaViewer,
   unlockAsOwner,
+  withOwnedAsset,
 } from "./lib/ui";
 import { loadTestAccounts } from "./wallets";
 
@@ -15,14 +16,15 @@ import { loadTestAccounts } from "./wallets";
  * keeps decrypting. The licensee half runs node-side (consume + real decryption) against the
  * same asset while the browser half re-tries the owner path.
  */
+restoreAfterEach();
+
 test("old owner refused and SURVIVE licensee served, concurrently", async ({
   page,
 }) => {
   skipWithoutPrivy();
   test.setTimeout(300_000);
   const accounts = loadTestAccounts();
-  const session = await loginAsOwnerOf(page, accounts, "SURVIVE_TRANSFER");
-  try {
+  await withOwnedAsset(page, accounts, "SURVIVE_TRANSFER", async (session) => {
     // the licensee buys while the browser wallet owns the token
     const { settled } = await buyWithHbar(
       session.env,
@@ -33,16 +35,16 @@ test("old owner refused and SURVIVE licensee served, concurrently", async ({
     await unlockAsOwner(page);
 
     await transferViaViewer(page, accounts.ownerB.address);
-    const right = await splitScreen(
+    const result = await splitScreen(
       page,
       session,
       accounts.buyer,
       settled.receiptHash,
     );
-    expect(["OWNER_EPOCH_MISMATCH", "NOT_CURRENT_OWNER"]).toContain(right.left);
-    expect(right.rightUseIndex).toBeGreaterThanOrEqual(0);
-    expect(right.rightBytes).toBeGreaterThan(0);
-  } finally {
-    await session.restore();
-  }
+    expect(["OWNER_EPOCH_MISMATCH", "NOT_CURRENT_OWNER"]).toContain(
+      result.left,
+    );
+    expect(result.rightUseIndex).toBeGreaterThanOrEqual(0);
+    expect(result.rightBytes).toBeGreaterThan(0);
+  });
 });

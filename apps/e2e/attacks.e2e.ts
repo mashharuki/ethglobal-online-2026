@@ -41,13 +41,14 @@ test("Concurrent Replay: 20 parallel shares of one receipt -> 1 settled / 19 rej
     settled.receiptHash,
     PARALLELISM,
   );
+  // exactly 1 settled / 19 refused with 409 + replay code, slowest refusal < 3 s (quickstart §1)
+  assertReplay(replay, PARALLELISM);
+  // the metric is evidence of a verified burst only, so it is written after the verdict
   recordMetric(
     "replay_reject_ms",
     replay.rejectMs,
-    `${replay.outcomes.filter((o) => !o.ok).length} rejections, burst ${Math.round(replay.elapsedMs)}ms`,
+    `${PARALLELISM - 1} rejections, burst ${Math.round(replay.elapsedMs)}ms`,
   );
-  // exactly 1 settled / 19 refused with a replay code, slowest refusal < 3 s (quickstart §1)
-  assertReplay(replay, PARALLELISM);
 });
 
 test("Chain-ID spoofing: an owner signature over another chainId -> CHAIN_ID_MISMATCH (row 5)", async () => {
