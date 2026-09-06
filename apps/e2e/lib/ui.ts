@@ -54,34 +54,29 @@ export async function login(page: Page): Promise<Hex> {
 }
 
 /**
- * Counts every user click in the tab from now on, across navigations and in every frame
- * (SC-008: wallet connection included, 3 clicks to the plaintext). The init script runs in
- * each frame, including cross-origin ones (Privy), and stores the count in that frame's
- * sessionStorage; the reader sums all frames so wallet-iframe clicks are not lost.
- * Install BEFORE `login`.
+ * Counts every user click in the tab from now on (SC-008: wallet connection included, 3 clicks
+ * to the plaintext). Each frame - top document and iframes, cross-origin ones included -
+ * reports clicks through a Node-side binding, so the count lives outside any frame's lifetime
+ * (no loss when the Privy modal / login iframe is removed, no double count across frames, no
+ * silent zero when a frame cannot be evaluated). Install BEFORE `login`.
  */
 export async function installClickCounter(
   page: Page,
 ): Promise<() => Promise<number>> {
+  let total = 0;
+  await page.exposeBinding("__e2eClick", () => {
+    total += 1;
+  });
   await page.addInitScript(() => {
     document.addEventListener(
       "click",
       () => {
-        const n = Number(sessionStorage.getItem("e2e.clicks") ?? "0") + 1;
-        sessionStorage.setItem("e2e.clicks", String(n));
+        (window as unknown as { __e2eClick: () => void }).__e2eClick();
       },
       true,
     );
   });
-  return async () => {
-    let total = 0;
-    for (const frame of page.frames()) {
-      total += await frame
-        .evaluate(() => Number(sessionStorage.getItem("e2e.clicks") ?? "0"))
-        .catch(() => 0);
-    }
-    return total;
-  };
+  return async () => total;
 }
 
 /** The Market card of one token (exact id: `token #1` must not match `token #10`). */
@@ -144,7 +139,8 @@ export function restoreAfterEach(): void {
  * Login, hand an asset the seeded owner-A holds to the browser wallet, run `fn` with the
  * session, and put the token back with owner-A whoever holds it afterwards (browser wallet
  * via the viewer form, a seeded account via a direct transfer). The restore is registered
- * BEFORE the first transfer is submitted, so a transfer that times out is cleaned up too.
+ * together with the first transfer and waits for it, so a transfer that is still in flight
+ * when the test times out is reconciled before the token is read back.
  */
 export async function withOwnedAsset(
   page: Page,
@@ -159,7 +155,13 @@ export async function withOwnedAsset(
   const wallet = await login(page);
   const asset = await findAssetOwnedBy(env, ownerA.address, mode);
   const tokenId = BigInt(asset.tokenId);
+  // the hand-over is tracked so a restore that runs while it is still in flight (the test
+  // timed out mid-transfer) waits for the transaction to land before reading the owner
+  const handOver = transferNft(client, deployment, ownerA, wallet, tokenId);
+  let cancelled = false;
   pendingRestores.push(async () => {
+    cancelled = true;
+    await handOver.catch(() => undefined);
     const holder = (
       await readEpochs(client, deployment, tokenId)
     ).owner.toLowerCase();
@@ -179,7 +181,10 @@ export async function withOwnedAsset(
     }
     await transferNft(client, deployment, seeded, ownerA.address, tokenId);
   });
-  await transferNft(client, deployment, ownerA, wallet, tokenId);
+  await handOver;
+  // a body that outlived its timeout must not start the scenario under the teardown
+  if (cancelled)
+    throw new Error("test was torn down before the hand-over landed");
   await fn({ env, deployment, wallet, asset, tokenId });
 }
 

@@ -364,6 +364,8 @@ const REPLAY_REJECT_CODES = [
   "RECEIPT_ALREADY_CONSUMED",
   "SETTLEMENT_IN_PROGRESS",
 ];
+/** both codes map to 409 in packages/shared ERROR_HTTP_STATUS; a 5xx is a gateway failure */
+const REPLAY_REJECT_STATUS = 409;
 
 /**
  * SC-005: `parallelism` /keygate/share calls with the SAME receipt, all in flight together
@@ -429,8 +431,13 @@ export function assertReplay(result: ReplayResult, parallelism: number): void {
     problems.push(`${rejected.length} rejected (want ${parallelism - 1})`);
   }
   for (const r of rejected) {
-    if (!r.ok && !REPLAY_REJECT_CODES.includes(r.code))
-      problems.push(`unexpected ${r.code}`);
+    if (r.ok) continue;
+    if (
+      !REPLAY_REJECT_CODES.includes(r.code) ||
+      r.status !== REPLAY_REJECT_STATUS
+    ) {
+      problems.push(`unexpected ${r.status} ${r.code}`);
+    }
   }
   const budget = THRESHOLDS.replay_reject_ms?.max ?? Number.NaN;
   if (!(result.rejectMs < budget)) {
