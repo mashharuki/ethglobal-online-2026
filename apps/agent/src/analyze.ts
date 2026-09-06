@@ -178,6 +178,8 @@ export async function analyzeDataset(input: {
     max_tokens: 1024,
     system: SYSTEM_PROMPT,
     tools: [ANSWER_TOOL],
+    // Request the structured answer shape consumed by the deterministic verifier;
+    // selecting the tool does not establish that the model's answer is correct.
     tool_choice: { type: "tool", name: ANSWER_TOOL.name },
     messages: [
       {

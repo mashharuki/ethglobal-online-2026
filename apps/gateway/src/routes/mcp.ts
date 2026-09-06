@@ -44,6 +44,8 @@ export function registerMcpRoutes(app: Hono<AppEnv>): void {
       : c.req.header(MCP_SESSION_HEADER);
     const sessionId = await verifySessionId(services.env, token, now);
     const server = createMcpServer({ services, sessionId });
+    // Transport objects are request-local. Purchase ownership and budgets survive requests
+    // through the verified session identity and database, not an in-memory MCP connection.
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,

@@ -237,6 +237,8 @@ async function withSignerSecret<T>(
   try {
     return await use(secret);
   } finally {
+    // Clear this temporary byte buffer on success and failure; this does not erase the
+    // original environment binding or copies held internally by cryptographic APIs.
     wipe(secret);
   }
 }
@@ -303,6 +305,8 @@ export async function releaseToOwner(
           });
         }
       }
+      // A signed ownerSession carries an earlier epoch for stale-session diagnostics;
+      // it is never a substitute for proving ownership from this request's chain snapshot.
       if (!isAddressEqual(snapshot.owner, req.wallet)) {
         throw new AppError("NOT_CURRENT_OWNER");
       }

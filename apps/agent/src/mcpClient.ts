@@ -229,6 +229,7 @@ export async function connectRightsRuntime(
       "MCP server minted no Mcp-Session-Id on initialize: refusing to buy without a session",
     );
   }
+  // Check the complete discover/buy/decrypt tool surface before any purchase can occur.
   const advertised = (await client.listTools()).tools.map((t) => t.name);
   const missing = RIGHTS_RUNTIME_TOOLS.filter((t) => !advertised.includes(t));
   if (missing.length > 0) {

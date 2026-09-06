@@ -94,6 +94,8 @@ export async function bindReceiptToSession(
   receiptHash: Hex,
   sessionId: string,
 ): Promise<void> {
+  // The first association wins: retrying a purchase must never reassign its receipt to
+  // another session sharing the same server wallet.
   await db
     .insert(mcpSessionBinding)
     .values({ receiptHash, mcpSessionId: sessionKey(sessionId) })

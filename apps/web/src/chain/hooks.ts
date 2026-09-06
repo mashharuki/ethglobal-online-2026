@@ -201,6 +201,8 @@ export async function mintToken(
   const receipt = await publicClient.waitForTransactionReceipt({
     hash: txHash,
   });
+  // Read the actual minted ID from this transaction, not the earlier simulation: another
+  // creator may have minted in between. Filter out logs emitted by other contracts.
   const minted = parseEventLogs({
     abi: rightsNftAbi,
     eventName: "Transfer",

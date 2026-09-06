@@ -51,6 +51,7 @@ async function decryptWithKey(
   }
 }
 
+/** Chooses a display format heuristically; the original bytes remain available without coercion. */
 export function describeDataset(bytes: Uint8Array): Dataset {
   let text: string;
   try {
@@ -68,6 +69,7 @@ export function describeDataset(bytes: Uint8Array): Dataset {
   return { format: firstLine.includes(",") ? "csv" : "text", text, bytes };
 }
 
+/** Clears reconstructed key buffers; the caller retains ownership of, and must wipe, shareU. */
 export async function decryptContent(input: {
   shareG: Hex;
   shareU: Uint8Array;

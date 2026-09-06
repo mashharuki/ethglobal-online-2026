@@ -38,6 +38,7 @@ export function createGraphFetch(
   };
 }
 
+/** The caller's cache key must distinguish the query and every variable affecting its result. */
 export async function cachedGraphQuery<T>(
   db: Db,
   graph: GraphFetch,
@@ -60,6 +61,8 @@ export async function cachedGraphQuery<T>(
     return cached.value as GraphResponse<T>;
   }
   const fresh = await graph<T>(query, variables);
+  // GraphQL can return HTTP 200 with errors or partial data; do not cache that as a healthy
+  // discovery result and hide a recovered indexer for the rest of the TTL.
   if (fresh.errors === undefined) {
     await db
       .insert(subgraphCache)

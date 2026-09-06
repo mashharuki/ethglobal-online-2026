@@ -65,6 +65,7 @@ export function handleReceiptConsumed(event: ReceiptConsumedEvent): void {
   consumption.blockNumber = event.block.number;
   consumption.save();
 
+  // Count indexed consumption events for audit; this is not a live authorization check.
   receipt.usedCount = receipt.usedCount.plus(ONE);
   receipt.save();
 }
@@ -75,6 +76,7 @@ export function handleRevenueAllocated(event: RevenueAllocatedEvent): void {
   allocation.token = token.id;
   allocation.creator = event.params.creator;
   allocation.creatorAmount = event.params.creatorAmount;
+  // Preserve the settlement-time beneficiary; later NFT transfers must not rewrite it.
   allocation.owner = event.params.owner;
   allocation.ownerAmount = event.params.ownerAmount;
   allocation.blockNumber = event.params.blockNumber;
@@ -88,6 +90,7 @@ export function handleRevenueAllocated(event: RevenueAllocatedEvent): void {
 
 export function handleLicenseEpochBumped(event: LicenseEpochBumpedEvent): void {
   let token = loadOrCreateToken(event.params.tokenId);
+  // License revocation advances its own epoch without changing the owner's transfer epoch.
   token.licenseEpoch = event.params.newEpoch;
   token.save();
 

@@ -97,6 +97,8 @@ export class OperatorQueueCore {
   private async run(job: OperatorJob): Promise<Hex> {
     const key = job.idempotencyKey;
     const existing = await this.ports.loadJob(key);
+    // A stored hash means the job was broadcast, not necessarily mined. Callers still wait
+    // for confirmation; retries must not allocate a new nonce merely to obtain that hash.
     if (existing?.txHash !== undefined) return existing.txHash;
 
     if (job.kind === "bumpLicenseEpoch") {
@@ -138,6 +140,8 @@ export class OperatorQueueCore {
   }
 
   private async reserve(key: string, nonce: number): Promise<void> {
+    // Persist the reservation before the external side effect so an interrupted broadcast
+    // is recognized as an existing attempt and reconciled against the pending chain nonce.
     await this.ports.saveNonce(nonce + 1);
     await this.ports.saveJob(key, { nonce });
   }

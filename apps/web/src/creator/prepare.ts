@@ -92,6 +92,7 @@ export function hbarToWeibar(hbar: string): string {
   }
   const whole = match[1];
   const frac = match[2] ?? "";
+  // Convert through integer tinybars so decimal input never rounds through JavaScript floats.
   const tinybar =
     BigInt(whole ?? "0") * 100_000_000n + BigInt(frac.padEnd(8, "0"));
   return (tinybar * (WEIBAR_PER_HBAR / 100_000_000n)).toString();
@@ -173,6 +174,7 @@ export function contentHashOf(blob: Uint8Array): Hex {
   return keccak256(blob);
 }
 
+/** Operator provisioning artifact with both shares; keep it separate from public IPFS uploads. */
 export function sharesArtifact(input: {
   assetId: Hex;
   shareG: Uint8Array;

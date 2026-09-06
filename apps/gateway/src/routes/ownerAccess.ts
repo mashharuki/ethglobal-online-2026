@@ -62,6 +62,8 @@ export function registerOwnerRoutes(app: Hono<AppEnv>): void {
       chainId,
     );
     const expiresAt = toUnixSeconds(issued.expiresAt);
+    // Both operations use the owner-access nonce pool, but distinct EIP-712 types keep an
+    // ordinary access signature from authorizing a license-epoch revocation.
     const typedData =
       body.purpose === "bump-license-epoch"
         ? revocationTypedData(domain, {

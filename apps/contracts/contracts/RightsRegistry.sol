@@ -185,6 +185,8 @@ contract RightsRegistry is IRightsRegistry, ReentrancyGuard {
 
     /// @inheritdoc IRightsRegistry
     function hasValidConsumption(bytes32 receiptHash, uint32 useIndex) external view returns (bool) {
+        // This is eligibility for an unused index, not proof of a past consumption.
+        // Use isConsumed to distinguish a settled use from an index that can still be spent.
         return _validity(receiptHash, useIndex) == VALID;
     }
 
@@ -232,6 +234,7 @@ contract RightsRegistry is IRightsRegistry, ReentrancyGuard {
     /// @inheritdoc IRightsRegistry
     function bumpLicenseEpoch(uint256 tokenId) external {
         if (msg.sender != admin && msg.sender != rightsNFT.creatorOf(tokenId)) revert NotAuthorized();
+        // Revoke a whole generation without iterating over receipts or changing owner privileges.
         uint256 next = _licenseEpoch[tokenId] + 1;
         _licenseEpoch[tokenId] = next;
         emit LicenseEpochBumped(tokenId, next);
@@ -257,6 +260,7 @@ contract RightsRegistry is IRightsRegistry, ReentrancyGuard {
     /// @inheritdoc IRightsRegistry
     /// @dev CEI: balance is zeroed before the external call; nonReentrant as defense in depth.
     function claim() external nonReentrant {
+        // Withdraw the allocation fixed at settlement; a later NFT transfer cannot redirect it.
         uint256 amount = _claimable[msg.sender];
         if (amount == 0) revert NothingToClaim();
         _claimable[msg.sender] = 0;
@@ -296,6 +300,8 @@ contract RightsRegistry is IRightsRegistry, ReentrancyGuard {
             revert CommittedParamsMismatch();
         }
         if (p.price == 0 || pending.amountTinybar != p.price) revert UnderPayment();
+        // _settle rejects live deposits. Deleting first also prevents reuse; a revert restores
+        // the deposit, so failed finalization does not erase the payer's refund entitlement.
         delete _pending[paymentId];
         receiptHash = _settle(p);
     }
@@ -336,9 +342,13 @@ contract RightsRegistry is IRightsRegistry, ReentrancyGuard {
         if (!r.issued) return INVALID_NOT_ISSUED;
         if (block.timestamp >= r.expiresAt) return INVALID_EXPIRED;
         if (r.licenseEpochAtIssue != _licenseEpoch[r.tokenId]) return INVALID_LICENSE_EPOCH;
+        // SURVIVE_TRANSFER deliberately ignores Owner Epoch: ownership and paid access age
+        // independently. Only INVALIDATE_ON_TRANSFER receipts inherit transfer revocation.
         if (r.transferMode == TRANSFER_MODE_INVALIDATE && r.ownerEpochAtIssue != rightsNFT.accessEpoch(r.tokenId)) {
             return INVALID_TRANSFER;
         }
+        // Bound each distinct index and reject its reuse. The gateway allocates indices;
+        // this predicate does not require useIndex to equal usedCount.
         if (useIndex >= r.maxUses) return INVALID_USE_LIMIT;
         if (_consumed[receiptHash][useIndex]) return INVALID_ALREADY_CONSUMED;
         return VALID;

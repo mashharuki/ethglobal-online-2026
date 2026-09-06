@@ -99,6 +99,7 @@ export async function accessAsOwner(
   const authSig = await deps.signers.signTypedData(
     typedData(challenge.typedData),
   );
+  // The owner path has no purchased receipt; its KeyGate signature uses the zero receipt hash.
   const keyGateSig = await keyGateSignature(deps, assetId, "owner", ZERO32);
   const release = await ownerKeygate(deps.api, {
     assetId,
@@ -114,6 +115,8 @@ export async function accessAsLicensee(
   assetId: Hex,
   receiptHash: Hex,
 ): Promise<{ release: KeygateShareLicenseeResponse; dataset: Dataset }> {
+  // Request authorization uses a fresh challenge; key unblinding uses a separate,
+  // receipt-bound signature that can be reproduced for subsequent uses.
   const challenge = await licenseeChallenge(deps.api, {
     receiptHash,
     wallet: deps.wallet,

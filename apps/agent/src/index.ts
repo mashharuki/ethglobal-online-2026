@@ -169,6 +169,7 @@ export async function runAgent(input: {
       `analyze (${model}): ${analysis.confidence} confidence, ${analysis.evidence.length} evidence`,
     );
 
+    // Verify against the full decrypted dataset, even if inference received a truncated copy.
     const verification = verifyAnalysis(
       analysis,
       decrypted.dataset,
@@ -197,6 +198,8 @@ export async function runAgent(input: {
       verifiedAnswer: verification.ok ? verification.statement : undefined,
       steps,
     };
+    // Preserve transaction and analysis evidence on failure without reporting an unverified
+    // model answer as a successful end-to-end run.
     if (!verification.ok) throw new VerificationError(record);
     return record;
   } finally {

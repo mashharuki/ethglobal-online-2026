@@ -66,6 +66,8 @@ contract RightsNFT is ERC721, IRightsNFT {
 
     // --------------------------------------------------------------- writes
 
+    /// @notice Creates an asset with a permanent creator and an initial owner who may differ.
+    /// @dev Metadata and the initial epoch are set before the ERC-721 receiver callback runs.
     function mint(
         address to,
         address creator,
@@ -87,6 +89,8 @@ contract RightsNFT is ERC721, IRightsNFT {
         _safeMint(to, tokenId);
     }
 
+    /// @notice Updates the terms advertised for this asset; only its original creator may do so.
+    /// @dev Existing receipt revocation is a separate RightsRegistry.bumpLicenseEpoch operation.
     function setPolicy(uint256 tokenId, bytes32 newPolicyHash, string calldata newManifestURI) external {
         _requireExists(tokenId);
         if (msg.sender != _creator[tokenId]) revert NotCreator();
@@ -101,6 +105,8 @@ contract RightsNFT is ERC721, IRightsNFT {
     /// @dev Sole writer of `_accessEpoch` after mint: +1 on every real transfer.
     function _update(address to, uint256 tokenId, address auth) internal override returns (address from) {
         from = super._update(to, tokenId, auth);
+        // Include self-transfers: even when ownerOf is unchanged, previous owner sessions age out.
+        // Mint and burn are excluded; mint explicitly initializes the epoch to one.
         if (from != address(0) && to != address(0)) {
             _accessEpoch[tokenId] += 1;
         }

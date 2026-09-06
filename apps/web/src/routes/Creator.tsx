@@ -96,6 +96,7 @@ export default function Creator() {
     if (prepared === undefined || wallet.address === undefined) {
       throw new Error("encrypt a dataset and connect a wallet first");
     }
+    // Mint simulation needs the policy and asset hashes; the placeholder token ID is not published.
     const built = buildManifest(fullDraft(prepared.contentHash), "0");
     const { result } = await publicClient.simulateContract({
       account: wallet.address,

@@ -121,6 +121,8 @@ export class ReceiptLockCore {
   constructor(private readonly ports: LockPorts) {}
 
   async consume(input: ConsumeInput): Promise<ConsumeOutcome> {
+    // Serialize reservation, not finality waiting: competing requests must see the locked
+    // row promptly instead of queuing behind a slow transaction and consuming another use.
     const plan = await this.serialize(() => this.plan(input));
     if (plan.kind === "redeliver") {
       return {
@@ -134,6 +136,7 @@ export class ReceiptLockCore {
 
   private serialize<T>(fn: () => Promise<T>): Promise<T> {
     const run = this.tail.then(fn, fn);
+    // Keep the queue usable after a rejection while returning the original error to its caller.
     this.tail = run.catch(() => undefined);
     return run;
   }
@@ -319,6 +322,8 @@ export class ReceiptLockCore {
       try {
         await this.ports.waitForTx(txHash);
       } catch (error) {
+        // A timeout is not proof of a revert. Preserve the transaction reference for
+        // redelivery; recovery checks isConsumed before retrying this index.
         await this.ports.updateStatus(receiptHash, useIndex, {
           status: "failed",
           onchainTx: txHash,

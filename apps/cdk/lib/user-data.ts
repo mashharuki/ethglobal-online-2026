@@ -67,6 +67,7 @@ export function buildUserData(opts: UserDataOptions): ec2.UserData {
     "systemctl enable --now docker",
     'echo "[graph-node] writing compose stack"',
     `mkdir -p ${COMPOSE_DIR}/data/ipfs ${COMPOSE_DIR}/data/postgres`,
+    // Preserve Compose variable expressions until Docker Compose reads the generated .env.
     `cat > ${COMPOSE_DIR}/docker-compose.yml <<'${HEREDOC_EOF}'`,
     opts.composeYaml.trimEnd(),
     HEREDOC_EOF,

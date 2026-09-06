@@ -725,6 +725,8 @@ export async function settlePayment(
       throw lost("before binding");
     }
     stage = "settled";
+    // Persist the issued receipt before response-only work. If signing or audit logging
+    // fails, a retry can reconstruct the response without charging the payer again.
     const serverSignature = await signReceipt(
       ports.env,
       buildDomain(ports.deployment.rightsRegistry, ports.deployment.chainId),

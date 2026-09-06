@@ -87,6 +87,8 @@ export function createServices(env: Env, db: Db): Services {
     facilitator: createFacilitatorClient(env.X402_FACILITATOR_URL),
     resolveAsset: resolve,
     quoteReads: async (tokenId) => {
+      // A transfer or policy update between independent latest-block reads would produce
+      // a quote whose fields never coexisted. Pin all terms to the same chain snapshot.
       const blockNumber = await ctx.publicClient.getBlockNumber();
       const at = { blockNumber };
       const [licenseEpoch, accessEpoch, policyHash, resourceHash] =

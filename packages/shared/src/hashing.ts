@@ -194,6 +194,7 @@ export function canonicalPath(rawPath: string): string {
       const [key = "", ...rest] = pair.split("=");
       return [key.toLowerCase(), rest.join("=")] as const;
     })
+    // Values break ties between repeated query keys so reordered pairs hash identically.
     .sort(([a, av], [b, bv]) => ordinalCompare(a, b) || ordinalCompare(av, bv));
   return `${path}?${pairs.map(([k, v]) => (v === "" ? k : `${k}=${v}`)).join("&")}`;
 }

@@ -116,6 +116,8 @@ export async function buyAccess(input: {
     await input.signer.createPartiallySignedTransferTransaction(
       toSignerRequirements(accept),
     );
+  // Signing a transfer does not grant access. The gateway must settle and return the
+  // receipt before the separate licensee flow can request key material.
   const settled = await settlePayment(
     input.api,
     input.assetId,

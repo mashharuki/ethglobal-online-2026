@@ -138,6 +138,8 @@ export class GraphNodeStack extends cdk.Stack {
       requireImdsv2: true,
       associatePublicIpAddress: true,
       userData,
+      // Bootstrap changes need a fresh host; updating user data alone does not rerun setup
+      // on an existing instance. Treat bootstrap edits as infrastructure replacement.
       userDataCausesReplacement: true,
       blockDevices: [
         {

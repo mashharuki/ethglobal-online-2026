@@ -92,6 +92,8 @@ export default function Viewer() {
       commit(owner, { asset: found });
       if (found === undefined) return;
       const tokenId = BigInt(found.tokenId);
+      // Discovery locates the token; displayed ownership comes from a separate live chain read.
+      // The gateway still rechecks authorization when access is requested from this screen.
       const ownership = await readOwnership(
         publicClient,
         config.deployment,

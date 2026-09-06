@@ -55,6 +55,7 @@ library ReceiptLib {
         return keccak256(bytes.concat(head, tail));
     }
 
+    /// @dev Signatures are scoped to this chain and registry even when receipt fields coincide.
     function domainSeparator(uint256 chainId, address verifyingContract) internal pure returns (bytes32) {
         return keccak256(
             abi.encode(EIP712_DOMAIN_TYPEHASH, DOMAIN_NAME_HASH, DOMAIN_VERSION_HASH, chainId, verifyingContract)

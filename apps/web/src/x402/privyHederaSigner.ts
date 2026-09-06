@@ -117,6 +117,8 @@ export function createPrivyHederaSigner(
       const tx = new TransferTransaction()
         .addHbarTransfer(payer, Hbar.fromTinybars((-amount).toString()))
         .addHbarTransfer(payTo, Hbar.fromTinybars(amount.toString()))
+        // The transaction ID names the facilitator's fee payer; the HBAR debit above
+        // still comes from the buyer, who signs this transaction body.
         .setTransactionId(
           TransactionId.generate(AccountId.fromString(feePayer)),
         )
