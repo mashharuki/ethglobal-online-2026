@@ -148,7 +148,10 @@ filled into `wrangler.toml` after `wrangler kv namespace create SHARE_G` and
 - `src/db/schema.ts` is the schema (data-model.md 2.3); `src/db/migrations/` holds the generated
   SQL and is committed.
 - `pnpm --filter gateway db:generate` regenerates migrations after a schema change.
-- `pnpm --filter gateway db:migrate` applies them to `DATABASE_URL` (the Hyperdrive origin).
+- `pnpm --filter gateway db:migrate` applies them to `DATABASE_URL`, which must be the direct
+  origin PostgreSQL connection string. Hyperdrive itself is a Worker binding and is not a
+  migration endpoint. Export `.env` values before running the command (`set -a; source .env;
+  set +a`).
   The Worker never runs DDL.
 - `pnpm --filter gateway test:node` runs the schema tests against PGlite (no server needed).
 

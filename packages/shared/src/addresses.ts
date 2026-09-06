@@ -1,5 +1,4 @@
 import type { Address } from "viem";
-import { HEDERA_TESTNET_CHAIN_ID } from "./eip712";
 
 /**
  * Deployed contract addresses. `apps/contracts/scripts/deploy.ts` writes the Testnet

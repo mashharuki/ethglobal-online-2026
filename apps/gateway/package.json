@@ -15,7 +15,7 @@
     "cf-typegen": "wrangler types",
     "sync-abis": "tsx scripts/sync-abis.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "node scripts/migrate.mjs",
     "load-shares": "tsx scripts/load-shares.ts",
     "probe:workerd": "tsx scripts/probe-workerd.ts"
   },

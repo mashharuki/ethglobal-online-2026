@@ -16,7 +16,7 @@
 | Testnet HBAR を各アカウントへ（buyer / agent は決済分も） | Hedera Portal faucet。**決済資産はネイティブ HBAR**（Blocky402 facilitator が `hedera:testnet` でサポートするのはネイティブトークン、HTS USDC ではない ― `/supported`。R-2 / R-4）。token association 不要 |
 | `HEDERA_RPC_URL`（JSON-RPC relay） | `https://testnet.hashio.io/api`（HashIO）など |
 | Cloudflare アカウント + `wrangler login` | `apps/gateway`（Workers / DO / KV / Hyperdrive）と `apps/web`（Pages）のデプロイ |
-| PostgreSQL（Neon / Supabase 無料枠） | Hyperdrive のバックエンド。`HYPERDRIVE_URL` を `wrangler hyperdrive create` で発行 |
+| PostgreSQL（Neon / Supabase 無料枠） | Hyperdrive の接続元。直接接続文字列を `DATABASE_URL` に設定し、同じURLを `wrangler hyperdrive create --connection-string` に渡す |
 | Anthropic API キー | CI 検証ハーネスの実推論用（`ANTHROPIC_API_KEY`） |
 | Web3.Storage / Pinata トークン | 暗号文・プレビューの IPFS ピン |
 | Privy App（Server SDK 有効化） | MCP 決済ウォレットの session signer + spend policy（`PRIVY_APP_ID` / `PRIVY_APP_SECRET`、R-9 / FR-028）。web の `@privy-io/react-auth` と同一 App |
@@ -42,7 +42,10 @@ pnpm --filter subgraph run create         # 初回のみ：truecollective/rights
 pnpm --filter subgraph run deploy         # IPFS upload → graph deploy。startBlock はデプロイ tx から自動注入
 
 # gateway（apps/gateway、Cloudflare Workers）
-pnpm --filter gateway db:migrate          # Hyperdrive 経由 Postgres にマイグレーション
+set -a                                      # .env の値を子プロセスへ export
+source .env
+set +a
+pnpm --filter gateway db:migrate           # Hyperdrive接続元のPostgresへ直接マイグレーション
 pnpm --filter gateway secrets:put         # RECEIPT_SIGNER_KEY / KV_KEK / HEDERA_OPERATOR_KEY / PRIVY_APP_ID / PRIVY_APP_SECRET を wrangler secret put（MCP 決済の生鍵は置かない ＝ Privy server wallet 管理。share_U は下記 load-shares で asset ごとに投入）
 pnpm --filter gateway dev                 # wrangler dev（miniflare、:8787。DO / KV / Hyperdrive をローカルエミュレート、share_U は .dev.vars で代替）
 # 本番: pnpm --filter gateway deploy       # wrangler deploy（空実装でも一度デプロイし、Worker を Cloudflare 上に存在させる）

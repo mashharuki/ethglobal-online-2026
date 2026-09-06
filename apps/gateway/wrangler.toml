@@ -21,30 +21,24 @@ PAYMENT_ASSET = "native"
 SETTLEMENT_MODE = "custodial"
 # Hedera account that receives HBAR on the custodial rail (payment receipt only; the
 # operator key anchors the receipt with settleAndIssue{value}). Set after the account exists.
-SETTLEMENT_ACCOUNT_ID = ""
-SUBGRAPH_URL = ""
-# Empty = packages/shared DEFAULT_DEPLOYMENT (filled by apps/contracts deploy write-back, T047).
-RIGHTS_NFT_ADDRESS = ""
-RIGHTS_REGISTRY_ADDRESS = ""
+SETTLEMENT_ACCOUNT_ID = "0.0.10236053"
+SUBGRAPH_URL = "https://16-76-149-54.sslip.io/subgraphs/name/truecollective/rights-graph"
+RIGHTS_NFT_ADDRESS = "0x3524049309DC3F7f1dE83a8687a55Afa927dAe7A"
+RIGHTS_REGISTRY_ADDRESS = "0xf397F1C1697Fe777AEE97994a4b686519bD26877"
 IPFS_GATEWAY_URL = "https://ipfs.io"
 # MCP spend policy (research.md R-9): hard cap per Mcp-Session-Id in tinybar (20 HBAR).
 MCP_SESSION_SPEND_CAP_TINYBAR = "2000000000"
-
-# @hiero-ledger/sdk ships a gRPC-based node entry; the browser entry (offline transaction
-# building + signing, which is all the MCP wallet needs) is what runs in workerd.
-[alias]
-"@hiero-ledger/sdk" = "@hiero-ledger/sdk/lib/browser.js"
 
 # share_G ciphertext store (KEK-encrypted with packages/shared/src/kv-format.ts).
 # Replace `id` with the output of `wrangler kv namespace create SHARE_G`.
 [[kv_namespaces]]
 binding = "SHARE_G"
-id = "00000000000000000000000000000000"
+id = "d8e5f39365b84703bab11bb4e492254f"
 
 # Postgres via Hyperdrive. Replace `id` with the output of `wrangler hyperdrive create`.
 [[hyperdrive]]
 binding = "HYPERDRIVE"
-id = "00000000000000000000000000000000"
+id = "86c8358240ac4dc1b529d926b3e8a5b0"
 localConnectionString = "postgres://postgres:postgres@127.0.0.1:5432/truecollective"
 
 # Durable Objects: ReceiptLock serializes consume per receiptHash (R-3),

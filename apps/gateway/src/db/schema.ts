@@ -86,7 +86,7 @@ export const walletBlindedShares = pgTable(
       sql`${t.accessEpochAtGrant} IS NULL OR (${t.accessEpochAtGrant} >= 0 AND ${t.accessEpochAtGrant} < 1e30 AND ${t.accessEpochAtGrant} = trunc(${t.accessEpochAtGrant}))`,
     ),
   ],
-);
+).enableRLS();
 
 export const receiptConsumption = pgTable(
   "receipt_consumption",
@@ -115,7 +115,7 @@ export const receiptConsumption = pgTable(
     ),
     check("receipt_consumption_use_index_check", sql`${t.useIndex} >= 0`),
   ],
-);
+).enableRLS();
 
 export const paymentBinding = pgTable(
   "payment_binding",
@@ -154,7 +154,7 @@ export const paymentBinding = pgTable(
       sql`${t.amount} >= 0 AND ${t.amount} < 1e30 AND ${t.amount} = trunc(${t.amount})`,
     ),
   ],
-);
+).enableRLS();
 
 export const authNonce = pgTable(
   "auth_nonce",
@@ -173,7 +173,7 @@ export const authNonce = pgTable(
       sql`${t.purpose} IN ('owner-access', 'keygate-challenge')`,
     ),
   ],
-);
+).enableRLS();
 
 export const mcpSessionBinding = pgTable("mcp_session_binding", {
   receiptHash: bytea("receipt_hash").primaryKey(),
@@ -181,7 +181,7 @@ export const mcpSessionBinding = pgTable("mcp_session_binding", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();
 
 // MCP spend policy ledger (R-9): tinybar reserved per Mcp-Session-Id, added atomically before
 // a purchase signs anything and only given back when no value can have moved.
@@ -202,7 +202,7 @@ export const mcpSessionSpend = pgTable(
       sql`${t.spentTinybar} >= 0 AND ${t.spentTinybar} < 1e30 AND ${t.spentTinybar} = trunc(${t.spentTinybar})`,
     ),
   ],
-);
+).enableRLS();
 
 export const AUDIT_ACTIONS = [
   "owner_keygate",
@@ -223,7 +223,7 @@ export const auditLog = pgTable("audit_log", {
   // 'allow' | 'deny:<ErrorCode>'
   outcome: text("outcome").notNull(),
   onchainRef: bytea("onchain_ref"),
-});
+}).enableRLS();
 
 export const subgraphCache = pgTable("subgraph_cache", {
   key: text("key").primaryKey(),
@@ -231,4 +231,4 @@ export const subgraphCache = pgTable("subgraph_cache", {
   refreshedAt: timestamp("refreshed_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}).enableRLS();

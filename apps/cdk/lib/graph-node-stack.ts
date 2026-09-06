@@ -56,7 +56,7 @@ export const SUBGRAPH_NAME = "truecollective/rights-graph";
 /**
  * GraphNodeStack (tasks.md T054): one EC2 host + Elastic IP + Security Group + EBS running the
  * self-hosted Graph Node stack via docker compose. Hackathon-duration-only; `cdk destroy` after
- * the event (constitution VII / DoD #7). Query port 8000 is public; admin ports are CIDR-gated.
+ * the event (constitution VII / DoD #7). Query port 80 is public; admin ports are CIDR-gated.
  */
 export class GraphNodeStack extends cdk.Stack {
   public readonly instance: ec2.Instance;
@@ -74,8 +74,13 @@ export class GraphNodeStack extends cdk.Stack {
     });
     securityGroup.addIngressRule(
       ec2.Peer.anyIpv4(),
-      ec2.Port.tcp(8000),
-      "GraphQL query endpoint",
+      ec2.Port.tcp(80),
+      "GraphQL HTTPS redirect and certificate challenge",
+    );
+    securityGroup.addIngressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(443),
+      "GraphQL HTTPS query endpoint",
     );
     if (props.allowedAdminCidr) {
       const admin = ec2.Peer.ipv4(
@@ -167,7 +172,7 @@ export class GraphNodeStack extends cdk.Stack {
     new cdk.CfnOutput(this, "ElasticIp", { value: eip.ref });
     new cdk.CfnOutput(this, "InstanceId", { value: this.instance.instanceId });
     new cdk.CfnOutput(this, "GraphqlUrl", {
-      value: `http://${eip.ref}:8000/subgraphs/name/${SUBGRAPH_NAME}`,
+      value: `https://${eip.ref}.sslip.io/subgraphs/name/${SUBGRAPH_NAME}`,
     });
     new cdk.CfnOutput(this, "GraphNodeAdminUrl", {
       value: `http://${eip.ref}:8020/`,

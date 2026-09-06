@@ -6,7 +6,7 @@ services:
     image: graphprotocol/graph-node:v0.27.0
     restart: unless-stopped
     ports:
-      - "8000:8000" # GraphQL HTTP (public, SG-gated)
+      - "8000:8000" # Legacy/direct GraphQL port (not public in the SG)
       - "8001:8001" # GraphQL WS
       - "8020:8020" # admin JSON-RPC (graph create/deploy) - SG restricted to allowedAdminCidr
       - "8030:8030" # index-node status
@@ -25,6 +25,24 @@ services:
       GRAPH_LOG: info
       GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER: 1
       ETHEREUM_POLLING_INTERVAL: 2000
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      - graph-node
+    command:
+      - caddy
+      - reverse-proxy
+      - --from
+      - https://16-76-149-54.sslip.io
+      - --to
+      - http://graph-node:8000
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /opt/graph-node/data/caddy-data:/data
+      - /opt/graph-node/data/caddy-config:/config
   ipfs:
     image: ipfs/go-ipfs:v0.10.0
     restart: unless-stopped

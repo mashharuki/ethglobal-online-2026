@@ -44,10 +44,11 @@ function userDataScript(t: Template): string {
 }
 
 describe("GraphNodeStack networking", () => {
-  it("should open only the GraphQL port 8000 to the world by default", () => {
+  it("should open only standard HTTP/HTTPS ports to the world by default", () => {
     const rules = ingressRules(synth());
-    expect(rules).toHaveLength(1);
-    expect(rules[0]).toMatchObject({ FromPort: 8000, CidrIp: "0.0.0.0/0" });
+    expect(rules).toHaveLength(2);
+    expect(rules[0]).toMatchObject({ FromPort: 80, CidrIp: "0.0.0.0/0" });
+    expect(rules[1]).toMatchObject({ FromPort: 443, CidrIp: "0.0.0.0/0" });
   });
 
   it("should keep admin ports closed unless allowedAdminCidr is set, then gate them to that CIDR", () => {
@@ -72,7 +73,8 @@ describe("GraphNodeStack networking", () => {
     // still no world-open admin port
     expect(
       ingressRules(t).some(
-        (r) => r.FromPort !== 8000 && r.CidrIp === "0.0.0.0/0",
+        (r) =>
+          ![80, 443].includes(r.FromPort ?? -1) && r.CidrIp === "0.0.0.0/0",
       ),
     ).toBe(false);
   });
@@ -91,14 +93,14 @@ describe("GraphNodeStack networking", () => {
     expect(() => synth({ allowedAdminCidr: "203.0.113.0/24" })).not.toThrow();
   });
 
-  it("should produce exactly four ingress rules with admin + no SSH, none of them world-open except 8000", () => {
+  it("should expose only HTTP/HTTPS globally when admin CIDR is enabled", () => {
     const rules = ingressRules(synth({ allowedAdminCidr: "203.0.113.4/32" }));
     expect(rules.map((r) => r.FromPort).sort()).toEqual([
-      5001, 8000, 8020, 8030,
+      443, 5001, 80, 8020, 8030,
     ]);
     expect(
       rules.filter((r) => r.CidrIp === "0.0.0.0/0").map((r) => r.FromPort),
-    ).toEqual([8000]);
+    ).toEqual([80, 443]);
   });
 
   it("should open SSH only to the given CIDR when allowedSshCidr is set", () => {
