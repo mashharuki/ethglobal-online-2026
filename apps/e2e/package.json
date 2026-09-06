@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "test": "playwright test --pass-with-no-tests",
+    "test:unit": "vitest run",
     "test:api": "newman run postman/gateway.postman_collection.json -e postman/hedera-testnet.postman_environment.json",
+    "metrics": "node --experimental-strip-types metrics.ts",
     "typecheck": "tsc --noEmit",
     "lint": "biome check ."
   },
@@ -14,6 +16,13 @@
     "@playwright/test": "^1.63.0",
     "@types/node": "^22.20.1",
     "newman": "^6.2.2",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "@hiero-ledger/sdk": "2.85.0",
+    "@truenft/shared": "workspace:*",
+    "@x402/hedera": "2.18.0",
+    "viem": "^2.56.3"
   }
 }

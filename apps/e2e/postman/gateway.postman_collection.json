@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "TrueCollective Access Gateway",
-    "description": "API contract tests (tasks.md T059 / T098). Each response is asserted against packages/openapi/openapi.yaml.",
+    "description": "API contract tests (tasks.md T059 / T098, FR-029 / SC-010). Every response is asserted against packages/openapi/openapi.yaml: domain rejections carry an ErrorCode from error-codes.md, non-domain failures the {error} envelope. Positive flows that need wallet signatures (owner keygate, settle, licensee share) are covered by the Playwright specs; this collection covers their HTTP-shaped negative facets of the \u00a710.1 matrix. Requires ASSET_ID / OWNER_WALLET in the environment (seeded by the assets request when the gateway lists assets).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -22,11 +22,1270 @@
           "script": {
             "type": "text/javascript",
             "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
               "pm.test('status 200', () => pm.response.to.have.status(200));",
-              "pm.test('body matches Health schema', () => {",
-              "  const body = pm.response.json();",
-              "  pm.expect(body.ok).to.eql(true);",
-              "  pm.expect(body.chainId).to.eql(296);",
+              "pm.test('Health body', () => { const b = pm.response.json(); pm.expect(b.ok).to.eql(true); pm.expect(b.chainId).to.eql(296); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "assets: list (AssetSummary[])",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/assets",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["assets"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('AssetSummary shape', () => {",
+              "  const items = pm.response.json();",
+              "  pm.expect(items).to.be.an('array');",
+              "  for (const a of items) {",
+              "    pm.expect(a.assetId).to.match(HEX32);",
+              "    pm.expect(a.tokenId).to.match(/^\\d+$/);",
+              "    pm.expect(a.nftContract).to.match(ADDRESS);",
+              "    pm.expect(a.paidAccess.price).to.match(/^\\d+$/);",
+              "    pm.expect(['SURVIVE_TRANSFER', 'INVALIDATE_ON_TRANSFER']).to.include(a.transferMode);",
+              "    pm.expect(a.permissions).to.have.all.keys('commercialUse', 'aiTraining', 'derivativeGeneration');",
+              "  }",
+              "  if (items.length > 0) pm.environment.set('ASSET_ID', items[0].assetId);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "assets: preview of an unknown asset -> 404 envelope",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/assets/0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee/preview",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": [
+            "assets",
+            "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "preview"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "expectEnvelope(404, 'not_found');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "assets: malformed assetId -> 400 envelope",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/assets/not-hex/preview",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["assets", "not-hex", "preview"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "expectEnvelope(400, 'bad_request');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "x402: GET paid -> 402 PaymentRequired (T063)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/assets/{{ASSET_ID}}/paid",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["assets", "{{ASSET_ID}}", "paid"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "pm.test('status 402', () => pm.response.to.have.status(402));",
+              "pm.test('PaymentRequired shape', () => {",
+              "  const b = pm.response.json();",
+              "  pm.expect(b.x402Version).to.eql(2);",
+              "  const a = b.accepts[0];",
+              "  pm.expect(a.scheme).to.eql('exact');",
+              "  pm.expect(a.network).to.eql('hedera:testnet');",
+              "  pm.expect(a.asset).to.eql('0.0.0');",
+              "  pm.expect(a.amount).to.match(/^\\d+$/);",
+              "  pm.expect(a.maxAmountRequired).to.match(/^\\d+$/);",
+              "  pm.expect(BigInt(a.maxAmountRequired) / 10000000000n).to.eql(BigInt(a.amount));",
+              "  pm.expect(a.extra.receiptQuote.nonce).to.match(HEX32);",
+              "  pm.expect(a.extra.receiptQuote.expiresAt - a.extra.receiptQuote.issuedAt).to.be.above(0);",
+              "  pm.expect(b.manifest.assetId).to.eql(pm.environment.get('ASSET_ID'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "x402: POST paid without X-PAYMENT -> UNDERPAYMENT (row 9 facet)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/assets/{{ASSET_ID}}/paid",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["assets", "{{ASSET_ID}}", "paid"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"licensee\": \"{{OWNER_WALLET}}\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "expectDomainError(402, 'UNDERPAYMENT');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "x402: POST paid with garbage X-PAYMENT -> UNDERPAYMENT",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-PAYMENT",
+            "value": "not-base64!"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/assets/{{ASSET_ID}}/paid",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["assets", "{{ASSET_ID}}", "paid"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"licensee\": \"{{OWNER_WALLET}}\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "expectDomainError(402, 'UNDERPAYMENT');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "x402: POST paid on another network -> CHAIN_ID_MISMATCH (row 5 facet)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/assets/{{ASSET_ID}}/paid",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["assets", "{{ASSET_ID}}", "paid"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"licensee\": \"{{OWNER_WALLET}}\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const quote = pm.environment.get('RECEIPT_QUOTE') ? JSON.parse(pm.environment.get('RECEIPT_QUOTE')) : null;",
+              "const payload = { x402Version: 2, scheme: 'exact', network: 'hedera:mainnet', payload: { transaction: 'AAAA' }, accepted: { scheme: 'exact', network: 'hedera:mainnet', asset: '0.0.0', amount: '1', maxAmountRequired: '10000000000', payTo: '0.0.1', resource: '/x', extra: { settlementMode: 'custodial', value: '10000000000', receiptQuote: quote } } };",
+              "pm.request.headers.add({ key: 'X-PAYMENT', value: btoa(JSON.stringify(payload)) });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "expectDomainError(400, 'CHAIN_ID_MISMATCH');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "x402: capture the quote for later requests",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/assets/{{ASSET_ID}}/paid",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["assets", "{{ASSET_ID}}", "paid"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "pm.environment.set('RECEIPT_QUOTE', JSON.stringify(pm.response.json().accepts[0].extra.receiptQuote));",
+              "pm.test('quote captured', () => pm.expect(pm.environment.get('RECEIPT_QUOTE')).to.be.a('string'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "x402: finalize off the fallback rail -> NOT_AUTHORIZED",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/assets/{{ASSET_ID}}/finalize",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["assets", "{{ASSET_ID}}", "finalize"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"paymentId\": \"0x9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a\", \"receipt\": {}, \"price\": \"1\", \"creatorBps\": 3000, \"ownerBps\": 7000}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "const b = pm.response.json();",
+              "pm.test('finalize is refused or invalid input', () => pm.expect([400, 403]).to.include(pm.response.code));",
+              "pm.test('body is an error', () => pm.expect(b.code || b.error).to.be.a('string'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "owner: challenge -> ChallengeResponse",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/owner/challenge",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["owner", "challenge"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"assetId\": \"{{ASSET_ID}}\", \"wallet\": \"{{OWNER_WALLET}}\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('ChallengeResponse shape', () => {",
+              "  const b = pm.response.json();",
+              "  pm.expect(b.nonce).to.match(HEX32);",
+              "  pm.expect(b.expiresAt).to.be.a('number');",
+              "  pm.expect(b.typedData.primaryType).to.eql('OwnerAuthChallenge');",
+              "  pm.expect(b.typedData.domain.chainId).to.eql('296');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "owner: keygate with a garbage signature -> SIGNATURE_INVALID / NONCE_INVALID_OR_EXPIRED",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/owner/keygate",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["owner", "keygate"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"assetId\": \"{{ASSET_ID}}\", \"wallet\": \"{{OWNER_WALLET}}\", \"authSig\": \"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "pm.test('status 401', () => pm.response.to.have.status(401));",
+              "pm.test('auth rejection code', () => pm.expect(['SIGNATURE_INVALID', 'NONCE_INVALID_OR_EXPIRED']).to.include(pm.response.json().code));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "owner: keygate for an unknown asset -> 404 envelope",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/owner/keygate",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["owner", "keygate"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"assetId\": \"0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\", \"wallet\": \"{{OWNER_WALLET}}\", \"authSig\": \"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "expectEnvelope(404, 'not_found');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "owner: keygate with a malformed body -> 400 envelope",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/owner/keygate",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["owner", "keygate"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"assetId\": \"{{ASSET_ID}}\", \"wallet\": \"nope\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "expectEnvelope(400, 'bad_request');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "keygate: licensee challenge -> ChallengeResponse",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/keygate/challenge",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["keygate", "challenge"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"receiptHash\": \"0xd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4\", \"wallet\": \"{{OWNER_WALLET}}\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('LicenseeAuthChallenge typed data', () => pm.expect(pm.response.json().typedData.primaryType).to.eql('LicenseeAuthChallenge'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "keygate: share (licensee) with a garbage signature -> 401",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/keygate/share",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["keygate", "share"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"path\": \"licensee\", \"assetId\": \"{{ASSET_ID}}\", \"receiptHash\": \"0xd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4\", \"authSig\": \"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "pm.test('status 401', () => pm.response.to.have.status(401));",
+              "pm.test('auth rejection code', () => pm.expect(['SIGNATURE_INVALID', 'NONCE_INVALID_OR_EXPIRED', 'LICENSEE_MISMATCH']).to.include(pm.response.json().code));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "keygate: share with an unknown path -> 400 envelope",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/keygate/share",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["keygate", "share"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"path\": \"thief\", \"assetId\": \"{{ASSET_ID}}\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "expectEnvelope(400, 'bad_request');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "graph: passthrough",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/graph",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["graph"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"query\": \"{ rightsTokens(first: 1) { id } }\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "pm.test('200 or 502 envelope', () => pm.expect([200, 502]).to.include(pm.response.code));",
+              "pm.test('GraphQLResponse or subgraph_unreachable', () => {",
+              "  const b = pm.response.json();",
+              "  if (pm.response.code === 200) pm.expect(b).to.satisfy((x) => 'data' in x || 'errors' in x);",
+              "  else pm.expect(b.error).to.eql('subgraph_unreachable');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "graph: malformed body -> 400 envelope",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/graph",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["graph"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"nope\": 1}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "expectEnvelope(400, 'bad_request');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "audit: allowlisted entries",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/audit?limit=20",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["audit"],
+          "query": [
+            {
+              "key": "limit",
+              "value": "20"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('AuditEntry allowlist (no signatures / shares / tokens)', () => {",
+              "  const allowed = ['id', 'at', 'action', 'outcome', 'code', 'assetId', 'subject', 'onchainRef', 'detail'];",
+              "  for (const e of pm.response.json()) {",
+              "    for (const k of Object.keys(e)) pm.expect(allowed).to.include(k);",
+              "    pm.expect(['allow', 'deny']).to.include(e.outcome);",
+              "    if (e.code !== undefined) pm.expect(ERROR_CODES).to.include(e.code);",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "audit: limit 0 -> 400 envelope",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/audit?limit=0",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["audit"],
+          "query": [
+            {
+              "key": "limit",
+              "value": "0"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "expectEnvelope(400, 'bad_request');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "admin: bump-license-epoch with a garbage signature -> 401 / 403",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/assets/{{ASSET_ID}}/bump-license-epoch",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["assets", "{{ASSET_ID}}", "bump-license-epoch"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"wallet\": \"{{OWNER_WALLET}}\", \"revocationSig\": \"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "pm.test('refused', () => pm.expect([401, 403]).to.include(pm.response.code));",
+              "pm.test('domain code', () => pm.expect(['SIGNATURE_INVALID', 'NONCE_INVALID_OR_EXPIRED', 'NOT_AUTHORIZED']).to.include(pm.response.json().code));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "mcp: initialize mints Mcp-Session-Id",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json, text/event-stream"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/mcp",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["mcp"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"initialize\", \"params\": {\"protocolVersion\": \"2025-06-18\", \"capabilities\": {}, \"clientInfo\": {\"name\": \"newman\", \"version\": \"0\"}}}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('session id header', () => { const id = pm.response.headers.get('Mcp-Session-Id'); pm.expect(id).to.match(/^0x[0-9a-f]+$/); pm.environment.set('MCP_SESSION_ID', id); });",
+              "pm.test('server info', () => pm.expect(pm.response.json().result.serverInfo.name).to.eql('truecollective-rights-runtime'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "mcp: tools/list has the three tools",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json, text/event-stream"
+          },
+          {
+            "key": "Mcp-Session-Id",
+            "value": "{{MCP_SESSION_ID}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/mcp",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["mcp"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/list\", \"params\": {}}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('three tools', () => {",
+              "  const names = pm.response.json().result.tools.map((t) => t.name).sort();",
+              "  pm.expect(names).to.eql(['buy_access', 'decrypt_content', 'discover_assets']);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "mcp: decrypt_content with a forged session -> MCP_SESSION_MISMATCH",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json, text/event-stream"
+          },
+          {
+            "key": "Mcp-Session-Id",
+            "value": "0xdeadbeef"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/mcp",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["mcp"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"jsonrpc\": \"2.0\", \"id\": 3, \"method\": \"tools/call\", \"params\": {\"name\": \"decrypt_content\", \"arguments\": {\"assetId\": \"{{ASSET_ID}}\", \"receiptHash\": \"0xd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4\"}}}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "pm.test('status 200 (tool error)', () => pm.response.to.have.status(200));",
+              "pm.test('MCP_SESSION_MISMATCH', () => {",
+              "  const r = pm.response.json().result;",
+              "  pm.expect(r.isError).to.eql(true);",
+              "  pm.expect(JSON.parse(r.content[0].text).code).to.eql('MCP_SESSION_MISMATCH');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "rate limit: /assets 61st request within a minute -> RATE_LIMITED (row facet)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{GATEWAY_URL}}/assets",
+          "host": ["{{GATEWAY_URL}}"],
+          "path": ["assets"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const ERROR_CODES = [\"RECEIPT_ALREADY_CONSUMED\", \"LICENSEE_MISMATCH\", \"UNDERPAYMENT\", \"PAYMENT_ID_PAYLOAD_CONFLICT\", \"CHAIN_ID_MISMATCH\", \"RECEIPT_EXPIRED\", \"USE_LIMIT_EXCEEDED\", \"RESOURCE_HASH_MISMATCH\", \"POLICY_HASH_MISMATCH\", \"OWNER_EPOCH_MISMATCH\", \"LICENSE_INVALIDATED_ON_TRANSFER\", \"LICENSE_EPOCH_MISMATCH\", \"NONCE_INVALID_OR_EXPIRED\", \"SIGNATURE_INVALID\", \"NOT_CURRENT_OWNER\", \"CONTRACT_WALLET_UNSUPPORTED\", \"CONDITIONS_HASH_MISMATCH\", \"SETTLEMENT_NOT_FINALIZED\", \"MANIFEST_SCHEMA_INVALID\", \"RATE_LIMITED\", \"POLICY_CONTENT_MISMATCH\", \"EXPIRY_MISMATCH\", \"COMMITTED_PARAMS_MISMATCH\", \"MCP_SESSION_MISMATCH\", \"SETTLEMENT_IN_PROGRESS\", \"NOT_AUTHORIZED\"];",
+              "const HEX32 = /^0x[0-9a-fA-F]{64}$/;",
+              "const ADDRESS = /^0x[0-9a-fA-F]{40}$/;",
+              "function expectDomainError(status, code) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`openapi Error body with code ${code}`, () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.code).to.eql(code);",
+              "    pm.expect(ERROR_CODES).to.include(body.code);",
+              "    pm.expect(body.message).to.be.a('string');",
+              "  });",
+              "}",
+              "function expectEnvelope(status, error) {",
+              "  pm.test(`status ${status}`, () => pm.response.to.have.status(status));",
+              "  pm.test(`{error} envelope ${error}`, () => pm.expect(pm.response.json().error).to.eql(error));",
+              "}",
+              "pm.test('200 (under the limit) or RATE_LIMITED', () => {",
+              "  if (pm.response.code === 429) pm.expect(pm.response.json().code).to.eql('RATE_LIMITED');",
+              "  else pm.expect(pm.response.code).to.eql(200);",
               "});"
             ]
           }

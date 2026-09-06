@@ -23,7 +23,7 @@
       "entry": ["test/**/*.ts"]
     },
     "apps/e2e": {
-      "entry": ["wallets.ts"]
+      "entry": ["wallets.ts", "*.test.ts", "*.e2e.ts"]
     },
     "apps/web": {},
     "apps/subgraph": {
