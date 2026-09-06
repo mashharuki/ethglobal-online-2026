@@ -32,6 +32,10 @@
         "E2E_REQUIRED"
       ]
     },
+    "contracts#test": {
+      "dependsOn": ["typecheck", "^build", "^compile", "^generate"],
+      "env": ["HEDERA_RPC_URL", "HEDERA_OPERATOR_KEY"]
+    },
     "e2e#test": {
       "cache": false,
       "env": [

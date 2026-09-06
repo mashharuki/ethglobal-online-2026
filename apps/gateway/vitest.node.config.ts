@@ -10,5 +10,8 @@ export default defineConfig({
     name: "gateway-node",
     include: ["test/node/**/*.test.ts"],
     environment: "node",
+    // PGlite boots a Postgres WASM instance in beforeAll; under CI / turbo parallel load the
+    // default 10 s hook timeout was observed failing 5 suites that pass in isolation.
+    hookTimeout: 60_000,
   },
 });
