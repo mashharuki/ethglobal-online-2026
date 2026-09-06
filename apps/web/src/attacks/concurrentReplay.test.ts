@@ -27,6 +27,12 @@ describe("concurrent replay (T109 / SC-005)", () => {
   it("should sign one fresh challenge per request and fire them together", async () => {
     let challenges = 0;
     let shares = 0;
+    let arrivedBeforeAnyAnswer = 0;
+    // barrier: no /keygate/share is answered until all five have arrived
+    let release: () => void = () => {};
+    const allArrived = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const api = createApi("http://gateway.test", async (input, init) => {
       const req = new Request(input, init);
       const url = req.url;
@@ -44,6 +50,9 @@ describe("concurrent replay (T109 / SC-005)", () => {
         });
       }
       shares += 1;
+      if (shares === 5) release();
+      await allArrived;
+      arrivedBeforeAnyAnswer = Math.max(arrivedBeforeAnyAnswer, shares);
       const body = (await req.json()) as { authSig: string };
       // the gateway settles exactly one; the rest are rejected as already consumed
       return body.authSig.endsWith("01")
@@ -75,6 +84,7 @@ describe("concurrent replay (T109 / SC-005)", () => {
     });
     expect(challenges).toBe(5);
     expect(shares).toBe(5);
+    expect(arrivedBeforeAnyAnswer).toBe(5); // sequential firing would deadlock on the barrier
     expect(summarizeOutcomes(outcomes)).toMatchObject({
       settled: 1,
       rejected: 4,

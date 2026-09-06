@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Hex } from "viem";
 import { useGateway } from "../app/gateway";
 import { rightsNftAbi } from "../chain/abi";
@@ -58,6 +58,15 @@ export default function Creator() {
   const [error, setError] = useState<unknown>();
   const [busy, setBusy] = useState<string | undefined>();
 
+  // the two shares together are the content key: they leave memory with the component
+  useEffect(
+    () => () => {
+      prepared?.shares.shareG.fill(0);
+      prepared?.shares.shareU.fill(0);
+    },
+    [prepared],
+  );
+
   const fullDraft = useCallback(
     (contentHash: Hex): ManifestDraft => ({
       ...draft,
@@ -83,32 +92,26 @@ export default function Creator() {
     }
   }, []);
 
-  const predictTokenId = useCallback(async () => {
-    if (prepared === undefined || wallet.address === undefined) return;
-    setError(undefined);
-    setBusy("simulating mint to learn the next tokenId…");
-    try {
-      const built = buildManifest(fullDraft(prepared.contentHash), "0");
-      const { result } = await publicClient.simulateContract({
-        account: wallet.address,
-        address: config.deployment.rightsNFT,
-        abi: rightsNftAbi,
-        functionName: "mint",
-        args: [
-          wallet.address,
-          wallet.address,
-          built.policyHash,
-          built.assetId,
-          prepared.contentHash,
-          "ipfs://pending",
-        ],
-      });
-      setTokenId(result.toString());
-    } catch (e) {
-      setError(e);
-    } finally {
-      setBusy(undefined);
+  const simulateNextTokenId = useCallback(async (): Promise<string> => {
+    if (prepared === undefined || wallet.address === undefined) {
+      throw new Error("encrypt a dataset and connect a wallet first");
     }
+    const built = buildManifest(fullDraft(prepared.contentHash), "0");
+    const { result } = await publicClient.simulateContract({
+      account: wallet.address,
+      address: config.deployment.rightsNFT,
+      abi: rightsNftAbi,
+      functionName: "mint",
+      args: [
+        wallet.address,
+        wallet.address,
+        built.policyHash,
+        built.assetId,
+        prepared.contentHash,
+        "ipfs://pending",
+      ],
+    });
+    return result.toString();
   }, [
     config.deployment.rightsNFT,
     fullDraft,
@@ -116,6 +119,18 @@ export default function Creator() {
     publicClient,
     wallet.address,
   ]);
+
+  const predictTokenId = useCallback(async () => {
+    setError(undefined);
+    setBusy("simulating mint to learn the next tokenId…");
+    try {
+      setTokenId(await simulateNextTokenId());
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(undefined);
+    }
+  }, [simulateNextTokenId]);
 
   const artifacts = useCallback(() => {
     if (prepared === undefined || tokenId === undefined) return;
@@ -140,8 +155,17 @@ export default function Creator() {
   const mint = useCallback(async () => {
     if (prepared === undefined || tokenId === undefined) return;
     setError(undefined);
-    setBusy("mint → waiting for the receipt…");
+    setBusy("re-checking the next tokenId → mint → waiting for the receipt…");
     try {
+      // the manifest already on IPFS names `tokenId`; a mint by someone else since the
+      // prediction would give this asset another id and break the manifest binding, so the
+      // simulation is repeated right before signing and the minted id is compared afterwards
+      const next = await simulateNextTokenId();
+      if (next !== tokenId) {
+        throw new Error(
+          `the next tokenId is now #${next}, the manifest was built for #${tokenId}: rebuild and re-upload the manifest, then mint again`,
+        );
+      }
       const built = buildManifest(fullDraft(prepared.contentHash), tokenId);
       const result = await mintToken(wallet, publicClient, config.deployment, {
         policyHash: built.policyHash,
@@ -150,6 +174,14 @@ export default function Creator() {
         manifestURI,
       });
       setMinted(result);
+      if (
+        result.tokenId !== undefined &&
+        result.tokenId.toString() !== tokenId
+      ) {
+        throw new Error(
+          `minted token #${result.tokenId.toString()} but the manifest names #${tokenId}: this asset's manifest binding is broken - do not publish it`,
+        );
+      }
     } catch (e) {
       setError(e);
     } finally {
@@ -161,6 +193,7 @@ export default function Creator() {
     manifestURI,
     prepared,
     publicClient,
+    simulateNextTokenId,
     tokenId,
     wallet,
   ]);

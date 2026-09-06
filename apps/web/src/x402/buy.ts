@@ -29,8 +29,26 @@ export class InsufficientBalanceError extends Error {
 
 const WEIBAR_PER_TINYBAR = 10_000_000_000n;
 
+/**
+ * The amount to sign is the x402 v2 `amount` (tinybar). The v1 alias `maxAmountRequired`
+ * (weibar) must describe the same value; a quote whose two fields disagree is rejected rather
+ * than trusting either one.
+ */
 function priceTinybarsOf(accept: PaymentAccept): bigint {
-  return BigInt(accept.maxAmountRequired) / WEIBAR_PER_TINYBAR;
+  if (!/^\d+$/.test(accept.amount) || !/^\d+$/.test(accept.maxAmountRequired)) {
+    throw new Error("quote amount is not a decimal integer");
+  }
+  const amount = BigInt(accept.amount);
+  const weibar = BigInt(accept.maxAmountRequired);
+  if (
+    weibar % WEIBAR_PER_TINYBAR !== 0n ||
+    weibar / WEIBAR_PER_TINYBAR !== amount
+  ) {
+    throw new Error(
+      `inconsistent quote: amount ${accept.amount} tinybar vs maxAmountRequired ${accept.maxAmountRequired} weibar`,
+    );
+  }
+  return amount;
 }
 
 export function assertAffordable(

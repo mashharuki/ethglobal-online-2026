@@ -29,6 +29,9 @@ describe("creator console (T110)", () => {
     expect(hbarToWeibar("0.00000001")).toBe("10000000000");
     expect(() => hbarToWeibar("1.123456789")).toThrow("8 decimals");
     expect(() => hbarToWeibar("abc")).toThrow();
+    expect(() => hbarToWeibar("1.2.3")).toThrow();
+    expect(() => hbarToWeibar("1.")).toThrow();
+    expect(() => hbarToWeibar("-1")).toThrow();
   });
 
   it("should build a manifest that validates and hashes consistently", () => {

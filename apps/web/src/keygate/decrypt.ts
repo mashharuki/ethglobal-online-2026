@@ -28,18 +28,27 @@ async function decryptWithKey(
   key: Uint8Array,
   blob: Uint8Array,
 ): Promise<Uint8Array> {
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    key.slice(),
-    { name: "AES-GCM" },
-    false,
-    ["decrypt"],
-  );
-  const iv = blob.slice(0, 12);
-  const ciphertext = blob.slice(12);
-  return new Uint8Array(
-    await crypto.subtle.decrypt({ name: "AES-GCM", iv }, cryptoKey, ciphertext),
-  );
+  const raw = key.slice(); // WebCrypto wants an ArrayBuffer-backed view; wiped below
+  try {
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      raw,
+      { name: "AES-GCM" },
+      false,
+      ["decrypt"],
+    );
+    const iv = blob.slice(0, 12);
+    const ciphertext = blob.slice(12);
+    return new Uint8Array(
+      await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv },
+        cryptoKey,
+        ciphertext,
+      ),
+    );
+  } finally {
+    raw.fill(0);
+  }
 }
 
 export function describeDataset(bytes: Uint8Array): Dataset {

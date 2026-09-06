@@ -98,6 +98,8 @@ export type Ownership = {
   creator: Address;
   accessEpoch: bigint;
   licenseEpoch: bigint;
+  /** the block every field above was read at */
+  block: bigint;
 };
 
 /** One consistent snapshot of the rights state, read at a pinned block. */
@@ -137,7 +139,7 @@ export async function readOwnership(
       blockNumber,
     }),
   ]);
-  return { owner, creator, accessEpoch, licenseEpoch };
+  return { owner, creator, accessEpoch, licenseEpoch, block: blockNumber };
 }
 
 async function walletClientFor(wallet: EmbeddedWallet) {

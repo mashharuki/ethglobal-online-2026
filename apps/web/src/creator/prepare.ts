@@ -23,25 +23,33 @@ export async function encryptDataset(
   plaintext: Uint8Array,
 ): Promise<{ key: Uint8Array; blob: Uint8Array }> {
   const key = crypto.getRandomValues(new Uint8Array(SHARE_BYTES));
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    key.slice(),
-    { name: "AES-GCM" },
-    false,
-    ["encrypt"],
-  );
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = new Uint8Array(
-    await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv },
-      cryptoKey,
-      plaintext.slice(),
-    ),
-  );
-  const blob = new Uint8Array(12 + ciphertext.length);
-  blob.set(iv, 0);
-  blob.set(ciphertext, 12);
-  return { key, blob };
+  const raw = key.slice(); // ArrayBuffer-backed copy for WebCrypto, wiped below
+  try {
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      raw,
+      { name: "AES-GCM" },
+      false,
+      ["encrypt"],
+    );
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = new Uint8Array(
+      await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        cryptoKey,
+        plaintext.slice(),
+      ),
+    );
+    const blob = new Uint8Array(12 + ciphertext.length);
+    blob.set(iv, 0);
+    blob.set(ciphertext, 12);
+    return { key, blob };
+  } catch (error) {
+    key.fill(0); // the caller never sees a key it cannot wipe
+    throw error;
+  } finally {
+    raw.fill(0);
+  }
 }
 
 export function splitKey(key: Uint8Array): {
@@ -76,12 +84,14 @@ const WEIBAR_PER_HBAR = 10n ** 18n;
 
 /** "1.5" HBAR -> weibar string (tinybar precision, as the manifest schema requires). */
 export function hbarToWeibar(hbar: string): string {
-  const [whole, frac = ""] = hbar.trim().split(".");
-  if (!/^\d+$/.test(whole ?? "") || !/^\d{0,8}$/.test(frac)) {
+  const match = /^(\d+)(?:\.(\d{1,8}))?$/.exec(hbar.trim());
+  if (match === null) {
     throw new Error(
       "price must be a decimal HBAR amount with at most 8 decimals",
     );
   }
+  const whole = match[1];
+  const frac = match[2] ?? "";
   const tinybar =
     BigInt(whole ?? "0") * 100_000_000n + BigInt(frac.padEnd(8, "0"));
   return (tinybar * (WEIBAR_PER_HBAR / 100_000_000n)).toString();

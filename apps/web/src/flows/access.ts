@@ -68,12 +68,12 @@ async function unlock(
     keyGateSig,
     assetId,
   });
-  const ciphertext = await fetchEncryptedContent(
-    release.encryptedContentURI,
-    deps.ipfsGateway,
-    deps.fetchImpl,
-  );
   try {
+    const ciphertext = await fetchEncryptedContent(
+      release.encryptedContentURI,
+      deps.ipfsGateway,
+      deps.fetchImpl,
+    );
     return await decryptContent({
       shareG: release.shareG as Hex,
       shareU,

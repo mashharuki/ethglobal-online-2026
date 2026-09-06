@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router";
 import type { Address, Hex } from "viem";
 import { type AssetSummary, listAssets } from "../api/client";
@@ -31,6 +31,10 @@ import type { Dataset } from "../keygate/decrypt";
  * Viewer (tasks.md T112): owner path (challenge -> sign -> /owner/keygate -> decrypt) and
  * licensee path (/keygate/share -> useIndex -> decrypt), the RightsBadge from a fresh chain
  * read, the EpochTimeline from the Rights Graph, and a transfer form for the demo.
+ *
+ * Every async result is tagged with the "session" it belongs to (asset + path + receipt +
+ * wallet); results from a previous session are discarded so a stale read or decrypt can never
+ * populate the screen of another asset.
  */
 type Unlocked =
   | { path: "owner"; dataset: Dataset; accessEpochAtGrant: number }
@@ -46,10 +50,13 @@ export default function Viewer() {
   const signers = useSigners(wallet);
   const publicClient = usePublicClient();
 
+  const sessionKey = `${assetId.toLowerCase()}|${path}|${receiptHash ?? ""}|${wallet.address ?? ""}`;
+  const session = useRef(sessionKey);
+  session.current = sessionKey;
+  const isCurrent = useCallback((key: string) => session.current === key, []);
+
   const [asset, setAsset] = useState<AssetSummary | undefined>();
-  const [ownership, setOwnership] = useState<
-    (Ownership & { block: bigint }) | undefined
-  >();
+  const [ownership, setOwnership] = useState<Ownership | undefined>();
   const [lanes, setLanes] = useState<EpochLaneEvent[]>([]);
   const [unlocked, setUnlocked] = useState<Unlocked | undefined>();
   const [busy, setBusy] = useState<string | undefined>();
@@ -57,28 +64,38 @@ export default function Viewer() {
   const [transferTo, setTransferTo] = useState("");
 
   const refresh = useCallback(async () => {
+    const key = session.current;
     const found = (await listAssets(api)).find(
       (a) => a.assetId.toLowerCase() === assetId.toLowerCase(),
     );
+    if (!isCurrent(key)) return;
     setAsset(found);
     if (found === undefined) return;
     const tokenId = BigInt(found.tokenId);
-    const [state, block] = await Promise.all([
-      readOwnership(publicClient, config.deployment, tokenId),
-      publicClient.getBlockNumber(),
-    ]);
-    setOwnership({ ...state, block });
+    const state = await readOwnership(publicClient, config.deployment, tokenId);
+    if (!isCurrent(key)) return;
+    setOwnership(state);
     try {
       const timeline = await fetchTokenTimeline(api, found.tokenId);
+      if (!isCurrent(key)) return;
       setLanes(timeline === undefined ? [] : toEpochLanes(timeline));
     } catch {
-      setLanes([]); // the graph is discovery only; the viewer works without it
+      if (isCurrent(key)) setLanes([]); // discovery only: the viewer works without the graph
     }
-  }, [api, assetId, config.deployment, publicClient]);
+  }, [api, assetId, config.deployment, isCurrent, publicClient]);
 
+  // a new asset / path / receipt / wallet is a new session: nothing from before survives
   useEffect(() => {
-    refresh().catch(setError);
-  }, [refresh]);
+    setAsset(undefined);
+    setOwnership(undefined);
+    setLanes([]);
+    setUnlocked(undefined);
+    setError(undefined);
+    setBusy(undefined);
+    refresh().catch((e: unknown) => {
+      if (isCurrent(sessionKey)) setError(e);
+    });
+  }, [sessionKey, refresh, isCurrent]);
 
   const deps = useMemo<AccessDeps | undefined>(
     () =>
@@ -96,20 +113,23 @@ export default function Viewer() {
 
   const unlock = useCallback(async () => {
     if (deps === undefined) return;
+    const key = session.current;
     setError(undefined);
+    setUnlocked(undefined);
     setBusy(
       path === "owner"
         ? "owner challenge → signature → share_G…"
         : "licensee challenge → signature → consume → share_G…",
     );
     try {
+      let next: Unlocked;
       if (path === "owner") {
         const { release, dataset } = await accessAsOwner(deps, assetId as Hex);
-        setUnlocked({
+        next = {
           path: "owner",
           dataset,
           accessEpochAtGrant: release.accessEpochAtGrant,
-        });
+        };
       } else {
         if (receiptHash === undefined) throw new Error("no receipt in the URL");
         const { release, dataset } = await accessAsLicensee(
@@ -117,24 +137,27 @@ export default function Viewer() {
           assetId as Hex,
           receiptHash as Hex,
         );
-        setUnlocked({
+        next = {
           path: "licensee",
           dataset,
           useIndex: release.useIndex,
           onchainTx: release.onchainTx,
-        });
+        };
       }
+      if (isCurrent(key)) setUnlocked(next);
     } catch (e) {
-      setUnlocked(undefined);
-      setError(e);
+      if (isCurrent(key)) setError(e);
     } finally {
-      setBusy(undefined);
-      refresh().catch(() => undefined);
+      if (isCurrent(key)) {
+        setBusy(undefined);
+        refresh().catch(() => undefined);
+      }
     }
-  }, [assetId, deps, path, receiptHash, refresh]);
+  }, [assetId, deps, isCurrent, path, receiptHash, refresh]);
 
   const transfer = useCallback(async () => {
     if (asset === undefined) return;
+    const key = session.current;
     setError(undefined);
     setBusy("safeTransferFrom → waiting for the receipt…");
     try {
@@ -145,21 +168,32 @@ export default function Viewer() {
         BigInt(asset.tokenId),
       );
       await publicClient.waitForTransactionReceipt({ hash });
+      if (!isCurrent(key)) return;
       setUnlocked(undefined);
       await refresh();
     } catch (e) {
-      setError(e);
+      if (isCurrent(key)) setError(e);
     } finally {
-      setBusy(undefined);
+      if (isCurrent(key)) setBusy(undefined);
     }
-  }, [asset, config.deployment, publicClient, refresh, transferTo, wallet]);
+  }, [
+    asset,
+    config.deployment,
+    isCurrent,
+    publicClient,
+    refresh,
+    transferTo,
+    wallet,
+  ]);
 
+  // "licensee" is only claimed once a consume actually succeeded for this session; the URL
+  // alone proves nothing. Owner / creator come from the pinned chain read.
   const role: RightsRole =
     ownership === undefined || wallet.address === undefined
       ? "none"
       : ownership.owner.toLowerCase() === wallet.address.toLowerCase()
         ? "owner"
-        : path === "licensee"
+        : unlocked?.path === "licensee"
           ? "licensee"
           : ownership.creator.toLowerCase() === wallet.address.toLowerCase()
             ? "creator"

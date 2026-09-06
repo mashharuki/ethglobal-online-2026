@@ -53,7 +53,7 @@ function fakeGateway(calls: Seen[]) {
     if (url.endsWith("/paid") && seen.method === "POST") {
       return Response.json({
         receiptHash: `0x${"d4".repeat(32)}`,
-        receipt: {},
+        receipt: RECEIPT,
         serverSignature: `0x${"aa".repeat(65)}`,
         onchainTx: `0x${"77".repeat(32)}`,
         maxUses: 5,
@@ -68,10 +68,34 @@ function fakeGateway(calls: Seen[]) {
   };
 }
 
+/** the 17-field Rights Receipt as the gateway returns it (bigints as decimal strings) */
+const RECEIPT = {
+  chainId: "296",
+  verifyingContract: "0x2222222222222222222222222222222222222222",
+  nftContract: "0x1111111111111111111111111111111111111111",
+  tokenId: "1",
+  resourceHash: `0x${"11".repeat(32)}`,
+  policyHash: `0x${"22".repeat(32)}`,
+  licenseEpoch: "0",
+  ownerEpochAtIssue: "1",
+  licensee: LICENSEE,
+  permittedAction: 5,
+  transferMode: 0,
+  maxUses: 5,
+  expiresAt: "1780000300",
+  purchaseRequestHash: `0x${"33".repeat(32)}`,
+  paymentId: `0x${"44".repeat(32)}`,
+  nonce: `0x${"51".repeat(32)}`,
+  issuedAt: "1780000000",
+};
+
+let signerCalls = 0;
 const signer: ClientHederaSigner = {
   accountId: "0.0.4242",
-  createPartiallySignedTransferTransaction: async (requirements) =>
-    `signed:${requirements.amount}:${requirements.payTo}:${String(requirements.extra?.feePayer)}`,
+  createPartiallySignedTransferTransaction: async (requirements) => {
+    signerCalls += 1;
+    return `signed:${requirements.amount}:${requirements.payTo}:${String(requirements.extra?.feePayer)}`;
+  },
 };
 
 describe("buyAccess (T108)", () => {
@@ -85,6 +109,8 @@ describe("buyAccess (T108)", () => {
       assetId: ASSET_ID,
     });
     expect(result.settled.receiptHash).toBe(`0x${"d4".repeat(32)}`);
+    expect(result.settled.receipt).toEqual(RECEIPT);
+    expect(signerCalls).toBe(1);
     const settle = calls.find((c) => c.method === "POST");
     const header = settle?.headers.get("X-PAYMENT") ?? "";
     const payload = JSON.parse(atob(header)) as {
@@ -101,7 +127,9 @@ describe("buyAccess (T108)", () => {
   });
 
   it("should refuse to sign when the balance cannot cover the price", async () => {
-    const api = createApi("http://gateway.test", fakeGateway([]));
+    const calls: Seen[] = [];
+    const api = createApi("http://gateway.test", fakeGateway(calls));
+    const before = signerCalls;
     await expect(
       buyAccess({
         api,
@@ -111,6 +139,8 @@ describe("buyAccess (T108)", () => {
         balanceTinybars: 1n,
       }),
     ).rejects.toBeInstanceOf(InsufficientBalanceError);
+    expect(signerCalls).toBe(before); // nothing was signed
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(0); // nothing submitted
     expect(() => assertAffordable(500_000_000n, accept)).not.toThrow();
   });
 
@@ -137,6 +167,21 @@ describe("buyAccess (T108)", () => {
     }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(GatewayError);
     expect((error as GatewayError).code).toBe("LICENSEE_MISMATCH");
+  });
+
+  it("should reject a quote whose tinybar amount and weibar alias disagree", () => {
+    expect(() => toSignerRequirements({ ...accept, amount: "1" })).toThrow(
+      "inconsistent quote",
+    );
+    expect(() =>
+      toSignerRequirements({
+        ...accept,
+        maxAmountRequired: "5000000000000000001",
+      }),
+    ).toThrow("inconsistent quote");
+    expect(() => toSignerRequirements({ ...accept, amount: "5e8" })).toThrow(
+      "decimal integer",
+    );
   });
 
   it("should build v2 requirements (tinybar amount) and the header deterministically", () => {

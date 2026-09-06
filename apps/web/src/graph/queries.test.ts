@@ -45,8 +45,11 @@ describe("Rights Graph queries (T106)", () => {
 
   it("should query through the gateway /graph passthrough and unwrap the token", async () => {
     let seen: { query: string; variables: unknown } | undefined;
+    let target: { url: string; method: string } | undefined;
     const api = createApi("http://gateway.test", async (input, init) => {
-      seen = (await new Request(input, init).json()) as typeof seen;
+      const req = new Request(input, init);
+      target = { url: req.url, method: req.method };
+      seen = (await req.json()) as typeof seen;
       return Response.json({
         data: {
           rightsToken: { ...timeline, licenseEpochChanges: undefined },
@@ -55,10 +58,46 @@ describe("Rights Graph queries (T106)", () => {
       });
     });
     const result = await fetchTokenTimeline(api, "1");
+    expect(target).toEqual({
+      url: "http://gateway.test/graph",
+      method: "POST",
+    });
     expect(seen).toEqual({
       query: TOKEN_TIMELINE_QUERY,
       variables: { id: "1" },
     });
+    // every requested field exists in contracts/subgraph-schema.md (no invented fields)
+    const schemaFields = new Set([
+      "id",
+      "accessEpoch",
+      "licenseEpoch",
+      "owner",
+      "transfers",
+      "from",
+      "to",
+      "blockNumber",
+      "timestamp",
+      "receipts",
+      "licensee",
+      "transferMode",
+      "usedCount",
+      "maxUses",
+      "expiresAt",
+      "allocations",
+      "ownerAmount",
+      "creator",
+      "creatorAmount",
+      "licenseEpochChanges",
+      "newEpoch",
+      "rightsToken",
+    ]);
+    const requested =
+      TOKEN_TIMELINE_QUERY.replace(/\(.*?\)/g, "")
+        .replace(/query\s+\w+/, "")
+        .match(/[A-Za-z]+/g) ?? [];
+    for (const field of requested) {
+      expect(schemaFields.has(field), `unknown field ${field}`).toBe(true);
+    }
     expect(result?.licenseEpochChanges).toEqual(timeline.licenseEpochChanges);
     const missing = createApi("http://gateway.test", async () =>
       Response.json({ data: { rightsToken: null, licenseEpochChanges: [] } }),
