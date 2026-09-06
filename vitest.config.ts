@@ -17,6 +17,7 @@ export default defineConfig({
       "apps/web",
       "apps/agent",
       "apps/cdk",
+      "apps/e2e",
     ],
   },
 });
