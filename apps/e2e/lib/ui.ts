@@ -120,27 +120,33 @@ export type OwnedSession = {
 };
 
 const RESTORE_TIMEOUT_MS = 180_000;
-const pendingRestores: Array<() => Promise<void>> = [];
+
+/** One per `withOwnedAsset` call, registered before any await so teardown always sees it. */
+type OwnedScope = { cancelled: boolean; restore?: () => Promise<void> };
+const pendingScopes: OwnedScope[] = [];
 
 /**
  * Call once at the top of every spec that uses `withOwnedAsset`: the restore runs in an
  * afterEach hook with its own timeout budget, so it still executes when the test body itself
- * timed out (a `finally` inside the body would be cut off with it).
+ * timed out (a `finally` inside the body would be cut off with it). Every scope is cancelled
+ * first, so a body that is still awaiting setup when teardown runs never submits the hand-over.
  */
 export function restoreAfterEach(): void {
   test.afterEach(async () => {
     test.setTimeout(RESTORE_TIMEOUT_MS);
-    const restores = pendingRestores.splice(0);
-    for (const restore of restores) await restore();
+    const scopes = pendingScopes.splice(0);
+    for (const scope of scopes) scope.cancelled = true;
+    for (const scope of scopes)
+      if (scope.restore !== undefined) await scope.restore();
   });
 }
 
 /**
  * Login, hand an asset the seeded owner-A holds to the browser wallet, run `fn` with the
  * session, and put the token back with owner-A whoever holds it afterwards (browser wallet
- * via the viewer form, a seeded account via a direct transfer). The restore is registered
- * together with the first transfer and waits for it, so a transfer that is still in flight
- * when the test times out is reconciled before the token is read back.
+ * via the viewer form, a seeded account via a direct transfer). The scope is registered
+ * before the first await, cancellation is checked before the hand-over is submitted, and the
+ * restore waits for an in-flight hand-over before reading the owner back.
  */
 export async function withOwnedAsset(
   page: Page,
@@ -148,6 +154,11 @@ export async function withOwnedAsset(
   mode: AssetSummary["transferMode"] | undefined,
   fn: (session: OwnedSession) => Promise<void>,
 ): Promise<void> {
+  const scope: OwnedScope = { cancelled: false };
+  pendingScopes.push(scope);
+  const tornDown = (): never => {
+    throw new Error("test was torn down during setup: scenario not started");
+  };
   const env = envFromProcess();
   const deployment = deploymentFromProcess();
   const client = publicClient();
@@ -155,12 +166,9 @@ export async function withOwnedAsset(
   const wallet = await login(page);
   const asset = await findAssetOwnedBy(env, ownerA.address, mode);
   const tokenId = BigInt(asset.tokenId);
-  // the hand-over is tracked so a restore that runs while it is still in flight (the test
-  // timed out mid-transfer) waits for the transaction to land before reading the owner
+  if (scope.cancelled) tornDown();
   const handOver = transferNft(client, deployment, ownerA, wallet, tokenId);
-  let cancelled = false;
-  pendingRestores.push(async () => {
-    cancelled = true;
+  scope.restore = async () => {
     await handOver.catch(() => undefined);
     const holder = (
       await readEpochs(client, deployment, tokenId)
@@ -180,11 +188,9 @@ export async function withOwnedAsset(
       );
     }
     await transferNft(client, deployment, seeded, ownerA.address, tokenId);
-  });
+  };
   await handOver;
-  // a body that outlived its timeout must not start the scenario under the teardown
-  if (cancelled)
-    throw new Error("test was torn down before the hand-over landed");
+  if (scope.cancelled) tornDown();
   await fn({ env, deployment, wallet, asset, tokenId });
 }
 
