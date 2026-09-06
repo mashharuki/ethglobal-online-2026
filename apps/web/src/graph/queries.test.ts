@@ -143,9 +143,11 @@ function validateAgainstSchema(query: string): string[] {
     .replace(/^\s*query\s+\w+\s*\([^)]*\)/, "")
     .replace(/\([^)]*\)/g, "");
   const tokens = body.match(/[A-Za-z_]\w*|[{}]/g) ?? [];
-  // each frame: the entity whose fields are being selected, or a scalar marker
-  const stack: Array<{ entity: string } | { scalar: string }> = [];
-  let pending: { entity: string } | { scalar: string } | undefined;
+  // each frame: the entity whose fields are being selected, a scalar marker, or an unknown
+  // subtree (already reported; its children are not re-reported)
+  type Frame = { entity: string } | { scalar: string } | { skip: true };
+  const stack: Frame[] = [];
+  let pending: Frame | undefined;
   for (const token of tokens) {
     if (token === "{") {
       stack.push(pending ?? { entity: "Query" });
@@ -157,30 +159,29 @@ function validateAgainstSchema(query: string): string[] {
       continue;
     }
     const frame = stack.at(-1);
+    if (frame !== undefined && "skip" in frame) {
+      pending = { skip: true };
+      continue;
+    }
     if (
       frame === undefined ||
       ("entity" in frame && frame.entity === "Query")
     ) {
       const entity = roots.get(token);
       if (entity === undefined) problems.push(`unknown root field ${token}`);
-      pending = entity === undefined ? undefined : { entity };
+      pending = entity === undefined ? { skip: true } : { entity };
       continue;
     }
     if ("scalar" in frame) {
-      if (
-        !problems.includes(
-          `${frame.scalar} is a scalar and has no sub-selection`,
-        )
-      ) {
-        problems.push(`${frame.scalar} is a scalar and has no sub-selection`);
-      }
-      pending = undefined;
+      const problem = `${frame.scalar} is a scalar and has no sub-selection`;
+      if (!problems.includes(problem)) problems.push(problem);
+      pending = { skip: true };
       continue;
     }
     const type = schema.get(frame.entity)?.get(token);
     if (type === undefined) {
       problems.push(`${frame.entity}.${token} is not in the schema`);
-      pending = undefined;
+      pending = { skip: true };
     } else if (schema.has(type)) {
       pending = { entity: type };
     } else {
