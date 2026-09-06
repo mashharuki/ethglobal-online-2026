@@ -266,7 +266,7 @@ description: "実装タスク: Transfer-Coupled Rights Runtime MVP"
 
 ## Phase 12: ドキュメント & 提出物 — user step 11
 
-- [ ] T122 `scripts/audit-no-mocks.sh` の最終 pass：コア経路（`apps/gateway/src/chain` / `apps/gateway/src/keygate/release.ts` / `apps/gateway/src/x402` / `apps/gateway/src/mcp/tools` / `apps/agent/src/analyze.ts`）に mock / stub / ハードコード応答が無いこと（SC-009）。※ script 自体は T017 で CI に載せ済み
+- [x] T122 `scripts/audit-no-mocks.sh` の最終 pass：コア経路（`apps/gateway/src/chain` / `apps/gateway/src/keygate/release.ts` / `apps/gateway/src/x402` / `apps/gateway/src/mcp/tools` / `apps/agent/src/analyze.ts`）に mock / stub / ハードコード応答が無いこと（SC-009）。※ script 自体は T017 で CI に載せ済み
 - [x] T123 [P] `README.md`：**信頼モデル段落**（owner パスの `share_U` を Gateway が再取得可能＝憲章 VI 残存信頼点、KeyGate fallback 経路が有効な間は Gateway が平文/完全鍵を扱う、Gateway 可用性の単一障害点、R-2 primary 不成立時の非 trustless フォールバック、MCP 決済ウォレットは Privy policy で上限制約＝生鍵は非保持だが公開エンドポイント、**決済資産はネイティブ HBAR**〔Blocky402 の対応制約〕、Rights Graph は `apps/cdk` の AWS EC2 でハッカソン期間のみ自前ホスト）。**事前作業の明示開示**：`hedra-sample`（公開の汎用ボイラーテンプレート）／`specs/` `.specify/`（2026-09-02〜03 作成の設計・spec。ETHOnline の AI ポリシーに準拠）／`.claude/` 設定。AI ツール利用（Claude Code / Codex）と Git 履歴（実装コミットは 2026-09-04 以降）。**Graph Node の エンドポイントと `cdk destroy` 手順**（憲章 VII / DoD #7）
 - [ ] T124 [P] `quickstart.md` の DoD チェック表（§3）を全項目 ✅ にする最終確認
 - [ ] T125 [P] `pnpm run check` を全 green：`biome ci` / `knip` / `jscpd` / `tsc --noEmit` / `redocly lint openapi.yaml` / `openapi.yaml` が実装と一致（生成型で `tsc` green）/ `newman run` 全 assert green

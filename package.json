@@ -22,7 +22,8 @@
     "cdk": "pnpm --filter cdk",
     "e2e": "pnpm --filter e2e",
     "shared": "pnpm --filter @truenft/shared",
-    "openapi": "pnpm --filter @truenft/openapi"
+    "openapi": "pnpm --filter @truenft/openapi",
+    "audit:no-mocks": "AUDIT_STRICT=1 bash scripts/audit-no-mocks.sh"
   },
   "keywords": [],
   "author": "",
