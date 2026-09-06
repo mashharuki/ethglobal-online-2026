@@ -58,6 +58,11 @@ jobs:
 
       - name: typecheck / lint / test (all workspaces except the subgraph)
         run: pnpm turbo run typecheck lint test --filter='!subgraph' --continue --force
+      # apps/e2e's own `test` script is Playwright (needs WEB_URL/GATEWAY_URL, skips without
+      # them); its vitest unit suite (metrics math, Postman<->OpenAPI drift) is a separate
+      # script the turbo `test` task above never reaches.
+      - name: e2e tooling unit tests (metrics math, Postman/OpenAPI drift)
+        run: pnpm --filter e2e test:unit
       # apps/web has no standalone typecheck script: `tsc -b` runs inside its build
       - name: web build (tsc -b + vite build)
         run: pnpm --filter web build
@@ -140,6 +145,11 @@ jobs:
     if: needs.live-config.outputs.gateway == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # This project only ever targets Hedera Testnet (296); pinned explicitly so the
+    # seeded-accounts filename below (apps/e2e/wallets.ts's accountsPath() default)
+    # can't silently drift if a HEDERA_CHAIN_ID is ever introduced elsewhere in CI.
+    env:
+      HEDERA_CHAIN_ID: "296"
     steps:
       - uses: actions/checkout@v5
         with: # the tested tree is the head commit, the same one DEPLOYED_SHA is compared with
@@ -170,7 +180,7 @@ jobs:
           E2E_ACCOUNTS_JSON: ${{ secrets.E2E_ACCOUNTS_JSON }}
         run: |
           if [ -n "$E2E_ACCOUNTS_JSON" ]; then
-            printf '%s' "$E2E_ACCOUNTS_JSON" > apps/e2e/.accounts.json
+            printf '%s' "$E2E_ACCOUNTS_JSON" > "apps/e2e/.accounts.${HEDERA_CHAIN_ID}.json"
           else
             echo "::warning::E2E_ACCOUNTS_JSON not set - node-side specs will fail to load the seeded accounts"
           fi

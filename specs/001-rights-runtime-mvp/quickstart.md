@@ -29,8 +29,10 @@ pnpm --filter openapi generate           # packages/openapi/openapi.yaml → src
 pnpm run check                            # biome + knip + jscpd + tsc + redocly lint（全 workspace）
 
 pnpm --filter contracts deploy:testnet    # apps/contracts：RightsNFT / RightsRegistry をデプロイ → packages/shared/src/addresses.ts 更新
-pnpm --filter contracts seed:testnet      # デモ NFT 2 種を mint・Manifest 登録（下記）
-# Faucet 残高でのデモ用：合計 11 HBAR を配布し、購入価格を 0.1 HBAR にする
+# デモ NFT 2 種を mint・Manifest 登録（下記）。二者択一＝両方実行すると口座ファイルが上書きされ、
+# 必要 HBAR も合算されて二重に要求される：
+pnpm --filter contracts seed:testnet       # 通常プロファイル（合計 180 HBAR、購入価格 5 HBAR）
+# または（faucet 残高でのデモ用：合計 11 HBAR を配布し、購入価格を 0.1 HBAR にする）
 pnpm --filter contracts seed:testnet:lean
 
 # Rights Graph（自前 Graph Node を AWS へ。ハッカソン期間のみ）
@@ -46,23 +48,24 @@ set -a                                      # .env の値を子プロセスへ e
 source .env
 set +a
 pnpm --filter gateway db:migrate           # Hyperdrive接続元のPostgresへ直接マイグレーション
-pnpm --filter gateway secrets:put         # RECEIPT_SIGNER_KEY / KV_KEK / HEDERA_OPERATOR_KEY / PRIVY_APP_ID / PRIVY_APP_SECRET を wrangler secret put（MCP 決済の生鍵は置かない ＝ Privy server wallet 管理。share_U は下記 load-shares で asset ごとに投入）
-pnpm --filter gateway dev                 # wrangler dev（miniflare、:8787。DO / KV / Hyperdrive をローカルエミュレート、share_U は .dev.vars で代替）
-# 本番: pnpm --filter gateway deploy       # wrangler deploy（空実装でも一度デプロイし、Worker を Cloudflare 上に存在させる）
 # ⚠ 2026-09-05 追加（Codex #21 対応）：デプロイ済み Worker が無いと `wrangler secret put` は投入先が無く失敗する。
-#   このため share_G / share_U の投入は必ず「初回 deploy の後」に行う：
+#   このため secret put / load-shares は必ず「初回 deploy の後」に行う（順序厳守）：
+pnpm --filter gateway deploy              # 初回デプロイ（空実装でよい。Worker を Cloudflare 上に存在させる）
+pnpm --filter gateway exec wrangler secret put RECEIPT_SIGNER_KEY   # KV_KEK / HEDERA_OPERATOR_KEY / PRIVY_APP_ID / PRIVY_APP_SECRET / PRIVY_WALLET_ID / PRIVY_WALLET_ADDRESS も同様に1つずつ（apps/gateway/CONFIG.md の表参照。MCP 決済の生鍵は置かない＝Privy server wallet 管理。share_U は下記 load-shares で asset ごとに投入）
 pnpm --filter gateway load-shares         # apps/contracts/out/seed-artifacts.json（T048 の seed 出力）を読み、
                                            # share_G を KEK 暗号化して wrangler kv key put、share_U を wrangler secret put（asset ごと）
-pnpm --filter gateway deploy              # 投入したシークレットを反映するため再デプロイ
+pnpm --filter gateway deploy              # 投入したシークレット/KVを反映するため再デプロイ
+# ローカル開発（本番デプロイ手順とは別・任意）：share_U は本番Secretsでなく .dev.vars で代替
+pnpm --filter gateway dev                 # wrangler dev（miniflare、:8787。DO / KV / Hyperdrive をローカルエミュレート）
 # ⚠ 上記 3 行（初回 deploy → load-shares → 再 deploy）を飛ばすと、web/agent から復号可能な状態にならない
 #   （share_G/share_U が存在しないため KeyGate が常に失敗する）。審査員が手順を追う際もこの順序を厳守すること。
 
 # web（apps/web、Vite + Tailwind、Cloudflare Pages）
 pnpm --filter web dev                     # :5173
-# 本番: pnpm --filter web deploy            # wrangler pages deploy dist
+# 本番: pnpm --filter web build && pnpm --filter web exec wrangler pages deploy dist
 
-# agent（apps/agent、CI 検証ハーネス）
-pnpm --filter agent build
+# agent（apps/agent、CI 検証ハーネス。ビルド不要＝tsx で TS を直接実行）
+pnpm --filter agent start -- --question "<question>"
 
 # API E2E（Postman コレクションを Newman で実行。デプロイ済み gateway + 実 Testnet に対して）
 pnpm --filter e2e test:api               # newman run apps/e2e/postman/gateway.postman_collection.json（レスポンスが openapi.yaml に適合を assert）

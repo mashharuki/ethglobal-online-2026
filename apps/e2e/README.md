@@ -35,10 +35,9 @@ concurrent replay. `lib/chain.ts` reads epochs and transfers the NFT directly on
 | Variable | Used by |
 |---|---|
 | `WEB_URL`, `GATEWAY_URL` | every spec (absent → skipped) |
-| `RIGHTS_NFT_ADDRESS`, `RIGHTS_REGISTRY_ADDRESS`, `HEDERA_RPC_URL`, `HEDERA_CHAIN_ID` (296), `HEDERA_MIRROR_URL` | node-side signing and chain reads |
+| `RIGHTS_NFT_ADDRESS`, `RIGHTS_REGISTRY_ADDRESS`, `HEDERA_RPC_URL`, `HEDERA_CHAIN_ID` (296 default), `HEDERA_MIRROR_URL` | node-side signing and chain reads. `HEDERA_CHAIN_ID` also selects the seeded account file: `wallets.ts` reads `.accounts.<HEDERA_CHAIN_ID>.json` (owner-A / owner-B / buyer keys written by `apps/contracts/scripts/seed.ts`) |
 | `SUBGRAPH_URL` | `onchain-indexer.e2e.ts` (absent → that spec is skipped) |
 | `E2E_PRIVY_EMAIL`, `E2E_PRIVY_OTP` | browser specs: a Privy **test account** (dashboard → Test accounts, fixed OTP). Absent → browser specs skip as BLOCKED. The embedded wallet must hold Testnet HBAR for `buyerFlow` |
-| `TEST_ACCOUNTS_PATH` | overrides `.accounts.json` (owner-A / owner-B / buyer keys from the seed script) |
 
 A skipped spec is reported as skipped, never as passed: the run id is persisted before any
 spec runs, every sample carries it, the report reads that one run only, and it refuses to
