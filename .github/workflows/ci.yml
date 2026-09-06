@@ -31,9 +31,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4 # version from package.json "packageManager"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -57,7 +57,7 @@ jobs:
         run: pnpm --filter @truenft/openapi lint
 
       - name: typecheck / lint / test (all workspaces except the subgraph)
-        run: pnpm turbo run typecheck lint test --filter='!subgraph' --continue --force
+        run: pnpm turbo run typecheck lint test --filter='!@subgraph' --continue --force
       # apps/web has no standalone typecheck script: `tsc -b` runs inside its build
       - name: web build (tsc -b + vite build)
         run: pnpm --filter web build
@@ -76,9 +76,9 @@ jobs:
     runs-on: ubuntu-24.04 # matchstick ships a native binary per distro; do not float to -latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -118,9 +118,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -141,11 +141,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: # the tested tree is the head commit, the same one DEPLOYED_SHA is compared with
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -199,7 +199,7 @@ jobs:
           E2E_PRIVY_OTP: ${{ secrets.E2E_PRIVY_OTP }}
       - name: latency thresholds for this run (T117; no samples = BLOCKED = failure)
         run: pnpm --filter e2e metrics
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: e2e-results
@@ -215,11 +215,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: # same head commit as the DEPLOYED_SHA comparison
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -253,7 +253,7 @@ jobs:
         run: |
           test -s apps/agent/out/answer.json
           node -e "const r=require('./apps/agent/out/answer.json'); if(r.verification?.ok!==true||!r.verifiedAnswer){console.error('answer.json is not a verified record');process.exit(1)} console.log('verified:', r.verifiedAnswer)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: agent-answer
