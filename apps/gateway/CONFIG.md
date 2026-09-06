@@ -154,6 +154,19 @@ filled into `wrangler.toml` after `wrangler kv namespace create SHARE_G` and
   set +a`).
   The Worker never runs DDL.
 - `pnpm --filter gateway test:node` runs the schema tests against PGlite (no server needed).
+- Every table has Row Level Security enabled (`.enableRLS()`, satisfying the hosting
+  provider's "unrestricted table" advisory) plus one `gateway_service_access` policy
+  granting `FOR ALL TO public USING (true) WITH CHECK (true)` - these tables are internal
+  gateway bookkeeping, never queried by an end user directly, so RLS here is not meant to
+  isolate per-tenant rows. `TO public` means every Postgres role, not the `public` schema,
+  and grants no privileges by itself (a role still needs an ordinary GRANT); it only stops
+  RLS from filtering rows for whichever role that GRANT already lets through. Table owners
+  and superuser/BYPASSRLS roles always bypass RLS regardless. Without any policy, RLS is
+  fail-closed by default: SELECT silently returns zero rows and writes fail with an
+  explicit "row-level security policy" error - either way, if `DATABASE_URL` ever connects
+  as anything but the owning role, every query breaks. Covered by `test/node/db.test.ts`'s
+  "row level security" suite, which exercises a non-owner role end to end (seeds a row as
+  owner, confirms it's visible after `SET ROLE`, writes as the non-owner role).
 
 ## Scripts
 
