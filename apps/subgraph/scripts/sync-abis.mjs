@@ -1,6 +1,6 @@
 // Copies the compiled ABIs from apps/contracts (Hardhat artifacts) into abis/ so the subgraph
 // can be built and deployed without a contracts build on the same machine.
-//   pnpm --filter @subgraph sync-abis   (run after `pnpm --filter contracts compile`)
+//   pnpm --filter subgraph sync-abis   (run after `pnpm --filter contracts compile`)
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
