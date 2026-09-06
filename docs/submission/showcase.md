@@ -108,10 +108,12 @@ success (see README → Verification status). <update this paragraph after deplo
 
 - **Hedera — AI & Agentic Payments on Hedera.** The x402-gated Access Gateway targets Hedera
   Testnet through the Blocky402 facilitator (facilitator client, custodial/primary/fallback rails
-  and the MCP tools are implemented and unit-tested). **Pending:** the live deployment of the
-  gateway, the first real paid request completed end-to-end by the MCP agent in native HBAR, and
-  HashScan verification of `RightsNFT` / `RightsRegistry` (<addresses after deployment>). Setup,
-  architecture and the payment flow are in the README.
+  and the MCP tools are implemented and unit-tested). `RightsNFT`
+  (`0x3524049309DC3F7f1dE83a8687a55Afa927dAe7A`) and `RightsRegistry`
+  (`0xf397F1C1697Fe777AEE97994a4b686519bD26877`) are deployed on Hedera Testnet and verified on
+  Sourcify (exact match) — see the README's Deployed Contract table for the links. **Pending:**
+  the live deployment of the gateway itself and the first real paid request completed end-to-end
+  by the MCP agent in native HBAR. Setup, architecture and the payment flow are in the README.
 - **Privy — Best Financial Flow.** Owners and buyers log in with the Privy embedded wallet, and the
   full flow (x402 payment in HBAR → on-chain receipt → revenue split creator/owner → decrypt) is
   implemented with Privy at the centre of the transfer, not as a decorative login. **Pending:** one
