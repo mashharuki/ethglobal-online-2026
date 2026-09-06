@@ -3,11 +3,19 @@ import { resolve } from "node:path";
 
 /**
  * Latency evidence for SC-001 / SC-002 / SC-003 / SC-005 (tasks.md T117, quickstart §1).
- * Specs append samples with `recordMetric`; `summarize` folds them into p50 / p95 per metric
- * and `checkThresholds` turns quickstart's limits into a pass / fail list. `pnpm --filter e2e
- * metrics` prints the table and exits non-zero on a violation.
+ * Specs append samples with `recordMetric`; every sample carries the `runId` of the Playwright
+ * run that produced it (playwright.config.ts sets E2E_RUN_ID), and the report only reads ONE
+ * run - the current one, or the latest in the file - so stale samples from an earlier run can
+ * never turn a skipped run into a pass. `pnpm --filter e2e metrics` prints the table and exits
+ * non-zero on a violation or on a metric without samples (BLOCKED).
  */
-export type Sample = { metric: string; ms: number; at: string; note?: string };
+export type Sample = {
+  metric: string;
+  ms: number;
+  at: string;
+  runId: string;
+  note?: string;
+};
 
 export type Threshold = { p50?: number; p95?: number; max?: number };
 
@@ -16,15 +24,34 @@ export const THRESHOLDS: Record<string, Threshold> = {
   owner_access_ms: { p50: 8_000, p95: 15_000 }, // SC-001
   buyer_access_ms: { p50: 20_000, p95: 40_000 }, // SC-002
   transfer_revoke_ms: { max: 10_000 }, // SC-003
-  replay_reject_ms: { max: 3_000 }, // SC-005 (app-layer rejections, not the on-chain settle)
+  replay_reject_ms: { max: 3_000 }, // SC-005: the slowest app-layer rejection of the burst
 };
 
 export const METRICS_PATH = resolve(import.meta.dirname, "metrics.json");
+
+export function currentRunId(): string {
+  return process.env.E2E_RUN_ID ?? "unset";
+}
 
 export function loadSamples(path = METRICS_PATH): Sample[] {
   if (!existsSync(path)) return [];
   const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
   return Array.isArray(parsed) ? (parsed as Sample[]) : [];
+}
+
+/**
+ * Samples of one run. `runId` undefined = the run of the last sample written (the latest);
+ * `runId` given = exactly that run, empty when it produced nothing.
+ */
+export function samplesOfRun(
+  samples: Sample[],
+  runId?: string,
+): { runId: string | undefined; samples: Sample[] } {
+  const wanted = runId ?? samples.at(-1)?.runId;
+  return {
+    runId: wanted,
+    samples: samples.filter((s) => s.runId === wanted),
+  };
 }
 
 export function recordMetric(
@@ -38,6 +65,7 @@ export function recordMetric(
     metric,
     ms: Math.round(ms),
     at: new Date().toISOString(),
+    runId: currentRunId(),
     note,
   });
   writeFileSync(path, `${JSON.stringify(samples, null, 2)}\n`);
@@ -115,17 +143,17 @@ export function checkThresholds(
   return verdicts;
 }
 
-export function renderReport(verdicts: Verdict[]): string {
-  return verdicts
-    .map(
-      (v) => `${v.ok ? "PASS" : "FAIL"} ${v.metric} ${v.check} (${v.detail})`,
-    )
-    .join("\n");
+export function renderReport(verdicts: Verdict[], runId?: string): string {
+  const lines = verdicts.map(
+    (v) => `${v.ok ? "PASS" : "FAIL"} ${v.metric} ${v.check} (${v.detail})`,
+  );
+  return [`run: ${runId ?? "(none recorded)"}`, ...lines].join("\n");
 }
 
 const isDirectRun = process.argv[1]?.endsWith("metrics.ts") ?? false;
 if (isDirectRun) {
-  const verdicts = checkThresholds(summarize(loadSamples()));
-  console.log(renderReport(verdicts));
+  const run = samplesOfRun(loadSamples(), process.env.E2E_RUN_ID);
+  const verdicts = checkThresholds(summarize(run.samples));
+  console.log(renderReport(verdicts, run.runId));
   process.exit(verdicts.every((v) => v.ok) ? 0 : 1);
 }

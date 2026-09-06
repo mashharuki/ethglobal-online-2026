@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { envFromProcess, listAssets } from "./lib/gateway";
-import { expectDecrypted, login, skipWithoutPrivy } from "./lib/ui";
+import { assetCard, expectDecrypted, login, skipWithoutPrivy } from "./lib/ui";
 import { recordMetric } from "./metrics";
 
 /**
@@ -20,7 +20,7 @@ test("buyer pays with x402 and decrypts twice within maxUses", async ({
   if (asset === undefined) return;
 
   await page.goto("/market");
-  const card = page.locator("section", { hasText: `token #${asset.tokenId}` });
+  const card = assetCard(page, asset.tokenId);
   const started = performance.now();
   await card.getByRole("button", { name: /Buy access/ }).click();
   await page.waitForURL(/\/viewer\/.*path=licensee&receipt=0x/, {

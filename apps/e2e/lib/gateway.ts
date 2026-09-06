@@ -1,8 +1,14 @@
 import { PrivateKey } from "@hiero-ledger/sdk";
-import { buildDomain, keyGateTypedData } from "@truenft/shared";
+import {
+  buildDomain,
+  keyGateTypedData,
+  recoverContentKey,
+  unblindShareU,
+} from "@truenft/shared";
 import { createClientHederaSigner } from "@x402/hedera";
-import type { Hex } from "viem";
+import { type Hex, hexToBytes, keccak256 } from "viem";
 import { type PrivateKeyAccount, privateKeyToAccount } from "viem/accounts";
+import { THRESHOLDS } from "../metrics";
 import type { TestAccount } from "../wallets";
 
 /**
@@ -205,13 +211,13 @@ async function licenseeAuth(
   return signerOf(account).signTypedData(challenge.typedData);
 }
 
-export async function licenseeShare(
+async function shareLicensee(
   env: Env,
   account: TestAccount,
   assetId: Hex,
   receiptHash: Hex,
   authSig?: Hex,
-): Promise<LicenseeRelease> {
+): Promise<{ release: LicenseeRelease; keyGateSig: Hex }> {
   const signer = signerOf(account);
   const keyGateSig = await signer.signTypedData(
     keyGateTypedData(buildDomain(env.rightsRegistry, env.chainId), {
@@ -220,23 +226,149 @@ export async function licenseeShare(
       receiptHash,
     }) as TypedData,
   );
-  return postJson<LicenseeRelease>(env, "/keygate/share", {
+  const release = await postJson<LicenseeRelease>(env, "/keygate/share", {
     path: "licensee",
     assetId,
     receiptHash,
     authSig: authSig ?? (await licenseeAuth(env, account, receiptHash)),
     keyGateSig,
   });
+  return { release, keyGateSig };
 }
 
-export type ReplayOutcome =
-  | { ok: true; useIndex: number }
-  | { ok: false; code: string };
+/** One licensee consume: the share only (the rejection facets live here, not in decryption). */
+export async function licenseeShare(
+  env: Env,
+  account: TestAccount,
+  assetId: Hex,
+  receiptHash: Hex,
+  authSig?: Hex,
+): Promise<LicenseeRelease> {
+  return (await shareLicensee(env, account, assetId, receiptHash, authSig))
+    .release;
+}
+
+/** Decrypted bytes plus the UTF-8 view when the payload is text (the demo datasets are CSV). */
+export type Dataset = { bytes: Uint8Array; text?: string };
+
+function contentUrl(uri: string): string {
+  const gateway = (process.env.IPFS_GATEWAY_URL ?? "https://ipfs.io").replace(
+    /\/$/,
+    "",
+  );
+  return uri.startsWith("ipfs://")
+    ? `${gateway}/ipfs/${uri.slice("ipfs://".length)}`
+    : uri;
+}
+
+function toDataset(bytes: Uint8Array): Dataset {
+  try {
+    return {
+      bytes,
+      text: new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    };
+  } catch {
+    return { bytes };
+  }
+}
+
+/**
+ * The client half of the KeyGate, in Node: fetch the ciphertext, check it against the
+ * manifest contentHash, unblind share_U with the KeyGateChallenge signature, K = share_G XOR
+ * share_U, AES-256-GCM (iv || ciphertext || tag). Same steps as apps/web/src/keygate.
+ */
+async function decryptRelease(input: {
+  assetId: Hex;
+  keyGateSig: Hex;
+  shareG: Hex;
+  blindedU: Hex;
+  encryptedContentURI: string;
+  contentHash: Hex;
+}): Promise<Dataset> {
+  const response = await fetch(contentUrl(input.encryptedContentURI));
+  if (!response.ok)
+    throw new Error(`content fetch failed (${response.status})`);
+  const blob = new Uint8Array(await response.arrayBuffer());
+  if (keccak256(blob).toLowerCase() !== input.contentHash.toLowerCase()) {
+    throw new Error(
+      "CONTENT_HASH_MISMATCH: ciphertext does not match the manifest contentHash",
+    );
+  }
+  const shareU = await unblindShareU(
+    hexToBytes(input.blindedU),
+    input.keyGateSig,
+    input.assetId,
+  );
+  const key = recoverContentKey(hexToBytes(input.shareG), shareU).slice();
+  try {
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      key,
+      { name: "AES-GCM" },
+      false,
+      ["decrypt"],
+    );
+    const plain = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: blob.slice(0, 12) },
+      cryptoKey,
+      blob.slice(12),
+    );
+    const dataset = toDataset(new Uint8Array(plain));
+    if (dataset.bytes.length === 0)
+      throw new Error("decrypted dataset is empty");
+    return dataset;
+  } finally {
+    key.fill(0);
+    shareU.fill(0);
+  }
+}
+
+/** Licensee path to the plaintext: share (consume) + decrypt. */
+export async function licenseeDecrypt(
+  env: Env,
+  account: TestAccount,
+  assetId: Hex,
+  receiptHash: Hex,
+): Promise<{ useIndex: number; dataset: Dataset }> {
+  const { release, keyGateSig } = await shareLicensee(
+    env,
+    account,
+    assetId,
+    receiptHash,
+  );
+  const dataset = await decryptRelease({
+    assetId,
+    keyGateSig,
+    shareG: release.shareG,
+    blindedU: release.blindedU,
+    encryptedContentURI: release.encryptedContentURI,
+    contentHash: release.contentHash,
+  });
+  return { useIndex: release.useIndex, dataset };
+}
+
+type ReplayOutcome =
+  | { ok: true; useIndex: number; ms: number }
+  | { ok: false; code: string; ms: number };
+
+export type ReplayResult = {
+  outcomes: ReplayOutcome[];
+  /** whole burst, including the one call that waits for Hedera finality */
+  elapsedMs: number;
+  /** the slowest app-layer rejection (NaN when nothing was rejected) */
+  rejectMs: number;
+};
+
+/** The codes a duplicate share of one receipt may legitimately be refused with (§10.1 row 1). */
+const REPLAY_REJECT_CODES = [
+  "RECEIPT_ALREADY_CONSUMED",
+  "SETTLEMENT_IN_PROGRESS",
+];
 
 /**
  * SC-005: `parallelism` /keygate/share calls with the SAME receipt, all in flight together
- * (Promise.all over pre-signed challenges). Returns the outcomes and the wall time of the
- * whole burst - the app-layer rejections must land inside that window.
+ * (Promise.all over pre-signed challenges). Each outcome carries its own completion time so
+ * the rejection latency is measured per rejection, not as the tail of the settled call.
  */
 export async function concurrentReplay(
   env: Env,
@@ -244,7 +376,7 @@ export async function concurrentReplay(
   assetId: Hex,
   receiptHash: Hex,
   parallelism: number,
-): Promise<{ outcomes: ReplayOutcome[]; elapsedMs: number }> {
+): Promise<ReplayResult> {
   const sigs: Hex[] = [];
   for (let i = 0; i < parallelism; i += 1) {
     sigs.push(await licenseeAuth(env, account, receiptHash));
@@ -260,16 +392,52 @@ export async function concurrentReplay(
           receiptHash,
           authSig,
         );
-        return { ok: true, useIndex: released.useIndex };
+        return {
+          ok: true,
+          useIndex: released.useIndex,
+          ms: performance.now() - started,
+        };
       } catch (error) {
         return {
           ok: false,
           code: error instanceof GatewayError ? error.code : "NETWORK",
+          ms: performance.now() - started,
         };
       }
     }),
   );
-  return { outcomes, elapsedMs: performance.now() - started };
+  const rejections = outcomes.filter((o) => !o.ok).map((o) => o.ms);
+  return {
+    outcomes,
+    elapsedMs: performance.now() - started,
+    rejectMs: rejections.length === 0 ? Number.NaN : Math.max(...rejections),
+  };
+}
+
+/**
+ * The SC-005 verdict: exactly one settled use, every other call refused with a replay code
+ * (never a network error / 5xx), and the slowest refusal inside the quickstart budget.
+ */
+export function assertReplay(result: ReplayResult, parallelism: number): void {
+  const settled = result.outcomes.filter((o) => o.ok);
+  const rejected = result.outcomes.filter((o) => !o.ok);
+  const problems: string[] = [];
+  if (settled.length !== 1) problems.push(`${settled.length} settled (want 1)`);
+  if (rejected.length !== parallelism - 1) {
+    problems.push(`${rejected.length} rejected (want ${parallelism - 1})`);
+  }
+  for (const r of rejected) {
+    if (!r.ok && !REPLAY_REJECT_CODES.includes(r.code))
+      problems.push(`unexpected ${r.code}`);
+  }
+  const budget = THRESHOLDS.replay_reject_ms?.max ?? Number.NaN;
+  if (!(result.rejectMs < budget)) {
+    problems.push(
+      `slowest rejection ${Math.round(result.rejectMs)}ms (budget ${budget}ms)`,
+    );
+  }
+  if (problems.length > 0)
+    throw new Error(`concurrent replay: ${problems.join("; ")}`);
 }
 
 /** Hedera account id (0.0.x) behind an EVM address, via the mirror node. */

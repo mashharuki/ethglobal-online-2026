@@ -6,6 +6,9 @@ import { defineConfig } from "@playwright/test";
  * printed so a green run is never mistaken for a verified deployment. Set
  * E2E_REQUIRED=1 (CI jobs that must verify the live system) to fail instead of skipping.
  */
+// one id per Playwright run, inherited by the worker processes: metrics.ts reports one run only
+process.env.E2E_RUN_ID ??= `run-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+
 const webUrl = process.env.WEB_URL ?? "";
 const gatewayUrl = process.env.GATEWAY_URL ?? "";
 const hasTargets = webUrl !== "" && gatewayUrl !== "";

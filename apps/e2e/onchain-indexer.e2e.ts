@@ -39,7 +39,7 @@ async function graph<T>(
   return body.data;
 }
 
-/** The Graph Node lags consensus by a few seconds: poll until `until` holds. */
+/** The Graph Node lags consensus by a few seconds: poll until `until` holds, or throw. */
 async function eventually<T>(
   fn: () => Promise<T>,
   until: (value: T) => boolean,
@@ -50,6 +50,11 @@ async function eventually<T>(
   while (!until(last) && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 3_000));
     last = await fn();
+  }
+  if (!until(last)) {
+    throw new Error(
+      `indexer condition not met within ${timeoutMs}ms: ${JSON.stringify(last)}`,
+    );
   }
   return last;
 }

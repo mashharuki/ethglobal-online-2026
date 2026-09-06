@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Hex } from "viem";
 import {
+  assertReplay,
   buyWithHbar,
   concurrentReplay,
   envFromProcess,
@@ -33,25 +34,20 @@ test("Concurrent Replay: 20 parallel shares of one receipt -> 1 settled / 19 rej
   if (asset === undefined) return;
 
   const { settled } = await buyWithHbar(env, buyer, asset.assetId);
-  const { outcomes, elapsedMs } = await concurrentReplay(
+  const replay = await concurrentReplay(
     env,
     buyer,
     asset.assetId,
     settled.receiptHash,
     PARALLELISM,
   );
-  const settledCount = outcomes.filter((o) => o.ok).length;
-  const rejected = outcomes.filter((o) => !o.ok);
-  recordMetric("replay_reject_ms", elapsedMs, `${rejected.length} rejections`);
-  expect(settledCount).toBe(1);
-  expect(rejected).toHaveLength(PARALLELISM - 1);
-  for (const r of rejected) {
-    expect(["RECEIPT_ALREADY_CONSUMED", "SETTLEMENT_IN_PROGRESS"]).toContain(
-      r.code,
-    );
-  }
-  // app-layer rejections inside 3 s (the single success waits for Hedera finality)
-  expect(elapsedMs).toBeLessThan(3_000 + 10_000);
+  recordMetric(
+    "replay_reject_ms",
+    replay.rejectMs,
+    `${replay.outcomes.filter((o) => !o.ok).length} rejections, burst ${Math.round(replay.elapsedMs)}ms`,
+  );
+  // exactly 1 settled / 19 refused with a replay code, slowest refusal < 3 s (quickstart §1)
+  assertReplay(replay, PARALLELISM);
 });
 
 test("Chain-ID spoofing: an owner signature over another chainId -> CHAIN_ID_MISMATCH (row 5)", async () => {

@@ -11,7 +11,7 @@ talks to a real gateway on Hedera Testnet; nothing is mocked (constitution princ
 | `pnpm test:unit` | Vitest over the tooling itself: `metrics.ts` maths and the Postman-vs-OpenAPI coverage check (`collection.test.ts`) | nothing |
 | `pnpm test` | Playwright specs `*.e2e.ts` (skipped, with a printed notice, unless `WEB_URL` + `GATEWAY_URL` are set; `E2E_REQUIRED=1` turns the skip into a failure) | see below |
 | `pnpm test:api` | Newman over `postman/gateway.postman_collection.json` (every item asserts the OpenAPI envelope / error code it expects) | `GATEWAY_URL` + `ASSET_ID` in the environment file |
-| `pnpm metrics` | Prints the latency report from `test-results/metrics.jsonl` and exits non-zero when a threshold in `metrics.ts` is missed or has no sample (BLOCKED, never PASS) | a previous Playwright run |
+| `pnpm metrics` | Prints the latency report of ONE run (`E2E_RUN_ID`, else the latest recorded) from `metrics.json` and exits non-zero when a threshold in `metrics.ts` is missed or has no sample in that run (BLOCKED, never PASS) | a previous Playwright run |
 
 ## Specs
 
@@ -40,5 +40,12 @@ concurrent replay. `lib/chain.ts` reads epochs and transfers the NFT directly on
 | `E2E_PRIVY_EMAIL`, `E2E_PRIVY_OTP` | browser specs: a Privy **test account** (dashboard → Test accounts, fixed OTP). Absent → browser specs skip as BLOCKED. The embedded wallet must hold Testnet HBAR for `buyerFlow` |
 | `TEST_ACCOUNTS_PATH` | overrides `.accounts.json` (owner-A / owner-B / buyer keys from the seed script) |
 
-A skipped spec is reported as skipped, never as passed: the metrics report refuses to
-declare a threshold met without samples.
+A skipped spec is reported as skipped, never as passed: every sample carries the run id
+Playwright assigned (`E2E_RUN_ID`), the report reads one run only, and it refuses to declare a
+threshold met without samples from that run. Browser specs put the seeded token back with
+owner-A in `finally`, so a failed run does not strand the fixture.
+
+Known gap (SC-008): `ownerFlow` counts every click from the first page load. The Privy email +
+OTP login is two clicks, "Access as owner" and "Unlock as owner" two more, so the assertion
+fails until the viewer auto-unlocks when the owner arrives from the Market - tracked for the
+web app, not hidden here.

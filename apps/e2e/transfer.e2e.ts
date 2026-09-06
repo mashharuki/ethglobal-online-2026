@@ -19,23 +19,31 @@ test("transfer revokes the old owner within 10 s and keeps the ciphertext CID", 
 }) => {
   skipWithoutPrivy();
   test.setTimeout(300_000);
-  const { ownerA, ownerB } = loadTestAccounts();
-  const session = await loginAsOwnerOf(page, ownerA);
-  const cidOf = async () =>
-    (await listAssets(session.env)).find(
-      (a) => a.assetId === session.asset.assetId,
-    )?.encryptedContentURI;
+  const accounts = loadTestAccounts();
+  const session = await loginAsOwnerOf(page, accounts);
+  try {
+    const cidOf = async (): Promise<string> => {
+      const uri = (await listAssets(session.env)).find(
+        (a) => a.assetId === session.asset.assetId,
+      )?.encryptedContentURI;
+      expect(uri, "the listing must carry the ciphertext URI").toMatch(
+        /^(ipfs|https?):\/\/.+/,
+      );
+      return uri ?? "";
+    };
 
-  await page.goto(`/viewer/${session.asset.assetId}?path=owner`);
-  await unlockAsOwner(page);
-  const cidBefore = await cidOf();
+    await page.goto(`/viewer/${session.asset.assetId}?path=owner`);
+    await unlockAsOwner(page);
+    const cidBefore = await cidOf();
 
-  await transferViaViewer(page, ownerB.address);
-  const transferred = performance.now();
-  const code = await expectOwnerRefused(page);
-  recordMetric("transfer_revoke_ms", performance.now() - transferred, code);
+    await transferViaViewer(page, accounts.ownerB.address);
+    const transferred = performance.now();
+    const code = await expectOwnerRefused(page);
+    recordMetric("transfer_revoke_ms", performance.now() - transferred, code);
 
-  // the CID is unchanged: the content was never re-encrypted
-  expect(await cidOf()).toBe(cidBefore);
-  await session.giveBack(ownerB);
+    // the CID is unchanged: the content was never re-encrypted
+    expect(await cidOf()).toBe(cidBefore);
+  } finally {
+    await session.restore();
+  }
 });
