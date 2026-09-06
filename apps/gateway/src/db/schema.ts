@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   numeric,
+  pgPolicy,
   pgTable,
   primaryKey,
   text,
@@ -20,6 +21,33 @@ import { bytesToHex, type Hex, hexToBytes } from "viem";
  * Authorization is always re-derived from chain reads (constitution II); the UNIQUE /
  * PRIMARY KEY constraints are the RDB layer of the exactly-once guarantees (constitution V).
  */
+/**
+ * These tables are internal gateway bookkeeping, never queried directly by an end user
+ * (all access is mediated by the Worker's own application code - constitution II, "Authorization
+ * is always re-derived from chain reads" above). RLS is enabled to satisfy the hosting
+ * provider's "unrestricted table" advisory, not to isolate per-tenant rows.
+ *
+ * `to: "public"` means every Postgres role, not the `public` schema - this grants no
+ * privileges by itself (a role still needs the usual GRANT to touch a table at all), it only
+ * stops RLS from filtering rows for whichever role a GRANT already lets through. Table owners
+ * and superuser/BYPASSRLS roles always bypass RLS regardless of policy. Without any policy at
+ * all, RLS is fail-closed by default (see migrations/0003_enable_gateway_rls.sql): SELECT
+ * silently returns zero rows and INSERT/UPDATE/DELETE fail with an explicit "row-level
+ * security policy" error - either way, every query breaks the moment the gateway connects as
+ * anything but the owning role. A narrower policy scoped to one named, non-login group role
+ * (with the runtime login granted membership) would be tighter than "any role that has a
+ * GRANT" - not done here since the actual Hyperdrive-side role name isn't known yet; revisit
+ * once it is.
+ */
+function permissiveServiceAccessPolicy() {
+  return pgPolicy("gateway_service_access", {
+    for: "all",
+    to: "public",
+    using: sql`true`,
+    withCheck: sql`true`,
+  });
+}
+
 function toDriverBytes(value: Hex): Uint8Array {
   const bytes = hexToBytes(value);
   // postgres.js and pglite both serialize Buffer/Uint8Array as bytea.
@@ -85,6 +113,7 @@ export const walletBlindedShares = pgTable(
       "wallet_blinded_shares_epoch_check",
       sql`${t.accessEpochAtGrant} IS NULL OR (${t.accessEpochAtGrant} >= 0 AND ${t.accessEpochAtGrant} < 1e30 AND ${t.accessEpochAtGrant} = trunc(${t.accessEpochAtGrant}))`,
     ),
+    permissiveServiceAccessPolicy(),
   ],
 ).enableRLS();
 
@@ -114,6 +143,7 @@ export const receiptConsumption = pgTable(
       sql`${t.status} IN ('locked', 'settled', 'failed')`,
     ),
     check("receipt_consumption_use_index_check", sql`${t.useIndex} >= 0`),
+    permissiveServiceAccessPolicy(),
   ],
 ).enableRLS();
 
@@ -153,6 +183,7 @@ export const paymentBinding = pgTable(
       "payment_binding_amount_check",
       sql`${t.amount} >= 0 AND ${t.amount} < 1e30 AND ${t.amount} = trunc(${t.amount})`,
     ),
+    permissiveServiceAccessPolicy(),
   ],
 ).enableRLS();
 
@@ -172,16 +203,21 @@ export const authNonce = pgTable(
       "auth_nonce_purpose_check",
       sql`${t.purpose} IN ('owner-access', 'keygate-challenge')`,
     ),
+    permissiveServiceAccessPolicy(),
   ],
 ).enableRLS();
 
-export const mcpSessionBinding = pgTable("mcp_session_binding", {
-  receiptHash: bytea("receipt_hash").primaryKey(),
-  mcpSessionId: bytea("mcp_session_id").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-}).enableRLS();
+export const mcpSessionBinding = pgTable(
+  "mcp_session_binding",
+  {
+    receiptHash: bytea("receipt_hash").primaryKey(),
+    mcpSessionId: bytea("mcp_session_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  () => [permissiveServiceAccessPolicy()],
+).enableRLS();
 
 // MCP spend policy ledger (R-9): tinybar reserved per Mcp-Session-Id, added atomically before
 // a purchase signs anything and only given back when no value can have moved.
@@ -201,6 +237,7 @@ export const mcpSessionSpend = pgTable(
       "mcp_session_spend_amount_check",
       sql`${t.spentTinybar} >= 0 AND ${t.spentTinybar} < 1e30 AND ${t.spentTinybar} = trunc(${t.spentTinybar})`,
     ),
+    permissiveServiceAccessPolicy(),
   ],
 ).enableRLS();
 
@@ -214,21 +251,29 @@ export const AUDIT_ACTIONS = [
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
-export const auditLog = pgTable("audit_log", {
-  id: bigserial("id", { mode: "bigint" }).primaryKey(),
-  ts: timestamp("ts", { withTimezone: true }).defaultNow().notNull(),
-  actor: bytea("actor"),
-  action: text("action").$type<AuditAction>().notNull(),
-  subject: jsonb("subject").$type<Record<string, unknown>>().notNull(),
-  // 'allow' | 'deny:<ErrorCode>'
-  outcome: text("outcome").notNull(),
-  onchainRef: bytea("onchain_ref"),
-}).enableRLS();
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: bigserial("id", { mode: "bigint" }).primaryKey(),
+    ts: timestamp("ts", { withTimezone: true }).defaultNow().notNull(),
+    actor: bytea("actor"),
+    action: text("action").$type<AuditAction>().notNull(),
+    subject: jsonb("subject").$type<Record<string, unknown>>().notNull(),
+    // 'allow' | 'deny:<ErrorCode>'
+    outcome: text("outcome").notNull(),
+    onchainRef: bytea("onchain_ref"),
+  },
+  () => [permissiveServiceAccessPolicy()],
+).enableRLS();
 
-export const subgraphCache = pgTable("subgraph_cache", {
-  key: text("key").primaryKey(),
-  value: jsonb("value").$type<unknown>().notNull(),
-  refreshedAt: timestamp("refreshed_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-}).enableRLS();
+export const subgraphCache = pgTable(
+  "subgraph_cache",
+  {
+    key: text("key").primaryKey(),
+    value: jsonb("value").$type<unknown>().notNull(),
+    refreshedAt: timestamp("refreshed_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  () => [permissiveServiceAccessPolicy()],
+).enableRLS();

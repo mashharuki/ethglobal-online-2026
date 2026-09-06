@@ -70,6 +70,65 @@ describe("migrations", () => {
   });
 });
 
+describe("row level security", () => {
+  // Every table has RLS enabled (0003_enable_gateway_rls.sql). RLS with zero policies is
+  // fail-closed by default: the table owner still sees everything, but any other role - the
+  // realistic shape of the role Hyperdrive is expected to connect as in production, and any
+  // role generally, since `TO public` in the policies below means every Postgres role, not
+  // the public schema - gets SELECT filtered to zero rows (no error, an empty result set)
+  // and INSERT rejected outright (a loud, explicit "row-level security policy" error, not a
+  // silent failure). `client.query` above runs as the table owner throughout this file (table
+  // owners and superusers always bypass RLS), so that regression would not show up in any
+  // other test here.
+  const TABLES = [
+    "audit_log",
+    "auth_nonce",
+    "mcp_session_binding",
+    "mcp_session_spend",
+    "payment_binding",
+    "receipt_consumption",
+    "subgraph_cache",
+    "wallet_blinded_shares",
+  ] as const;
+
+  it("should define at least one policy on every gateway table", async () => {
+    const rows = await client.query<{ tablename: string }>(
+      "select distinct tablename from pg_policies where schemaname = 'public' order by tablename",
+    );
+    expect(rows.rows.map((r) => r.tablename)).toEqual([...TABLES]);
+  });
+
+  it("should let a non-owner role read a row it did not insert, and write its own", async () => {
+    // subgraph_cache has the simplest shape (no FKs, no NOT NULL beyond the key) - one
+    // representative table is enough to exercise the policy; every table shares the same
+    // policy definition (checked above), so this isn't testing 8 independent code paths.
+    await client.query(
+      "insert into subgraph_cache (key, value) values ($1, $2) on conflict (key) do update set value = excluded.value",
+      ["rls-test-owner-row", { ok: true }],
+    );
+    await client.exec(
+      "create role gateway_service_test login; grant all on all tables in schema public to gateway_service_test;",
+    );
+    try {
+      await client.exec("set role gateway_service_test;");
+      // The actual regression this guards against: without a policy this returns 0 rows,
+      // not an error - `toBeDefined()` on a count would pass either way, so assert the
+      // owner-inserted row is genuinely visible.
+      const seen = await client.query<{ key: string }>(
+        "select key from subgraph_cache where key = $1",
+        ["rls-test-owner-row"],
+      );
+      expect(seen.rows).toHaveLength(1);
+      await client.query(
+        "insert into subgraph_cache (key, value) values ($1, $2) on conflict (key) do update set value = excluded.value",
+        ["rls-test-nonowner-row", { ok: true }],
+      );
+    } finally {
+      await client.exec("reset role;");
+    }
+  });
+});
+
 describe("receipt_consumption", () => {
   const insert = (receiptHash: Hex, useIndex: number, wallet: Hex) =>
     db.insert(schema.receiptConsumption).values({
