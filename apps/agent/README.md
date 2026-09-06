@@ -36,10 +36,13 @@ its evidence, the verification verdict and the timestamps of each leg.
 3. With `AGENT_CHECK` (default `{"labelColumn":"district","valueColumn":"visitors","op":"max"}`,
    the shape of the seeded demo dataset A) the harness tabulates the dataset itself (JSON
    `{columns, rows}` or RFC 4180 CSV; ragged, non-numeric or unlabeled rows are errors),
-   computes the winning row, and requires the model's structured `result` to equal it exactly,
-   one citation to be bound to that row (same label and value), and the answer text to quote
-   both. The question is derived from the check unless `--question` overrides it. A check whose
-   columns are absent from the dataset fails the run (no silent skip).
+   computes the winning row with exact decimal comparison, and requires the model's structured
+   `result` to equal it exactly, every citation to be a real (label, value) row of the table
+   with the winning row among them, and the free text to open with `<label>: <value>` as a whole
+   token and contain no negation. The verified artifact is the harness-generated `statement`
+   (`verifiedAnswer` in the record and CLI output); the model's free text is kept as
+   `modelText` for the record only. The question is derived from the check unless `--question`
+   overrides it. A check whose columns are absent from the dataset fails the run (no silent skip).
 
 The decrypted dataset is treated as untrusted input: it is sent in its own `<dataset>` block,
 separated from the instructions, with a system prompt that says its content is never an

@@ -105,6 +105,7 @@ describe("success artifact", () => {
       model: "m",
       analysis: { answer: "a", evidence: [], confidence: "low" as const },
       verification: { ok: false, problems: ["no evidence cited"] },
+      verifiedAnswer: undefined,
       steps: [],
     };
     expect(() => writeAnswer(record, "/dev/null/never.json")).toThrow(

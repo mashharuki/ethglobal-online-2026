@@ -9,9 +9,10 @@ import type { Analysis } from "./analyze";
  *     comparison), computes the winning row, and requires the model's structured `result` to
  *     equal that row exactly, one citation whose label IS that row's label and whose value IS
  *     that row's value, and the answer text to open with the verified conclusion
- *     `<label>: <value>` so a denial cannot hide behind the right words.
- * The verdict carries the harness-generated `statement`; consumers should quote that, not the
- * free text. A run whose answer fails any layer is a failure - no answer.json, non-zero exit.
+ *     `<label>: <value>` as a whole token and contain no negation. Every citation must be a real
+ *     (label, value) row, so the winning value cannot be attributed to another label.
+ * The verdict carries the harness-generated `statement`; consumers quote that, not the free
+ * text (`AnswerRecord.verifiedAnswer`). A run whose answer fails any layer is a failure - no answer.json, non-zero exit.
  */
 export type ExtremeCheck = {
   labelColumn: string;
@@ -226,6 +227,24 @@ function citationProblems(analysis: Analysis, dataset: string): string[] {
   return problems;
 }
 
+/** True when some row has `label` in the label column and `value` in the value column. */
+function rowExists(
+  table: Table,
+  check: ExtremeCheck,
+  label: string,
+  value: string,
+): boolean {
+  const labelAt = table.columns.indexOf(check.labelColumn);
+  const valueAt = table.columns.indexOf(check.valueColumn);
+  return table.rows.some(
+    (row) => row[labelAt] === label && row[valueAt] === value,
+  );
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * The gate `runAgent` applies before it reports success. With a `check`: the model's structured
  * `result` must equal the computed row, a citation must carry exactly that row's label and
@@ -238,10 +257,8 @@ export function verifyAnalysis(
 ): Verdict {
   const problems = citationProblems(analysis, dataset.content);
   if (check === undefined) return { ok: problems.length === 0, problems };
-  const expected = expectedExtreme(
-    parseTable(dataset.format, dataset.content),
-    check,
-  );
+  const table = parseTable(dataset.format, dataset.content);
+  const expected = expectedExtreme(table, check);
   const result = analysis.result;
   if (result === undefined) {
     problems.push("no structured result");
@@ -253,6 +270,15 @@ export function verifyAnalysis(
       `result ${result.label}=${result.value} is not the ${check.op} row ${expected.label}=${expected.value}`,
     );
   }
+  // every citation must be a real (label, value) row - a value attributed to the wrong label
+  // is a false citation even when the winning row is also cited
+  for (const e of analysis.evidence) {
+    if (!rowExists(table, check, e.label, e.value)) {
+      problems.push(
+        `citation ${e.label}=${e.value} is not a row of the dataset`,
+      );
+    }
+  }
   const bound = analysis.evidence.some(
     (e) => e.value === expected.value && e.label === expected.label,
   );
@@ -260,9 +286,24 @@ export function verifyAnalysis(
     problems.push(
       `no citation with label ${expected.label} and value ${expected.value}`,
     );
-  const opening = `${expected.label}: ${expected.value}`;
-  if (!analysis.answer.trimStart().startsWith(opening)) {
-    problems.push(`answer does not open with "${opening}"`);
+  // the free text must open with exactly "<label>: <value>" as a whole token (not a prefix of a
+  // longer number) and must not continue with a negation of it; the verified conclusion a
+  // consumer should quote is the harness-generated `statement`, never the free text
+  const opening = new RegExp(
+    `^\\s*${escapeRegExp(expected.label)}: ${escapeRegExp(expected.value)}(?![\\d.])`,
+  );
+  if (!opening.test(analysis.answer)) {
+    problems.push(
+      `answer does not open with "${expected.label}: ${expected.value}"`,
+    );
+  } else if (
+    /\b(not|never|isn't|is not|no longer|except|but not)\b/i.test(
+      analysis.answer,
+    )
+  ) {
+    problems.push(
+      "answer contains a negation; the verified conclusion is the statement",
+    );
   }
   return {
     ok: problems.length === 0,

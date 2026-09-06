@@ -147,7 +147,54 @@ describe("verify (SC-007 answer gate)", () => {
       DEFAULT_CHECK,
     );
     expect(misattributed.problems).toEqual([
+      "citation Shibuya=2401 is not a row of the dataset",
+      "citation West Shinjuku=2401 is not a row of the dataset",
       "no citation with label Shinjuku and value 2401",
+    ]);
+    // the winning row cited correctly, plus a false extra attribution of the same value
+    expect(
+      verifyAnalysis(
+        {
+          answer: "Shinjuku: 2401",
+          evidence: [
+            { label: "Shinjuku", value: "2401" },
+            { label: "Shibuya", value: "2401" },
+          ],
+          result: EXPECTED,
+          confidence: "high",
+        },
+        dataset,
+        DEFAULT_CHECK,
+      ).problems,
+    ).toEqual(["citation Shibuya=2401 is not a row of the dataset"]);
+    // the opening as a prefix of a longer number, and a negation after a correct opening
+    for (const answer of ["Shinjuku: 24010", "Shinjuku: 2401.5 visitors"]) {
+      expect(
+        verifyAnalysis(
+          {
+            answer,
+            evidence: [{ label: "Shinjuku", value: "2401" }],
+            result: EXPECTED,
+            confidence: "high",
+          },
+          dataset,
+          DEFAULT_CHECK,
+        ).problems,
+      ).toEqual(['answer does not open with "Shinjuku: 2401"']);
+    }
+    expect(
+      verifyAnalysis(
+        {
+          answer: "Shinjuku: 2401 is not the maximum; Shibuya is.",
+          evidence: [{ label: "Shinjuku", value: "2401" }],
+          result: EXPECTED,
+          confidence: "high",
+        },
+        dataset,
+        DEFAULT_CHECK,
+      ).problems,
+    ).toEqual([
+      "answer contains a negation; the verified conclusion is the statement",
     ]);
     // no structured result at all
     expect(

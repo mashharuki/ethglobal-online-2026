@@ -39,8 +39,11 @@ export type AnswerRecord = {
   useIndex: number;
   dataset: { format: string; chars: number; truncated: boolean };
   model: string;
+  /** the model's free text + citations (kept for the record, NOT the verified artifact) */
   analysis: Analysis;
   verification: Verdict;
+  /** the harness-generated conclusion, present only when verification passed */
+  verifiedAnswer?: string;
   steps: Step[];
 };
 
@@ -191,6 +194,7 @@ export async function runAgent(input: {
       model,
       analysis,
       verification,
+      verifiedAnswer: verification.ok ? verification.statement : undefined,
       steps,
     };
     if (!verification.ok) throw new VerificationError(record);
@@ -244,7 +248,8 @@ if (isDirectRun) {
       console.log(
         JSON.stringify(
           {
-            answer: record.analysis,
+            verifiedAnswer: record.verifiedAnswer,
+            modelText: record.analysis.answer,
             receiptHash: record.receiptHash,
             out: path,
           },
