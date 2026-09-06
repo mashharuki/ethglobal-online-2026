@@ -5,6 +5,7 @@ import {
   deploymentPath,
   HEDERA_TESTNET_CHAIN_ID,
   hasFlag,
+  prepareGatewayWranglerWriteBack,
   prepareSharedAddressesWriteBack,
   prepareSubgraphConfigWriteBack,
   writeJson,
@@ -81,6 +82,7 @@ async function main(): Promise<void> {
     const written = applyWrites([
       prepareSharedAddressesWriteBack(record),
       prepareSubgraphConfigWriteBack(record),
+      prepareGatewayWranglerWriteBack(record),
     ]);
     for (const path of written) console.log(`wrote ${path}`);
   } else {
