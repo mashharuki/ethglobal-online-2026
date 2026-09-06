@@ -16,7 +16,7 @@
 
 ## 3. R-2 フォールバック（非原子でも安全と言える理由）
 
-**答え**: 既定の custodial rail は Blocky402 が HBAR 送金を settle し、その後 operator が `RightsRegistry` に Receipt を anchor する 2 tx（決済と anchor は別 tx。Receipt は anchor 確定後にしか返さない）。コントラクトには 1 tx の `settleAndIssue{value}` と、fallback の `payFor{value}(paymentId, committedParamsHash)` + permissionless `finalize` も実装済みで `SETTLEMENT_MODE` で切替。fallback では HBAR は `RightsRegistry` が保持し Gateway は custody しない、`finalize` は誰でも呼べるが `committedParamsHash`（licensee を含む ReceiptParams 全体のハッシュ）に一致する params でしか確定しない、timeout 後は `refundUnfinalized` で**未確定の入金だけ**返金する（完了済み購入の返金経路は無い）。「非原子」なのは決済と anchor の間だけで、資金の所在は常にコントラクト。**3 レールとも実 facilitator に対するライブ検証は未実施**（day-1 probe 待ち）。
+**答え**: 既定の custodial rail は Blocky402 が HBAR 送金を settle し、その後 operator が `RightsRegistry` に Receipt を anchor する 2 tx（決済と anchor は別 tx。Receipt は anchor 確定後にしか返さない）。コントラクトには 1 tx の `settleAndIssue{value}` と、fallback の `payFor{value}(paymentId, committedParamsHash)` + permissionless `finalize` も実装済みで `SETTLEMENT_MODE` で切替。fallback では HBAR は `RightsRegistry` が保持し Gateway は custody しない、`finalize` は誰でも呼べるが `committedParamsHash`（licensee を含む ReceiptParams 全体のハッシュ）に一致する params でしか確定しない、timeout 後は `refundUnfinalized` で**未確定の入金だけ**返金する（完了済み購入の返金経路は無い）。fallback レールに限れば「非原子」なのは決済と anchor の間だけで、資金の所在は常にコントラクト（custodial レールでは settle 後・anchor 前の HBAR は facilitator／operator 側にあり、これは信頼点として README に開示）。**3 レールとも実 facilitator に対するライブ検証は未実施**（day-1 probe 待ち）。
 
 根拠: `RightsRegistry.sol`（`payFor` / `finalize` / `refundUnfinalized`）、`test/RightsRegistry.fallback.spec.ts`、`research.md` R-2a。
 
@@ -40,7 +40,7 @@
 
 ## 7. owner パスの `share_U` 残存信頼点
 
-**答え**: 正直に言うと、通常運転と侵害時を分けて答える。**通常運転**では Gateway は wallet の KeyGate 署名を持たないので `blindedU` から `share_U'` を戻せず、K を組み立てない。**Gateway が侵害された場合**は、攻撃者が `share_U`（Secrets）と `share_G`（KV）を両方読めるので owner パス・購入者パスとも K を復元でき、コンテンツは流出する——これが残存信頼点。on-chain の `consume` が守るのは「正当な利用回数の帳簿」（Gateway 単独で useIndex や収益を捏造できない）であって、鍵流出を防ぐものではない。緩和は ①ウォレット毎の HKDF ブラインド化 ②監査ログに全 allow/deny ③計画は Shamir 2-of-3（creator / gateway / recovery）で Gateway 単体が鍵素材を持たない構成。
+**答え**: 正直に言うと、通常運転と侵害時を分けて答える。**通常運転**では Gateway は wallet の KeyGate 署名を持たないので `blindedU` から `share_U'` を戻せず、K を組み立てない。**Gateway が侵害された場合**は、攻撃者が `share_U`（Secrets）と `share_G`（KV）を両方読めるので owner パス・購入者パスとも K を復元でき、コンテンツは流出する——これが残存信頼点。on-chain の `consume` が守るのはコントラクトが強制する不変条件だけ——同じ `(receiptHash, useIndex)` は二度消費できない、`maxUses`／期限／`licenseEpoch` を超えた消費は revert、Receipt の発行には契約が要求する `msg.value` が要る。侵害された operator 鍵でも実在する Receipt の `consume` は送れる（帳簿上の利用回数は減る）ので、守られるのは「二重計上と偽 Receipt」であって鍵流出や不正利用の全てではない。緩和は ①ウォレット毎の HKDF ブラインド化 ②監査ログに全 allow/deny ③計画は Shamir 2-of-3（creator / gateway / recovery）で Gateway 単体が鍵素材を持たない構成。
 
 根拠: `apps/gateway/src/keygate/split.ts`、`packages/shared/src/keygate.ts`、README「Trust model」。
 

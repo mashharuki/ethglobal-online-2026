@@ -108,18 +108,24 @@ Stated as precisely as we can (constitution VII):
   (`useIndex`), and revenue allocation are on-chain (`RightsNFT`, `RightsRegistry`); the gateway
   re-reads `ownerOf` / `accessEpoch` / `receiptStatus` at request time, never a cache.
 - **What the gateway holds:** the receipt signing key (a convenience credential; the chain is the
-  authority), the operator key that submits `consume`, and — for the **owner (free) path** — the
-  `share_U` half of each content key, blinded per wallet. A compromised gateway could therefore
-  serve owner-path content; this is the known residual trust point (Shamir 2-of-3 is the planned
-  follow-up, not implemented).
+  authority), the operator key that submits `consume` and anchors receipts, the `share_U` half of
+  each content key (Workers Secrets, handed out blinded per wallet) and the encrypted `share_G`
+  half (KV). In normal operation it never assembles `K` (it lacks the wallet's KeyGate
+  signature); a **compromised** gateway that reads both halves can reconstruct `K` for any asset
+  and serve content on either path. That is the known residual trust point (Shamir 2-of-3 is the
+  planned follow-up, not implemented). What a compromise cannot do is break the on-chain
+  invariants: double-consume a `(receiptHash, useIndex)`, exceed `maxUses` / expiry /
+  `licenseEpoch`, or issue a receipt without the contract's required payment.
 - **KeyGate fallback:** while the plain fallback release path is enabled the gateway handles the
   full key; the demo runs the blinded-share path.
 - **Availability:** the gateway is a single point of failure for key release (not for ownership
   or revenue, which stay on-chain).
 - **Payment rail:** the default rail is the custodial x402 settlement through Blocky402 (native
-  HBAR only — the Hedera "AI & Agentic Payments" track's facilitator does not settle HTS tokens);
-  the non-atomic `payFor` + permissionless `finalize` rail is implemented in the contracts and
-  selectable, both are disclosed in `apps/gateway/CONFIG.md`.
+  HBAR only — the Hedera "AI & Agentic Payments" track's facilitator does not settle HTS tokens):
+  between settlement and anchoring the HBAR sits with the facilitator / operator, not in the
+  contract. The `payFor` + permissionless `finalize` rail keeps the deposit in `RightsRegistry`
+  (non-atomic, non-custodial), and `settleAndIssue{value}` is the single-transaction rail; all
+  three are implemented and selectable, and none is live-verified yet (`apps/gateway/CONFIG.md`).
 - **MCP wallet:** the MCP tools are unauthenticated (demo). Purchases are signed by a Privy
   server wallet under a per-session spend cap; the raw key is never held by the gateway, but
   anyone who can reach the URL can spend up to the cap.
