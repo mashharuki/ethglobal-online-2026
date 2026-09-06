@@ -18,7 +18,7 @@
     "contracts": "pnpm --filter contracts",
     "gateway": "pnpm --filter gateway",
     "agent": "pnpm --filter agent",
-    "subgraph": "pnpm --filter @subgraph",
+    "subgraph": "pnpm --filter subgraph",
     "cdk": "pnpm --filter cdk",
     "e2e": "pnpm --filter e2e",
     "shared": "pnpm --filter @truenft/shared",

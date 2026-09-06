@@ -30,10 +30,16 @@ pnpm run check                            # biome + knip + jscpd + tsc + redocly
 
 pnpm --filter contracts deploy:testnet    # apps/contracts：RightsNFT / RightsRegistry をデプロイ → packages/shared/src/addresses.ts 更新
 pnpm --filter contracts seed:testnet      # デモ NFT 2 種を mint・Manifest 登録（下記）
+# Faucet 残高でのデモ用：合計 11 HBAR を配布し、購入価格を 0.1 HBAR にする
+pnpm --filter contracts seed:testnet:lean
 
 # Rights Graph（自前 Graph Node を AWS へ。ハッカソン期間のみ）
-pnpm --filter cdk deploy                  # cdk deploy GraphNodeStack（EC2 + docker-compose：graph-node + postgres + ipfs）
-pnpm --filter subgraph deploy             # apps/subgraph を GraphNodeStack の graph-node へ graph deploy。startBlock はデプロイ tx から自動注入
+# 8020 / 5001 / 8030 は指定した接続元IPだけに開放する。省略すると subgraph deploy は到達できない
+pnpm --filter cdk run deploy -c allowedAdminCidr=<現在のグローバルIP>/32
+export GRAPH_NODE_ADMIN=http://<ElasticIp>:8020/
+export GRAPH_NODE_IPFS=http://<ElasticIp>:5001
+pnpm --filter subgraph run create         # 初回のみ：truecollective/rights-graph を登録
+pnpm --filter subgraph run deploy         # IPFS upload → graph deploy。startBlock はデプロイ tx から自動注入
 
 # gateway（apps/gateway、Cloudflare Workers）
 pnpm --filter gateway db:migrate          # Hyperdrive 経由 Postgres にマイグレーション
@@ -59,12 +65,13 @@ pnpm --filter agent build
 pnpm --filter e2e test:api               # newman run apps/e2e/postman/gateway.postman_collection.json（レスポンスが openapi.yaml に適合を assert）
 
 # ハッカソン終了後
-pnpm --filter cdk destroy                 # Graph Node インフラを撤去
+pnpm --filter cdk run destroy             # Graph Node インフラを撤去
 ```
 
 **seed が作るデモデータ**
 - `assetId=A`：独占データセット #1、`transferMode=SURVIVE_TRANSFER`、`price=5 HBAR`（weibar `5000000000000000000`）、`maxUses=5`、owner=A
 - `assetId=B`：独占データセット #2、`transferMode=INVALIDATE_ON_TRANSFER`、`price=5 HBAR`、`maxUses=3`、owner=A
+- `seed:testnet:lean` の場合のみ、両資産の価格は `0.1 HBAR`。creator / owner-A / owner-B / buyer / agent への配布は合計 `11 HBAR`。権利判定・収益分配ロジックは通常プロファイルと同一
 - 各暗号文は `seed` がクライアント側 AES-256-GCM 暗号化して IPFS へ。`share_G` は gateway の Workers KV（KEK 暗号）、`share_U` は Workers Secrets Store（ローカルは `.dev.vars`）
 
 ---

@@ -1,5 +1,5 @@
 {
-  "name": "@subgraph",
+  "name": "subgraph",
   "version": "0.1.0",
   "private": true,
   "description": "TrueCollective Rights Graph - self-hosted The Graph subgraph for RightsNFT / RightsRegistry on Hedera Testnet (discovery and audit only).",

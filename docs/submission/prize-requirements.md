@@ -14,7 +14,7 @@ GitHub / HashScan / Cloudflare 側で引き直すこと（この文書を更新�
 | x402 ゲート付きサービスを Hedera testnet/mainnet で **Blocky402 facilitator 経由**でホスト | 🟡 | `apps/gateway/src/x402/facilitator.ts` が Blocky402 の `/supported` `/verify` `/settle` を呼ぶ。`wrangler.toml` の `X402_FACILITATOR_URL=https://api.testnet.blocky402.com`。**残作業**: `pnpm --filter gateway deploy`（T097）と day1 probe（T020）でレールを確定（`SETTLEMENT_MODE` は custodial 既定・primary/fallback は probe 結果次第、`apps/gateway/CONFIG.md`） |
 | 消費側エージェントが**実際の有料リクエストを end-to-end 完了** | 🟡 | MCP 3 ツールと session 束縛・支出上限は gateway の unit suite で green（実 MCP SDK transport）。**残作業**: `apps/agent` の自律 run（T121、`ANTHROPIC_API_KEY` + デプロイ済み gateway 必要）を実走し、動画に収める |
 | 公開 GitHub、README にセットアップ・アーキテクチャ・支払いフロー | ✅ | README「How a purchase works (x402, native HBAR)」「Repository layout」「Deploy」。repo は public |
-| HashScan でコントラクト verify（`RightsNFT` / `RightsRegistry`） | ⬜ | `packages/shared/src/addresses.ts` の `DEFAULT_DEPLOYMENT` は未デプロイ（ゼロアドレス）。**残作業**: T047 deploy → `pnpm --filter contracts verify:testnet`（Sourcify 経由・`hardhat.config.ts` の `verify.sourcify`）→ README と `showcase.md` にアドレスを記載 |
+| HashScan でコントラクト verify（`RightsNFT` / `RightsRegistry`） |  ✅ | `packages/shared/src/addresses.ts` の `DEFAULT_DEPLOYMENT` は未デプロイ（ゼロアドレス）。**残作業**: T047 deploy → `pnpm --filter contracts verify:testnet`（Sourcify 経由・`hardhat.config.ts` の `verify.sourcify`）→ README と `showcase.md` にアドレスを記載 |
 | デモ動画（最大 5 分） | ⬜ | T127。全スポンサー共通の 2〜4 分規定で作る |
 
 ## 2. Privy「Best Financial Flow」（$2,500）

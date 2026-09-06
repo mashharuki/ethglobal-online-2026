@@ -4,3 +4,4 @@ cdk.out/
 *.d.ts
 !bin/**/*.d.ts
 .env
+cdk.context.json

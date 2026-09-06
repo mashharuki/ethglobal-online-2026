@@ -31,12 +31,22 @@ Hedera は Subgraph Studio / Hosted Service 非対応のため自前ホストす
 pnpm --filter cdk test        # aws-cdk-lib/assertions（SG / EBS / EIP / user-data / スナップショット）
 pnpm --filter cdk synth       # CloudFormation を合成（AWS 認証不要）
 pnpm --filter cdk cdk bootstrap                      # 初回のみ（アカウント×リージョン）
-pnpm --filter cdk deploy -- -c allowedAdminCidr=203.0.113.4/32   # 手動デプロイ
-pnpm --filter cdk destroy     # 撤去
+pnpm --filter cdk run deploy -c allowedAdminCidr=203.0.113.4/32 # 手動デプロイ
+pnpm --filter cdk run destroy # 撤去
 ```
 
 デプロイ後の出力 `GraphNodeAdminUrl` / `IpfsUrl` を `apps/subgraph` の `GRAPH_NODE_ADMIN` / `GRAPH_NODE_IPFS`
-に渡して `pnpm --filter @subgraph create && pnpm --filter @subgraph deploy`。クエリ URL は `GraphqlUrl`。
+に渡す。`create` は初回だけ必要で、その後に `deploy` を実行する。クエリ URL は `GraphqlUrl`。
+
+```bash
+export GRAPH_NODE_ADMIN=http://<EIP>:8020/
+export GRAPH_NODE_IPFS=http://<EIP>:5001
+pnpm --filter subgraph run create # 初回のみ
+pnpm --filter subgraph run deploy
+```
+
+`allowedAdminCidr` を省略すると、Security Groupは8020 / 5001 / 8030を開放しない。
+接続元IPが変わった場合も、現在のIPを指定してCDK deployを再実行すること。
 
 ## day1 probe（T021）
 

@@ -25,7 +25,6 @@ import {
   outDirFor,
   REPO_ROOT,
   readDeployment,
-  writeJson,
   writeSecretJson,
 } from "./lib/deployment.js";
 import { hasPinata, storeObject } from "./lib/storage.js";
@@ -40,8 +39,10 @@ import { hasPinata, storeObject } from "./lib/storage.js";
  * operator signer, encrypts the two demo datasets client-side (AES-256-GCM), splits K into
  * share_G / share_U, stores ciphertext + preview + manifest (Pinata when PINATA_JWT is set,
  * file:// otherwise - refused on testnet without --allow-local-storage), and mints asset A
- * (SURVIVE_TRANSFER, 5 HBAR, 5 uses) and asset B (INVALIDATE_ON_TRANSFER, 5 HBAR, 3 uses)
- * to ownerA. The manifest is bound to the tokenId taken from the mint receipt and attached
+ * (SURVIVE_TRANSFER, 5 uses) and asset B (INVALIDATE_ON_TRANSFER, 3 uses) to ownerA.
+ * `SEED_PROFILE=lean` lowers the purchase price and demo-account funding for faucet-sized
+ * testnet balances; the default profile keeps the original repeated-E2E budget.
+ * The manifest is bound to the tokenId taken from the mint receipt and attached
  * with setPolicy afterwards, so no tokenId race with concurrent mints is possible.
  *
  * Secrets are persisted BEFORE the step that depends on them (keys before funding, shares
@@ -55,13 +56,44 @@ const { ethers, networkName } = await network.getOrCreate();
 const ROLES = ["creator", "ownerA", "ownerB", "buyer", "agent"] as const;
 type Role = (typeof ROLES)[number];
 
-const FUNDING_HBAR: Record<Role, bigint> = {
-  creator: 20n,
-  ownerA: 20n,
-  ownerB: 20n,
-  buyer: 60n, // gas + several 5 HBAR purchases
-  agent: 60n,
+type SeedProfile = "full" | "lean";
+
+type SeedConfig = {
+  fundingHbar: Record<Role, bigint>;
+  priceWeibar: bigint;
 };
+
+const FULL_SEED_CONFIG: SeedConfig = {
+  fundingHbar: {
+    creator: 20n,
+    ownerA: 20n,
+    ownerB: 20n,
+    buyer: 60n,
+    agent: 60n,
+  },
+  priceWeibar: 5n * WEIBAR_PER_HBAR,
+};
+
+const LEAN_SEED_CONFIG: SeedConfig = {
+  fundingHbar: {
+    creator: 7n, // two mints + two policy updates
+    ownerA: 1n, // transfer gas
+    ownerB: 1n, // transfer-back / follow-up gas
+    buyer: 1n, // up to ten 0.1 HBAR purchases before fees
+    agent: 1n, // MCP purchase + transaction fees
+  },
+  priceWeibar: WEIBAR_PER_HBAR / 10n, // 0.1 HBAR
+};
+
+function readSeedProfile(): SeedProfile {
+  const value = process.env.SEED_PROFILE ?? "full";
+  if (value === "full" || value === "lean") return value;
+  throw new Error(`SEED_PROFILE must be "full" or "lean", received ${value}`);
+}
+
+const SEED_PROFILE = readSeedProfile();
+const SEED_CONFIG =
+  SEED_PROFILE === "lean" ? LEAN_SEED_CONFIG : FULL_SEED_CONFIG;
 
 type AssetSpec = {
   key: "A" | "B";
@@ -91,7 +123,7 @@ const ASSETS: AssetSpec[] = [
   },
 ];
 
-const PRICE_WEIBAR = 5n * WEIBAR_PER_HBAR;
+const PRICE_WEIBAR = SEED_CONFIG.priceWeibar;
 const OWNER_CONDITION =
   "RightsNFT.ownerOf(tokenId) == :caller && RightsNFT.accessEpoch(tokenId) == :accessEpochAtGrant";
 const LICENSE_CONDITION =
@@ -114,7 +146,7 @@ async function main(): Promise<void> {
   const isTestnet = BigInt(chainId) === HEDERA_TESTNET_CHAIN_ID;
   const outDir = outDirFor(chainId);
   console.log(
-    `network=${networkName} chainId=${chainId} operator=${operator.address} out=${outDir}`,
+    `network=${networkName} chainId=${chainId} operator=${operator.address} profile=${SEED_PROFILE} out=${outDir}`,
   );
   if (isTestnet && !hasPinata() && !hasFlag("--allow-local-storage")) {
     throw new Error(
@@ -189,13 +221,28 @@ async function main(): Promise<void> {
   );
   console.log(`wrote ${accountsPath} (0600, funded test keys - gitignored)`);
 
+  const totalFundingHbar = Object.values(SEED_CONFIG.fundingHbar).reduce(
+    (total, amount) => total + amount,
+    0n,
+  );
+  const operatorBalance = await ethers.provider.getBalance(operator.address);
+  if (operatorBalance < totalFundingHbar * WEIBAR_PER_HBAR) {
+    throw new Error(
+      `operator has ${ethers.formatEther(operatorBalance)} HBAR, but profile=${SEED_PROFILE} distributes ${totalFundingHbar} HBAR before transaction fees`,
+    );
+  }
+  console.log(
+    `profile=${SEED_PROFILE} distributes ${totalFundingHbar} HBAR; paid access price=${ethers.formatEther(PRICE_WEIBAR)} HBAR`,
+  );
+
   for (const role of ROLES) {
     const to = accounts[role].address;
-    const value = FUNDING_HBAR[role] * WEIBAR_PER_HBAR;
+    const fundingHbar = SEED_CONFIG.fundingHbar[role];
+    const value = fundingHbar * WEIBAR_PER_HBAR;
     const tx = await operator.sendTransaction({ to, value });
     await tx.wait();
     console.log(
-      `funded ${role.padEnd(8)} ${to} with ${FUNDING_HBAR[role]} HBAR (${tx.hash})`,
+      `funded ${role.padEnd(8)} ${to} with ${fundingHbar} HBAR (${tx.hash})`,
     );
   }
 
