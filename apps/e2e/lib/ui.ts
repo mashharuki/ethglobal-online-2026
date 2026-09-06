@@ -119,25 +119,66 @@ export type OwnedSession = {
   tokenId: bigint;
 };
 
-const RESTORE_TIMEOUT_MS = 180_000;
+const RESTORE_TIMEOUT_MS = 240_000;
+/** how long teardown waits for a scenario body that outlived its test before restoring */
+const SCENARIO_DRAIN_MS = 60_000;
 
 /** One per `withOwnedAsset` call, registered before any await so teardown always sees it. */
-type OwnedScope = { cancelled: boolean; restore?: () => Promise<void> };
+type OwnedScope = {
+  cancelled: boolean;
+  /** the running scenario body, so teardown can wait for it to settle before restoring */
+  scenario?: Promise<unknown>;
+  restore?: () => Promise<void>;
+};
 const pendingScopes: OwnedScope[] = [];
+
+function settledOrTimeout(work: Promise<unknown>, ms: number): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ms);
+  });
+  return Promise.race([
+    work.then(
+      () => undefined,
+      () => undefined,
+    ),
+    timeout,
+  ]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
 
 /**
  * Call once at the top of every spec that uses `withOwnedAsset`: the restore runs in an
  * afterEach hook with its own timeout budget, so it still executes when the test body itself
  * timed out (a `finally` inside the body would be cut off with it). Every scope is cancelled
- * first, so a body that is still awaiting setup when teardown runs never submits the hand-over.
+ * first (a body still in setup never submits the hand-over), a body already inside the
+ * scenario is given SCENARIO_DRAIN_MS to settle, and every restore is attempted even when an
+ * earlier one failed - the failures are reported together.
  */
 export function restoreAfterEach(): void {
   test.afterEach(async () => {
     test.setTimeout(RESTORE_TIMEOUT_MS);
     const scopes = pendingScopes.splice(0);
     for (const scope of scopes) scope.cancelled = true;
-    for (const scope of scopes)
-      if (scope.restore !== undefined) await scope.restore();
+    const failures: Error[] = [];
+    for (const scope of scopes) {
+      if (scope.scenario !== undefined)
+        await settledOrTimeout(scope.scenario, SCENARIO_DRAIN_MS);
+      try {
+        if (scope.restore !== undefined) await scope.restore();
+      } catch (error) {
+        failures.push(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        `fixture restore failed: ${failures.map((e) => e.message).join(" | ")}`,
+      );
+    }
   });
 }
 
@@ -145,8 +186,9 @@ export function restoreAfterEach(): void {
  * Login, hand an asset the seeded owner-A holds to the browser wallet, run `fn` with the
  * session, and put the token back with owner-A whoever holds it afterwards (browser wallet
  * via the viewer form, a seeded account via a direct transfer). The scope is registered
- * before the first await, cancellation is checked before the hand-over is submitted, and the
- * restore waits for an in-flight hand-over before reading the owner back.
+ * before the first await, cancellation is checked before the hand-over is submitted, the
+ * scenario promise is handed to teardown so it waits for in-flight work, and the restore
+ * waits for an in-flight hand-over before reading the owner back.
  */
 export async function withOwnedAsset(
   page: Page,
@@ -191,7 +233,8 @@ export async function withOwnedAsset(
   };
   await handOver;
   if (scope.cancelled) tornDown();
-  await fn({ env, deployment, wallet, asset, tokenId });
+  scope.scenario = fn({ env, deployment, wallet, asset, tokenId });
+  await scope.scenario;
 }
 
 export async function unlockAsOwner(page: Page): Promise<void> {
