@@ -34,7 +34,9 @@ pnpm --filter subgraph deploy      # graph deploy（GRAPH_NODE_ADMIN / GRAPH_NOD
 ```
 
 デプロイ先 Graph Node の URL は `apps/cdk`（`GraphNodeStack`）の出力から取り、`GRAPH_NODE_ADMIN=http://<EIP>:8020/`
-`GRAPH_NODE_IPFS=http://<EIP>:5001` を渡す。クエリ URL は `http://<EIP>:8000/subgraphs/name/truecollective/rights-graph`。
+`GRAPH_NODE_IPFS=http://<EIP>:5001` を渡す（いずれも `allowedAdminCidr` で CIDR 制限）。クエリ URL は Security Group が
+graph-node 自体の `8000` を公開しないため直接ではなく Caddy 経由で、`GraphqlUrl` 出力の
+`https://<EIP>.sslip.io/subgraphs/name/truecollective/rights-graph`（#45）。
 
 ## 注意
 

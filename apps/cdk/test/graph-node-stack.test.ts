@@ -184,6 +184,44 @@ describe("GraphNodeStack compute", () => {
     expect(script).toContain("testnet:${HEDERA_RPC_URL}");
   });
 
+  it("should splice a real CloudFormation Ref to the EIP directly into user-data's GRAPH_NODE_HOSTNAME value, not a literal or a runtime self-query (#45)", () => {
+    const t = synth();
+    const eipLogicalIds = Object.keys(t.findResources("AWS::EC2::EIP"));
+    expect(eipLogicalIds).toHaveLength(1);
+
+    // Walk the actual Fn::Join array instead of substring-searching the serialized template
+    // (round 2 review feedback): proves the Ref sits *at* the hostname position, immediately
+    // between the printf's opening quote and the ".sslip.io" suffix - not merely present
+    // somewhere else in the template alongside an unrelated ".sslip.io" string.
+    const instances = t.findResources("AWS::EC2::Instance");
+    const instanceKey = Object.keys(instances)[0] as string;
+    type Piece = string | { Ref: string };
+    const userData = (
+      instances[instanceKey] as { Properties: { UserData: unknown } }
+    ).Properties.UserData as {
+      "Fn::Base64": { "Fn::Join": [string, Piece[]] };
+    };
+    const pieces = userData["Fn::Base64"]["Fn::Join"][1];
+    const refIndex = pieces.findIndex(
+      (p): p is { Ref: string } =>
+        typeof p === "object" && p !== null && "Ref" in p,
+    );
+    expect(refIndex).toBeGreaterThan(0);
+    expect(pieces[refIndex]).toEqual({ Ref: eipLogicalIds[0] });
+    const before = pieces[refIndex - 1] as string;
+    const after = pieces[refIndex + 1] as string;
+    // the piece just before the Ref is the printf command up through the second argument's
+    // opening quote; the piece just after is the ".sslip.io" suffix and the rest of the script
+    expect(before).toContain("GRAPH_NODE_HOSTNAME=%s");
+    expect(before.endsWith("https://testnet.hashio.io/api' '")).toBe(true);
+    expect(after.startsWith(".sslip.io'")).toBe(true);
+
+    const script = userDataScript(t);
+    expect(script).not.toContain("16-76-149-54");
+    expect(script).not.toContain("169.254.169.254");
+    expect(script).not.toContain("public-ipv4");
+  });
+
   it("should tag every resource as hackathon-only infrastructure", () => {
     const t = synth();
     t.hasResourceProperties("AWS::EC2::Instance", {

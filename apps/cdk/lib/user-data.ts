@@ -5,6 +5,14 @@ export interface UserDataOptions {
   readonly composeYaml: string;
   /** Hedera JSON-RPC relay used as the graph-node `ethereum` provider (public URL, no credentials). */
   readonly hederaRpcUrl: string;
+  /**
+   * Public hostname Caddy terminates TLS for (`<elastic-ip>.sslip.io`). Passed in as a CDK
+   * token (an `Fn::Ref`/`Fn::Sub` placeholder, not a literal string) so CloudFormation bakes
+   * the actual allocated Elastic IP into user-data at deploy time - the instance never needs to
+   * rediscover it at boot via its own IMDS, which could otherwise race the EIP association and
+   * capture a temporary auto-assigned public IP instead (#45).
+   */
+  readonly graphNodeHostname: string;
 }
 
 const COMPOSE_DIR = "/opt/graph-node";
@@ -39,12 +47,25 @@ function validateRelayUrl(value: string): string {
 }
 
 /**
+ * graphNodeHostname is normally an opaque CDK token (never contains shell metacharacters), but
+ * it is embedded inside a single-quoted printf argument, so reject the one character that could
+ * break out of that quoting regardless of where the value came from.
+ */
+function validateHostname(value: string): string {
+  if (value.includes("'")) {
+    throw new Error("graphNodeHostname must not contain a single quote");
+  }
+  return value;
+}
+
+/**
  * cloud-init script for the Graph Node host: install Docker, write the compose file and
  * its .env, start the stack, and fail the boot (non-zero exit) if graph-node never answers.
  * No `set -x`: the script must not echo configuration values into the cloud-init log.
  */
 export function buildUserData(opts: UserDataOptions): ec2.UserData {
   const relay = validateRelayUrl(opts.hederaRpcUrl);
+  const hostname = validateHostname(opts.graphNodeHostname);
   if (opts.composeYaml.includes(HEREDOC_EOF)) {
     throw new Error("compose content must not contain the heredoc terminator");
   }
@@ -71,7 +92,7 @@ export function buildUserData(opts: UserDataOptions): ec2.UserData {
     `cat > ${COMPOSE_DIR}/docker-compose.yml <<'${HEREDOC_EOF}'`,
     opts.composeYaml.trimEnd(),
     HEREDOC_EOF,
-    `umask 077 && printf 'HEDERA_RPC_URL=%s\\n' '${relay}' > ${COMPOSE_DIR}/.env`,
+    `umask 077 && printf 'HEDERA_RPC_URL=%s\\nGRAPH_NODE_HOSTNAME=%s\\n' '${relay}' '${hostname}' > ${COMPOSE_DIR}/.env`,
     `chmod 600 ${COMPOSE_DIR}/.env`,
     `cd ${COMPOSE_DIR} && docker compose up -d`,
     'echo "[graph-node] waiting for graph-node index status endpoint"',

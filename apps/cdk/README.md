@@ -10,10 +10,10 @@ Hedera は Subgraph Studio / Hosted Service 非対応のため自前ホストす
 ## 構成
 
 - デフォルト VPC のパブリックサブネットに `t3.medium`（context で変更可）/ Ubuntu 24.04 / gp3 30GB（暗号化）
-- Security Group inbound: `8000/tcp`（GraphQL、公開）のみ既定。`allowedAdminCidr` 指定時のみ `8020`（graph deploy）/ `5001`（IPFS）/ `8030` をその CIDR に、`allowedSshCidr` 指定時のみ `22` をその CIDR に開放
+- Security Group inbound: `80/tcp` + `443/tcp`（Caddy 経由の GraphQL、公開）のみ既定。graph-node 自体の `8000` は公開しない。`allowedAdminCidr` 指定時のみ `8020`（graph deploy）/ `5001`（IPFS）/ `8030` をその CIDR に、`allowedSshCidr` 指定時のみ `22` をその CIDR に開放
 - IAM Role: `AmazonSSMManagedInstanceCore` のみ（SSH 鍵不要・SSM Session Manager で接続）、IMDSv2 必須
-- Elastic IP を関連付け（`cdk destroy` で解放）
-- user-data は compose ファイルを heredoc で埋め込み、`.env`（`HEDERA_RPC_URL`）を 0600 で書いて `docker compose up -d`。git clone はしない
+- Elastic IP は EC2 インスタンス作成前に確保し、そのまま user-data（CDK トークン経由）へ埋め込んでから関連付ける（`cdk destroy` で解放）。Caddy が TLS 終端する `<EIP>.sslip.io` ホスト名は、この CloudFormation 参照で deploy 時に確定した値をそのまま焼き込む（インスタンス自身が起動時に IMDS で自己解決すると、EIP 関連付け完了前の一時的な public IP を掴む競合状態があり得るため採用しない・#45）
+- user-data は compose ファイルを heredoc で埋め込み、`.env`（`HEDERA_RPC_URL` / `GRAPH_NODE_HOSTNAME`）を 0600 で書いて `docker compose up -d`。git clone はしない
 
 ## パラメータ（context、すべて既定値あり）
 

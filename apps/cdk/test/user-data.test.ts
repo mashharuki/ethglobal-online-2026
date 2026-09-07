@@ -5,10 +5,13 @@ import { buildUserData } from "../lib/user-data.js";
 
 const compose = readFileSync(DEFAULT_COMPOSE_PATH, "utf8");
 
+const GRAPH_NODE_HOSTNAME = "54.123.45.67.sslip.io";
+
 describe("buildUserData", () => {
   const script = buildUserData({
     composeYaml: compose,
     hederaRpcUrl: "https://testnet.hashio.io/api",
+    graphNodeHostname: GRAPH_NODE_HOSTNAME,
   }).render();
 
   it("should start with a bash shebang and fail fast", () => {
@@ -27,22 +30,48 @@ describe("buildUserData", () => {
     expect(script).toContain("cd /opt/graph-node && docker compose up -d");
   });
 
-  it("should write the Hedera relay URL to an owner-only .env consumed by compose", () => {
+  it("should write the Hedera relay URL and the Graph Node hostname to an owner-only .env consumed by compose", () => {
     expect(script).toContain(
-      "umask 077 && printf 'HEDERA_RPC_URL=%s\\n' 'https://testnet.hashio.io/api' > /opt/graph-node/.env",
+      `umask 077 && printf 'HEDERA_RPC_URL=%s\\nGRAPH_NODE_HOSTNAME=%s\\n' 'https://testnet.hashio.io/api' '${GRAPH_NODE_HOSTNAME}' > /opt/graph-node/.env`,
     );
     expect(script).toContain("chmod 600 /opt/graph-node/.env");
     expect(compose).toContain('ethereum: "testnet:${HEDERA_RPC_URL}"');
   });
 
+  it("should bake graphNodeHostname in directly rather than rediscovering it via IMDS at boot (#45)", () => {
+    // The value must come from the caller (a CDK token resolved by CloudFormation at deploy
+    // time, per graph-node-stack.ts) - not from a runtime self-query, which could otherwise
+    // race the EIP association and capture a temporary auto-assigned public IP instead.
+    expect(script).not.toContain("169.254.169.254");
+    expect(script).not.toContain("public-ipv4");
+    expect(script).not.toContain("16-76-149-54");
+    expect(compose).toContain("https://${GRAPH_NODE_HOSTNAME}");
+    expect(compose).not.toContain("16-76-149-54");
+  });
+
+  it("should reject a graphNodeHostname that could break out of the printf's single-quoting", () => {
+    expect(() =>
+      buildUserData({
+        composeYaml: compose,
+        hederaRpcUrl: "https://testnet.hashio.io/api",
+        graphNodeHostname: "evil'; rm -rf / #",
+      }),
+    ).toThrow(/single quote/);
+  });
+
   it("should reject a non-https relay URL and a compose file containing the heredoc terminator", () => {
     expect(() =>
-      buildUserData({ composeYaml: compose, hederaRpcUrl: "http://insecure" }),
+      buildUserData({
+        composeYaml: compose,
+        hederaRpcUrl: "http://insecure",
+        graphNodeHostname: GRAPH_NODE_HOSTNAME,
+      }),
     ).toThrow(/https/);
     expect(() =>
       buildUserData({
         composeYaml: "x: __COMPOSE_EOF__",
         hederaRpcUrl: "https://ok",
+        graphNodeHostname: GRAPH_NODE_HOSTNAME,
       }),
     ).toThrow(/terminator/);
   });
@@ -59,7 +88,12 @@ describe("buildUserData", () => {
     ];
     for (const url of attacks) {
       expect(
-        () => buildUserData({ composeYaml: compose, hederaRpcUrl: url }),
+        () =>
+          buildUserData({
+            composeYaml: compose,
+            hederaRpcUrl: url,
+            graphNodeHostname: GRAPH_NODE_HOSTNAME,
+          }),
         url,
       ).toThrow();
     }
@@ -67,6 +101,7 @@ describe("buildUserData", () => {
       buildUserData({
         composeYaml: compose,
         hederaRpcUrl: "https://testnet.hashio.io/api?x=1&y=2",
+        graphNodeHostname: GRAPH_NODE_HOSTNAME,
       }),
     ).not.toThrow();
   });
