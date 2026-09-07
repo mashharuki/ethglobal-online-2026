@@ -107,6 +107,7 @@ jobs:
       hedera: ${{ steps.probe.outputs.hedera }}
       gateway: ${{ steps.probe.outputs.gateway }}
       agent: ${{ steps.probe.outputs.agent }}
+      indexer: ${{ steps.probe.outputs.indexer }}
     steps:
       - id: probe
         env:
@@ -114,12 +115,16 @@ jobs:
           HEDERA_OPERATOR_KEY: ${{ secrets.HEDERA_OPERATOR_KEY }}
           GATEWAY_URL: ${{ secrets.GATEWAY_URL }}
           WEB_URL: ${{ secrets.WEB_URL }}
+          SUBGRAPH_URL: ${{ secrets.SUBGRAPH_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           {
             echo "hedera=$([ -n "$HEDERA_RPC_URL" ] && [ -n "$HEDERA_OPERATOR_KEY" ] && echo true || echo false)"
             echo "gateway=$([ -n "$GATEWAY_URL" ] && [ -n "$WEB_URL" ] && echo true || echo false)"
             echo "agent=$([ -n "$GATEWAY_URL" ] && [ -n "$ANTHROPIC_API_KEY" ] && echo true || echo false)"
+            # not part of the `gateway` output's own gate (Newman + the other Playwright specs don't
+            # need it) - surfaced separately so the readiness-gate job below can report it (#50)
+            echo "indexer=$([ -n "$SUBGRAPH_URL" ] && echo true || echo false)"
           } >> "$GITHUB_OUTPUT"
 
   hedera-testnet:
@@ -282,16 +287,17 @@ jobs:
     # whenever any live secret is missing (the submission branch must not go green without them)
     name: live verification BLOCKED (secrets not configured)
     needs: [live-config]
-    if: needs.live-config.outputs.hedera != 'true' || needs.live-config.outputs.gateway != 'true' || needs.live-config.outputs.agent != 'true'
+    if: needs.live-config.outputs.hedera != 'true' || needs.live-config.outputs.gateway != 'true' || needs.live-config.outputs.agent != 'true' || needs.live-config.outputs.indexer != 'true'
     runs-on: ubuntu-latest
     env:
       LIVE_REQUIRED: ${{ vars.LIVE_REQUIRED }}
       HEDERA_OK: ${{ needs.live-config.outputs.hedera }}
       GATEWAY_OK: ${{ needs.live-config.outputs.gateway }}
       AGENT_OK: ${{ needs.live-config.outputs.agent }}
+      INDEXER_OK: ${{ needs.live-config.outputs.indexer }}
     steps:
       - run: |
-          msg="Live jobs skipped - hedera=$HEDERA_OK gateway=$GATEWAY_OK agent=$AGENT_OK. A green CI without these does NOT verify Hedera settlement, the deployed gateway, or the autonomous agent."
+          msg="Live jobs skipped - hedera=$HEDERA_OK gateway=$GATEWAY_OK agent=$AGENT_OK indexer=$INDEXER_OK. A green CI without these does NOT verify Hedera settlement, the deployed gateway, the autonomous agent, or subgraph indexing (indexer=false means onchain-indexer.e2e.ts skipped/failed under live-e2e too)."
           if [ "$LIVE_REQUIRED" = "true" ]; then
             echo "::error::$msg (LIVE_REQUIRED=true, so this is a failure)"
             exit 1

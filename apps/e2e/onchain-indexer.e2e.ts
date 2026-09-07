@@ -17,7 +17,8 @@ import { loadTestAccounts } from "./wallets";
 /**
  * Script-level end-to-end (tasks.md T058, Phase 6 gate): real transfer / settle / consume on
  * Hedera Testnet, then the self-hosted Graph Node must have indexed every event. Needs
- * GATEWAY_URL, SUBGRAPH_URL, RIGHTS_*_ADDRESS and the seeded accounts; skipped otherwise.
+ * GATEWAY_URL, SUBGRAPH_URL, RIGHTS_*_ADDRESS and the seeded accounts; skipped without
+ * SUBGRAPH_URL, or failed instead if E2E_REQUIRED=1 (#50).
  */
 type Graph<T> = { data?: T; errors?: Array<{ message: string }> };
 
@@ -87,10 +88,16 @@ const TOKEN_QUERY = `query T($id: ID!) { rightsToken(id: $id) {
 
 test("transfer, settle and consume are indexed with the right owner / epochs / allocations", async () => {
   test.setTimeout(300_000);
-  test.skip(
-    !process.env.SUBGRAPH_URL,
-    "SUBGRAPH_URL not set: indexer E2E is BLOCKED",
-  );
+  if (!process.env.SUBGRAPH_URL) {
+    // Mirrors playwright.config.ts's WEB_URL/GATEWAY_URL gate (#50): a bare test.skip() here
+    // would stay silent even under E2E_REQUIRED=1, so a live-e2e run missing only SUBGRAPH_URL
+    // could go fully green without indexer coverage ever running.
+    const message = "SUBGRAPH_URL not set: indexer E2E is BLOCKED.";
+    if (process.env.E2E_REQUIRED === "1") {
+      throw new Error(`${message} E2E_REQUIRED=1 so this is a failure.`);
+    }
+    test.skip(true, message);
+  }
   const env = envFromProcess();
   const deployment = deploymentFromProcess();
   const client = publicClient();
