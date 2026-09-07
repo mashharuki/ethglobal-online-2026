@@ -3,19 +3,29 @@ import { NavLink, Outlet } from "react-router";
 import { useEmbeddedWallet } from "./chain/hooks";
 import { short } from "./graph/queries";
 
-/** Shell (tasks.md T104): nav + Privy login; every route renders inside. */
+/**
+ * Shell (tasks.md T104): nav + Privy login; every route renders inside. Redesigned 2026-09
+ * ("premium marketplace" direction, apps/web/DESIGN.md). Structural constraints from
+ * apps/e2e/lib/ui.ts's login() helper: the wallet address must stay a `<code title="0x...">`
+ * inside `<header>`, and the "Log in with Privy" button's accessible name is matched verbatim.
+ */
 export default function App() {
   const { ready, authenticated, login, logout } = usePrivy();
   const wallet = useEmbeddedWallet();
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1>TrueCollective</h1>
-          <p className="text-sm">
-            transfer-coupled rights runtime · Hedera Testnet
-          </p>
-        </div>
+    <div className="mx-auto max-w-6xl px-4 py-6 space-y-4">
+      <header className="topbar">
+        <a href="/" className="brand" aria-label="TrueCollective home">
+          <span className="brand-mark" aria-hidden="true">
+            T
+          </span>
+          <div>
+            <div className="brand-name">TrueCollective</div>
+            <div className="brand-tag">
+              transfer-coupled rights runtime · Hedera Testnet
+            </div>
+          </div>
+        </a>
         <nav className="nav flex gap-1 text-sm">
           <NavLink to="/market">Market</NavLink>
           <NavLink to="/creator">Creator</NavLink>

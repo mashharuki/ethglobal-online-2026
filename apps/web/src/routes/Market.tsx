@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { type AssetSummary, listAssets } from "../api/client";
 import { useGateway } from "../app/gateway";
@@ -8,9 +8,8 @@ import {
   usePublicClient,
   useSigners,
 } from "../chain/hooks";
+import AssetCard from "../components/AssetCard";
 import ErrorNote from "../components/ErrorNote";
-import PricePanel from "../components/PricePanel";
-import { short } from "../graph/queries";
 import { activateHollowAccount } from "../hedera/activateAccount";
 import { resolveHederaAccount } from "../hedera/resolveAccount";
 import { buyAccess } from "../x402/buy";
@@ -19,9 +18,27 @@ import {
   recoverWalletPublicKey,
 } from "../x402/privyHederaSigner";
 
+type PermissionFilter =
+  | "all"
+  | "commercialUse"
+  | "aiTraining"
+  | "derivativeGeneration";
+
+const PERMISSION_FILTERS: Array<{ key: PermissionFilter; label: string }> = [
+  { key: "all", label: "All assets" },
+  { key: "commercialUse", label: "Commercial use" },
+  { key: "aiTraining", label: "AI training" },
+  { key: "derivativeGeneration", label: "Derivatives" },
+];
+
+type SortMode = "featured" | "low" | "high";
+
 /**
  * Market (tasks.md T111): the Rights Graph listing, preview, "Access as owner" and the x402
- * purchase (native HBAR through the Privy embedded wallet).
+ * purchase (native HBAR through the Privy embedded wallet). Redesigned 2026-09 ("premium
+ * marketplace" direction, apps/web/DESIGN.md) - search/filter/sort are purely client-side over
+ * already-fetched assets; permission filters use the real Rights Manifest booleans, not invented
+ * categories, since AssetSummary has no free-text tagging.
  */
 export default function Market() {
   const { config, api } = useGateway();
@@ -36,6 +53,9 @@ export default function Market() {
   const [error, setError] = useState<unknown>();
   const [buying, setBuying] = useState<string | undefined>();
   const [note, setNote] = useState<string | undefined>();
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<PermissionFilter>("all");
+  const [sort, setSort] = useState<SortMode>("featured");
 
   useEffect(() => {
     listAssets(api).then(setAssets, setError);
@@ -125,62 +145,147 @@ export default function Market() {
     [api, config.mirrorNodeUrl, navigate, signers, wallet.address],
   );
 
+  const visible = useMemo(() => {
+    if (assets === undefined) return undefined;
+    const term = search.trim().toLowerCase();
+    const filtered = assets.filter((asset) => {
+      if (filter !== "all" && !asset.permissions[filter]) return false;
+      if (term === "") return true;
+      return (
+        asset.assetId.toLowerCase().includes(term) ||
+        asset.tokenId.includes(term) ||
+        (asset.owner ?? "").toLowerCase().includes(term)
+      );
+    });
+    if (sort === "featured") return filtered;
+    const sorted = [...filtered].sort((a, b) => {
+      const diff = BigInt(a.paidAccess.price) - BigInt(b.paidAccess.price);
+      const cmp = diff < 0n ? -1 : diff > 0n ? 1 : 0;
+      return sort === "low" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [assets, filter, search, sort]);
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2>Market</h2>
-        <span className="tag warn">listing indexed by the Rights Graph</span>
-      </div>
+      <section className="market-hero">
+        <div className="market-hero-copy">
+          <div className="market-eyebrow">A new kind of ownership</div>
+          <h1>
+            Extraordinary data.
+            <br />
+            <span>Yours to access.</span>
+          </h1>
+          <p>
+            Every listing is a RightsNFT: ownership and paid access are two
+            independent on-chain epochs, so a sale never silently revokes what a
+            buyer already paid for.
+          </p>
+          <div className="market-stats">
+            <div>
+              <div className="market-stat-num">{assets?.length ?? "–"}</div>
+              <div className="market-stat-label">assets listed</div>
+            </div>
+          </div>
+        </div>
+        <div className="market-feature">
+          <div className="market-feature-orb" />
+          <div className="market-feature-caption">
+            <small>OWNERSHIP, REIMAGINED</small>
+            <h3>Encrypted at source. Unlocked by you.</h3>
+            <p>Independent creators. Transparent, on-chain terms.</p>
+          </div>
+        </div>
+      </section>
+
       {error !== undefined && <ErrorNote error={error} />}
       {note !== undefined && <p className="text-sm">{note}</p>}
       {assets === undefined && error === undefined && <p>loading assets…</p>}
-      {assets?.length === 0 && <p className="card">no assets published yet</p>}
-      <div className="grid gap-4 md:grid-cols-2">
-        {assets?.map((asset) => (
-          <section key={asset.assetId} className="card space-y-3">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 title={asset.assetId}>asset {short(asset.assetId)}</h3>
-                <div className="text-sm">
-                  token #{asset.tokenId} · owner{" "}
-                  <code title={asset.owner}>{short(asset.owner ?? "?")}</code>
-                </div>
-              </div>
-              <a
-                className="btn"
-                href={`${config.gatewayUrl}/assets/${asset.assetId}/preview`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                preview
-              </a>
-            </div>
-            <PricePanel
-              asset={asset}
-              onBuy={() => void buy(asset)}
-              buying={buying === asset.assetId}
-              disabledReason={
-                wallet.address === undefined
-                  ? "connect a wallet first"
-                  : undefined
-              }
-            />
-            {wallet.address !== undefined &&
-              currentOwners[asset.assetId.toLowerCase()] ===
-                wallet.address.toLowerCase() && (
+
+      {assets !== undefined && assets.length > 0 && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2>The collection</h2>
+            <span className="tag warn">
+              listing indexed by the Rights Graph
+            </span>
+          </div>
+          <div className="market-toolbar">
+            <div className="market-filters">
+              {PERMISSION_FILTERS.map((f) => (
                 <button
+                  key={f.key}
                   type="button"
-                  className="btn"
-                  onClick={() =>
-                    navigate(`/viewer/${asset.assetId}?path=owner`)
-                  }
+                  className={`market-filter${filter === f.key ? " active" : ""}`}
+                  aria-pressed={filter === f.key}
+                  onClick={() => setFilter(f.key)}
                 >
-                  Access as owner (free)
+                  {f.label}
                 </button>
-              )}
-          </section>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                className="field market-search"
+                type="search"
+                placeholder="Search the collection"
+                aria-label="Search the collection"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <select
+                className="field"
+                aria-label="Sort assets"
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortMode)}
+              >
+                <option value="featured">Featured first</option>
+                <option value="low">Price: low to high</option>
+                <option value="high">Price: high to low</option>
+              </select>
+            </div>
+          </div>
+        </>
+      )}
+
+      {assets?.length === 0 && <p className="card">no assets published yet</p>}
+      {assets !== undefined && assets.length > 0 && visible?.length === 0 && (
+        <p className="card">no assets match this search/filter</p>
+      )}
+
+      <div className="asset-grid">
+        {visible?.map((asset, index) => (
+          <AssetCard
+            key={asset.assetId}
+            asset={asset}
+            index={index}
+            previewHref={`${config.gatewayUrl}/assets/${asset.assetId}/preview`}
+            onBuy={() => void buy(asset)}
+            buying={buying === asset.assetId}
+            buyDisabledReason={
+              wallet.address === undefined
+                ? "connect a wallet first"
+                : undefined
+            }
+            onAccessAsOwner={() =>
+              navigate(`/viewer/${asset.assetId}?path=owner`)
+            }
+            isOwner={
+              wallet.address !== undefined &&
+              currentOwners[asset.assetId.toLowerCase()] ===
+                wallet.address.toLowerCase()
+            }
+          />
         ))}
       </div>
+
+      {assets !== undefined && assets.length > 0 && (
+        <div className="market-trust">
+          <span>Encrypted in your browser</span>
+          <span>On-chain access receipts</span>
+          <span>Ownership and access, independent</span>
+        </div>
+      )}
     </div>
   );
 }
