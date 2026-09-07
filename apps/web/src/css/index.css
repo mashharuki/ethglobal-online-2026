@@ -1,41 +1,86 @@
 @import "tailwindcss";
 
+/*
+ * "Premium marketplace" direction (design review 2026-09, apps/web/DESIGN.md): dark-first,
+ * violet accent gradient, elevated cards with real shadows instead of flat 1px borders. Light
+ * mode keeps the same structure with a lighter, still-saturated palette rather than a plain
+ * inversion, since this app is dark-first by intent (demo recordings run dark).
+ */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --ok: #15803d;
-  --warn: #b45309;
-  --deny: #b91c1c;
+  --text: #a6a1b4;
+  --text-h: #f7f6fb;
+  --text-dim: #6b6377;
+  --bg: #101014;
+  --bg-2: #17161c;
+  --border: #ffffff1f;
+  --code-bg: #1a191f;
+  --accent: #bd9aff;
+  --accent-strong: #b680ff;
+  --accent-bg: rgba(189, 154, 255, 0.14);
+  --ok: #6bcf9a;
+  --warn: #e0b45a;
+  --deny: #e57a7a;
+  --shadow: 0 9px 24px rgba(0, 0, 0, 0.28);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.4);
 
-  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --sans: Inter, system-ui, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
 
   font: 16px / 150% var(--sans);
-  color-scheme: light dark;
+  color-scheme: dark light;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
 }
 
-@media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: light) {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
+    --text: #5c5567;
+    --text-h: #171321;
+    --text-dim: #948d9e;
+    --bg: #faf9fc;
+    --bg-2: #f1eef7;
+    --border: #e4dff0;
+    --code-bg: #ede9f6;
+    --accent: #8b3bdb;
+    --accent-strong: #7c2fd0;
+    --accent-bg: rgba(139, 59, 219, 0.1);
+    --ok: #1a8f5c;
+    --warn: #ad7420;
+    --deny: #c23f3f;
+    --shadow: 0 9px 24px rgba(23, 19, 33, 0.08);
+    --shadow-lg: 0 24px 60px rgba(23, 19, 33, 0.12);
+  }
+}
+
+/* !important below: must outrank later, more specific component rules (e.g. .asset-card's own
+   animation) regardless of source order, or this reduced-motion override stops working the
+   moment a new animated component is added further down the file. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: see comment above the media query */
+    animation-duration: 0.001ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: see comment above the media query */
+    animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: see comment above the media query */
+    transition-duration: 0.001ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: see comment above the media query */
+    scroll-behavior: auto !important;
   }
 }
 
 body {
   margin: 0;
+  background:
+    radial-gradient(
+      1100px 560px at 82% -12%,
+      rgba(189, 154, 255, 0.16),
+      transparent 60%
+    ),
+    var(--bg);
+  background-attachment: fixed;
 }
 
 h1,
@@ -47,14 +92,16 @@ h3 {
 }
 
 h1 {
-  font-size: 1.75rem;
-  letter-spacing: -0.02em;
+  font-size: 2rem;
+  letter-spacing: -0.03em;
+  font-weight: 700;
 }
 h2 {
-  font-size: 1.25rem;
+  font-size: 1.375rem;
+  letter-spacing: -0.02em;
 }
 h3 {
-  font-size: 1rem;
+  font-size: 1.0625rem;
 }
 
 code,
@@ -66,62 +113,99 @@ code,
 code {
   background: var(--code-bg);
   color: var(--text-h);
-  border-radius: 4px;
+  border-radius: 5px;
   padding: 1px 6px;
 }
 
 .card {
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 1rem;
-  background: var(--bg);
+  border-radius: 14px;
+  padding: 1.25rem;
+  background: linear-gradient(155deg, var(--bg-2), var(--bg));
+  box-shadow: var(--shadow);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .btn {
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  border-radius: 6px;
-  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--border);
+  color: var(--text-h);
+  border-radius: 9px;
+  padding: 0.55rem 1.1rem;
   font: inherit;
-  background: transparent;
+  font-weight: 600;
+  font-size: 0.875rem;
+  background: var(--bg-2);
   cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--accent-strong);
+  transform: translateY(-1px);
 }
 .btn.primary {
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--accent-strong), #7c2fd0);
   color: #fff;
+  border: none;
+  box-shadow: 0 6px 22px -6px rgba(182, 128, 255, 0.55);
+}
+.btn.primary:hover:not(:disabled) {
+  box-shadow: 0 10px 28px -6px rgba(182, 128, 255, 0.75);
 }
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
 }
 
 .field {
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
   font: inherit;
-  background: var(--bg);
+  background: var(--bg-2);
   color: var(--text-h);
   width: 100%;
+  transition: border-color 0.15s ease;
+}
+.field:focus-visible {
+  outline: none;
+  border-color: var(--accent-strong);
 }
 
 .nav a {
   color: var(--text);
   text-decoration: none;
-  padding: 0.25rem 0.5rem;
-  border-radius: 6px;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  font-weight: 500;
+  position: relative;
+  transition: color 0.15s ease;
+}
+.nav a:hover {
+  color: var(--text-h);
 }
 .nav a.active {
-  color: var(--accent);
+  color: var(--text-h);
   background: var(--accent-bg);
 }
 
 .tag {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
   border-radius: 999px;
-  padding: 0.1rem 0.6rem;
-  font-size: 0.8rem;
+  padding: 0.15rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
   border: 1px solid currentColor;
+  background: color-mix(in srgb, currentColor 10%, transparent);
 }
 .tag.ok {
   color: var(--ok);
@@ -138,4 +222,616 @@ code {
 
 .error {
   color: var(--deny);
+}
+
+/* ---- App shell: topbar / brand ---- */
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  text-decoration: none;
+  color: var(--text-h);
+}
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  color: #17130f;
+  background: linear-gradient(135deg, var(--accent-strong), #f3b8ed);
+  box-shadow: 0 0 20px -4px rgba(182, 128, 255, 0.6);
+}
+.brand-name {
+  font-weight: 700;
+  font-size: 1.0625rem;
+  letter-spacing: -0.01em;
+}
+.brand-tag {
+  font-size: 0.6875rem;
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+
+/* ---- Market: hero, feature panel, toolbar, asset cards ---- */
+
+.market-hero {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 2.5rem;
+  align-items: center;
+  padding: 0.5rem 0 1rem;
+}
+@media (max-width: 850px) {
+  .market-hero {
+    grid-template-columns: 1fr;
+  }
+}
+.market-eyebrow {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.market-eyebrow::before {
+  content: "";
+  width: 20px;
+  height: 1px;
+  background: var(--accent);
+}
+.market-hero h1 span {
+  background: linear-gradient(100deg, var(--accent-strong), #f3b8ed);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.market-hero-copy p {
+  max-width: 34ch;
+  font-size: 0.9375rem;
+  color: var(--text);
+  margin: 0.75rem 0 0;
+}
+.market-stats {
+  display: flex;
+  gap: 2rem;
+  margin-top: 1.5rem;
+}
+.market-stat-num {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-h);
+}
+.market-stat-label {
+  font-size: 0.6875rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 0.15rem;
+}
+
+.market-feature {
+  height: 260px;
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: radial-gradient(
+    ellipse at 52% 38%,
+    #894dba 0%,
+    #402257 45%,
+    #191122 85%
+  );
+  box-shadow: var(--shadow-lg);
+  isolation: isolate;
+}
+.market-feature-orb {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 45% 40%,
+    rgba(210, 160, 255, 0.55),
+    transparent 60%
+  );
+}
+@keyframes market-orb-drift {
+  0%,
+  100% {
+    transform: scale(1) translate(0, 0);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.08) translate(-2%, 2%);
+    opacity: 1;
+  }
+}
+.market-feature-caption {
+  z-index: 2;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 2rem 1.25rem 1.1rem;
+  background: linear-gradient(transparent, rgba(16, 11, 29, 0.86));
+}
+.market-feature-caption small {
+  font-size: 0.625rem;
+  letter-spacing: 0.12em;
+  color: #d5bfe4;
+}
+.market-feature-caption h3 {
+  color: #fff;
+  margin: 0.35rem 0 0.25rem;
+}
+.market-feature-caption p {
+  font-size: 0.75rem;
+  color: #bcabc9;
+  margin: 0;
+}
+
+.market-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 1.5rem 0 1.25rem;
+}
+.market-filters {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.market-filter {
+  border: 1px solid var(--border);
+  color: var(--text);
+  background: var(--bg-2);
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.market-filter:hover {
+  border-color: var(--accent-strong);
+}
+.market-filter.active {
+  background: var(--accent);
+  color: #1c102a;
+  border-color: var(--accent);
+}
+.market-search {
+  min-width: 200px;
+  max-width: 260px;
+}
+
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 1.25rem;
+}
+
+.asset-card {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+}
+.asset-card:hover,
+.asset-card:focus-within {
+  border-color: color-mix(in srgb, var(--accent-strong) 65%, transparent);
+  box-shadow: var(--shadow-lg);
+}
+
+.asset-art {
+  height: 148px;
+  position: relative;
+  overflow: hidden;
+}
+.asset-art svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.asset-art-badge {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  color: #fff;
+  background: rgba(16, 16, 20, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(8px);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.625rem;
+  letter-spacing: 0.02em;
+}
+
+.asset-card-body {
+  padding: 1.1rem 1.15rem 1.25rem;
+}
+.asset-card-title {
+  margin: 0.2rem 0 0.15rem;
+}
+.asset-card-meta {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-bottom: 0.75rem;
+}
+
+.price-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.price-amount {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-h);
+  font-variant-numeric: tabular-nums;
+}
+.price-terms {
+  text-align: right;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.market-trust {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border);
+  margin-top: 2.5rem;
+  padding: 1.25rem 0;
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+}
+
+/* ---- Market motion: orbital light, responsive artwork, stable action targets ---- */
+
+.market-feature::before,
+.market-feature::after,
+.market-feature-orb::before,
+.market-feature-orb::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+.market-feature::before {
+  inset: -30%;
+  opacity: 0.3;
+  background:
+    linear-gradient(90deg, #e0baff14 1px, transparent 1px),
+    linear-gradient(#e0baff14 1px, transparent 1px),
+    conic-gradient(
+      from 45deg at 50% 45%,
+      transparent,
+      #dbaaff70,
+      transparent 45%
+    );
+  background-size:
+    32px 32px,
+    32px 32px,
+    100% 100%;
+  transform: perspective(500px) rotateX(35deg) rotateZ(-15deg);
+}
+.market-feature-orb::before {
+  width: 112px;
+  height: 112px;
+  left: 55%;
+  top: 40%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle at 30% 25%,
+    #fff0fc,
+    #d6a4ff 16%,
+    #8650c4 42%,
+    #27123c 76%
+  );
+  box-shadow:
+    inset -12px -14px 24px #16072899,
+    inset 2px 2px 9px #fff7,
+    0 0 48px #bd9aff66;
+}
+.market-feature::after,
+.market-feature-orb::after {
+  width: 248px;
+  height: 248px;
+  left: 55%;
+  top: 40%;
+  border-radius: 50%;
+  border: 1px solid #edccff85;
+  border-left-color: #b276ff;
+  background: radial-gradient(
+    ellipse at 50% 1%,
+    #fff 0 3px,
+    #dab5ff80 4px,
+    transparent 8px
+  );
+  box-shadow:
+    0 0 12px #d6a4ff33,
+    inset 0 0 10px #d6a4ff22;
+  transform: translate(-50%, -50%) perspective(600px) rotateX(66deg)
+    rotateY(-18deg) rotateZ(0deg);
+}
+.market-feature::after {
+  width: 206px;
+  height: 206px;
+  opacity: 0.65;
+  transform: translate(-50%, -50%) perspective(600px) rotateX(58deg)
+    rotateY(38deg) rotateZ(120deg);
+}
+
+/* Reveal and tilt live on separate art layers; section and button geometry never animate. */
+.asset-art-motion {
+  position: absolute;
+  inset: 0;
+  animation-delay: inherit;
+}
+.asset-art {
+  animation-delay: inherit;
+}
+.asset-art::after,
+.asset-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.asset-card::after {
+  border-radius: inherit;
+  background: radial-gradient(
+    360px circle at var(--light-x, 50%) var(--light-y, 20%),
+    #d5b7ff12,
+    transparent 70%
+  );
+}
+.asset-art::after {
+  background: linear-gradient(
+    110deg,
+    transparent 25%,
+    #fff1 42%,
+    #fff5 50%,
+    #fff1 58%,
+    transparent 75%
+  );
+  transform: translateX(-110%) skewX(-12deg);
+}
+.asset-art-badge {
+  z-index: 1;
+}
+
+.nav a::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 25%;
+  right: 25%;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.nav a.active::after {
+  opacity: 1;
+  box-shadow: 0 3px 10px #bd9aff55;
+}
+.btn {
+  position: relative;
+}
+.btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, #ffffff50, transparent 75%);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.btn:active:not(:disabled)::after {
+  opacity: 1;
+}
+.btn:focus-visible,
+.market-filter:focus-visible,
+.nav a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .market-hero-copy > * {
+    animation: market-copy-in 0.8s ease-out both;
+  }
+  .market-hero-copy > h1 {
+    animation-delay: 80ms;
+  }
+  .market-hero-copy > p {
+    animation-delay: 160ms;
+  }
+  .market-hero-copy > .market-stats {
+    animation-delay: 240ms;
+  }
+  .market-hero h1 span {
+    background-image: linear-gradient(
+      100deg,
+      var(--accent-strong),
+      #f3b8ed 35%,
+      #ffedf9 50%,
+      var(--accent-strong) 70%
+    );
+    background-size: 250% 100%;
+    animation: market-type-sheen 7s ease-in-out infinite;
+  }
+  .market-feature-orb {
+    animation: market-orb-drift 9s ease-in-out infinite;
+  }
+  .market-feature-orb::after {
+    animation: market-orbit 16s linear infinite;
+  }
+  .market-feature::after {
+    animation: market-counter-orbit 22s linear infinite;
+  }
+  .asset-card[data-revealed] .asset-art-motion {
+    animation-name: asset-art-in;
+    animation-duration: 0.85s;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    /* backwards: without it, the element renders at its normal (post-animation) state during
+       the inherited animation-delay, then jumps to the "from" keyframe the instant the
+       animation starts - a visible pop right before the reveal (independent review finding). */
+    animation-fill-mode: backwards;
+  }
+  .nav a.active::after {
+    animation: market-nav-in 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .btn::after {
+    transform: scale(0.5);
+    transition:
+      opacity 0.35s ease,
+      transform 0.45s ease;
+  }
+  .btn:active:not(:disabled)::after {
+    transform: scale(1);
+    transition-duration: 0.08s;
+  }
+  .market-filter {
+    transition:
+      background 0.2s ease,
+      color 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  .market-filter.active {
+    box-shadow: 0 0 18px -6px var(--accent);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) and (hover: hover) and (
+    pointer: fine
+  ) {
+  .asset-art svg {
+    transform: perspective(700px) rotateX(var(--art-y, 0deg))
+      rotateY(var(--art-x, 0deg)) scale(1.035);
+    transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    /* Defensive: WebKit/Safari can z-fight or flicker on 3D-transformed elements without this
+       (independent review finding) - untested on real Safari, cheap and harmless either way. */
+    backface-visibility: hidden;
+  }
+  .asset-card[data-pointer] .asset-art svg {
+    transform: perspective(700px) rotateX(var(--art-y, 0deg))
+      rotateY(var(--art-x, 0deg)) scale(1.1);
+    transition-duration: 0.15s;
+  }
+  .asset-card[data-pointer]::after {
+    opacity: 1;
+  }
+  .asset-card:hover .asset-art::after {
+    animation: asset-foil-sweep 0.95s ease-out;
+  }
+  .asset-art-orbit {
+    transition: transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .asset-card:hover .asset-art-orbit-primary {
+    transform: translate(12px, -8px);
+  }
+  .asset-card:hover .asset-art-orbit-secondary {
+    transform: translate(-10px, 6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn:hover:not(:disabled) {
+    transform: none;
+  }
+}
+
+@keyframes market-copy-in {
+  from {
+    opacity: 0.45;
+    translate: 0 10px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes market-type-sheen {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+@keyframes market-orbit {
+  to {
+    transform: translate(-50%, -50%) perspective(600px) rotateX(66deg)
+      rotateY(-18deg) rotateZ(360deg);
+  }
+}
+@keyframes market-counter-orbit {
+  to {
+    transform: translate(-50%, -50%) perspective(600px) rotateX(58deg)
+      rotateY(38deg) rotateZ(-240deg);
+  }
+}
+@keyframes asset-art-in {
+  from {
+    opacity: 0.6;
+    transform: scale(1.12) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes asset-foil-sweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-110%) skewX(-12deg);
+  }
+  30% {
+    opacity: 0.65;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(110%) skewX(-12deg);
+  }
+}
+@keyframes market-nav-in {
+  from {
+    transform: scaleX(0.2);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
 }
