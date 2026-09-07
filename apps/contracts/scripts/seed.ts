@@ -197,6 +197,25 @@ async function main(): Promise<void> {
     deployment.rightsRegistry,
   );
 
+  // ---- fail fast, before touching the account file: this check only reads the operator's
+  // own balance (independent of the accounts generated below), so running it first can't
+  // weaken the "never orphan funds" guarantee that motivates writing the account file before
+  // funding starts - it just stops an under-funded run from overwriting a previous seed's
+  // working `.accounts.<chainId>.json` with brand-new, unfunded keys before failing (#48).
+  const totalFundingHbar = Object.values(SEED_CONFIG.fundingHbar).reduce(
+    (total, amount) => total + amount,
+    0n,
+  );
+  const operatorBalance = await ethers.provider.getBalance(operator.address);
+  if (operatorBalance < totalFundingHbar * WEIBAR_PER_HBAR) {
+    throw new Error(
+      `operator has ${ethers.formatEther(operatorBalance)} HBAR, but profile=${SEED_PROFILE} distributes ${totalFundingHbar} HBAR before transaction fees`,
+    );
+  }
+  console.log(
+    `profile=${SEED_PROFILE} distributes ${totalFundingHbar} HBAR; paid access price=${ethers.formatEther(PRICE_WEIBAR)} HBAR`,
+  );
+
   // ---- accounts: generate, PERSIST, then fund (a funding failure must never orphan funds)
   const accounts = Object.fromEntries(
     ROLES.map((role) => {
@@ -220,20 +239,6 @@ async function main(): Promise<void> {
     ),
   );
   console.log(`wrote ${accountsPath} (0600, funded test keys - gitignored)`);
-
-  const totalFundingHbar = Object.values(SEED_CONFIG.fundingHbar).reduce(
-    (total, amount) => total + amount,
-    0n,
-  );
-  const operatorBalance = await ethers.provider.getBalance(operator.address);
-  if (operatorBalance < totalFundingHbar * WEIBAR_PER_HBAR) {
-    throw new Error(
-      `operator has ${ethers.formatEther(operatorBalance)} HBAR, but profile=${SEED_PROFILE} distributes ${totalFundingHbar} HBAR before transaction fees`,
-    );
-  }
-  console.log(
-    `profile=${SEED_PROFILE} distributes ${totalFundingHbar} HBAR; paid access price=${ethers.formatEther(PRICE_WEIBAR)} HBAR`,
-  );
 
   for (const role of ROLES) {
     const to = accounts[role].address;
