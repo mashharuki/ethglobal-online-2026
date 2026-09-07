@@ -105,6 +105,40 @@ export function prepareSubgraphConfigWriteBack(
   return { path, content };
 }
 
+/**
+ * apps/gateway/wrangler.toml's RIGHTS_NFT_ADDRESS / RIGHTS_REGISTRY_ADDRESS [vars] - these
+ * override packages/shared's DEFAULT_DEPLOYMENT (T047 above) for the deployed Worker, so a
+ * redeploy that skips this write-back leaves the gateway pointed at stale contracts while
+ * web/subgraph move to the new ones (#49). Line-anchored regex, not a TOML parser: both keys
+ * are unique top-level [vars] entries, so a substring match can't collide with anything else.
+ */
+export function prepareGatewayWranglerWriteBack(
+  record: DeploymentRecord,
+): PreparedWrite {
+  const path = resolve(REPO_ROOT, "apps/gateway/wrangler.toml");
+  const source = readFileSync(path, "utf8");
+  const replacements: Array<[RegExp, string]> = [
+    [
+      /^RIGHTS_NFT_ADDRESS = ".*"$/m,
+      `RIGHTS_NFT_ADDRESS = "${record.rightsNFT}"`,
+    ],
+    [
+      /^RIGHTS_REGISTRY_ADDRESS = ".*"$/m,
+      `RIGHTS_REGISTRY_ADDRESS = "${record.rightsRegistry}"`,
+    ],
+  ];
+  let content = source;
+  for (const [pattern, replacement] of replacements) {
+    if (!pattern.test(content)) {
+      throw new Error(
+        `wrangler.toml write-back: pattern not found (${pattern}) - has the [vars] block moved or been renamed?`,
+      );
+    }
+    content = content.replace(pattern, replacement);
+  }
+  return { path, content };
+}
+
 /** Validates every destination first, then writes all of them (no half-applied write-back). */
 export function applyWrites(writes: PreparedWrite[]): string[] {
   for (const w of writes) {
