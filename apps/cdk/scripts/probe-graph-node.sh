@@ -41,10 +41,13 @@ IPFS_URL="$(jq -r '.GraphNodeStack.IpfsUrl' "$OUT_DIR/cdk-outputs.json")"
 QUERY_URL="$(jq -r '.GraphNodeStack.GraphqlUrl' "$OUT_DIR/cdk-outputs.json")"
 echo "EIP=$EIP"
 
-echo "[2/5] waiting for graph-node on http://$EIP:8000 (up to 15 min: image pull + boot)"
+# 8000 is graph-node's own port but the SG only exposes 80/443 externally (#45): probe through
+# Caddy's reverse proxy instead, at the same <EIP>.sslip.io hostname the stack derives at boot.
+HEALTH_URL="https://$EIP.sslip.io/"
+echo "[2/5] waiting for graph-node via Caddy at $HEALTH_URL (up to 15 min: image pull + boot + first TLS cert)"
 READY=false
 for _ in $(seq 1 90); do
-  if curl -fsS --max-time 5 "http://$EIP:8000/" >/dev/null 2>&1; then READY=true; break; fi
+  if curl -fsS --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then READY=true; break; fi
   sleep 10
 done
 if [ "$READY" != "true" ]; then

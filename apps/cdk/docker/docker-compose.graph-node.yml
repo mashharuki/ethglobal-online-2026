@@ -34,7 +34,7 @@ services:
       - caddy
       - reverse-proxy
       - --from
-      - https://16-76-149-54.sslip.io
+      - https://${GRAPH_NODE_HOSTNAME}
       - --to
       - http://graph-node:8000
     ports:

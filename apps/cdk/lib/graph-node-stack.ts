@@ -126,11 +126,23 @@ export class GraphNodeStack extends cdk.Stack {
       { os: ec2.OperatingSystemType.LINUX },
     );
 
+    // Allocated before the instance (and referenced, not just associated, by its user-data) so
+    // CloudFormation's own dependency graph forces the EIP to exist before the instance is
+    // created - the actual address is baked into user-data at deploy time via this Ref token,
+    // not rediscovered by the instance querying its own IMDS at boot (#45 review round 2): a
+    // self-query can observe the instance's temporary auto-assigned public IP if it runs before
+    // CfnEIPAssociation completes, silently baking in a hostname that later stops matching the EIP.
+    const eip = new ec2.CfnEIP(this, "GraphNodeEip", {
+      domain: "vpc",
+      tags: [{ key: "Name", value: "truecollective-graph-node" }],
+    });
+
     const composeYaml =
       props.composeYaml ?? readFileSync(DEFAULT_COMPOSE_PATH, "utf8");
     const userData = buildUserData({
       composeYaml,
       hederaRpcUrl: props.hederaRpcUrl,
+      graphNodeHostname: `${eip.ref}.sslip.io`,
     });
 
     this.instance = new ec2.Instance(this, "GraphNodeHost", {
@@ -160,10 +172,12 @@ export class GraphNodeStack extends cdk.Stack {
     cdk.Tags.of(this).add("Project", "truecollective");
     cdk.Tags.of(this).add("Lifecycle", "hackathon-only-destroy-after-event");
 
-    const eip = new ec2.CfnEIP(this, "GraphNodeEip", {
-      domain: "vpc",
-      tags: [{ key: "Name", value: "truecollective-graph-node" }],
-    });
+    // The address is allocated (and baked into user-data) before the instance exists, but this
+    // association can still complete after the instance has already booted and Caddy has
+    // started - so the very first TLS handshake(s) may hit the network interface's temporary
+    // auto-assigned public IP instead of this EIP and fail. Caddy retries automatically and the
+    // deploy probe (scripts/probe-graph-node.sh) already polls for minutes, so this is a
+    // transient, self-recovering startup window rather than a wrong-hostname bug (#45 review).
     new ec2.CfnEIPAssociation(this, "GraphNodeEipAssoc", {
       allocationId: eip.attrAllocationId,
       instanceId: this.instance.instanceId,
