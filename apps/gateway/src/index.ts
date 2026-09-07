@@ -1,5 +1,6 @@
 import type { JsonResponse } from "@truenft/openapi";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { createDb } from "./db/client";
 import { getChainId } from "./env";
 import { handleError } from "./errors";
@@ -16,6 +17,25 @@ const app = new Hono<AppEnv>();
 
 app.onError(handleError);
 app.notFound((c) => c.json({ error: "not_found" }, 404));
+
+// CORS must run before database/service setup so browser preflight requests return without
+// opening Hyperdrive connections. Reflect only explicitly configured origins; the API carries
+// wallet signatures and payment payloads, so a wildcard origin would be unnecessarily broad.
+app.use(
+  "*",
+  cors({
+    origin: (origin, c) => {
+      const allowed = c.env.CORS_ALLOWED_ORIGINS.split(",").map(
+        (value: string) => value.trim(),
+      );
+      return allowed.includes(origin) ? origin : undefined;
+    },
+    allowMethods: ["GET", "HEAD", "POST", "OPTIONS"],
+    allowHeaders: ["Content-Type", "X-PAYMENT"],
+    exposeHeaders: ["Mcp-Session-Id", "X-PAYMENT-RESPONSE"],
+    maxAge: 86_400,
+  }),
+);
 
 // One Hyperdrive-backed drizzle handle per request (postgres.js connects lazily on the
 // first query, so routes that never touch Postgres - /healthz - open no connection).

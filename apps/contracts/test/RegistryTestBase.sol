@@ -16,7 +16,7 @@ abstract contract RegistryTestBase is Test {
     bytes32 internal constant ASSET_ID = bytes32(uint256(0xaaaa));
     bytes32 internal constant CONTENT_HASH = bytes32(uint256(0xbbbb));
     uint256 internal constant PRICE = 500_000_000; // 5 HBAR in tinybar
-    uint256 internal constant PRICE_WEIBAR = PRICE * 1e10;
+    uint256 internal constant PRICE_NATIVE_VALUE = PRICE;
     uint64 internal constant DURATION = 300;
     uint32 internal constant MAX_USES = 5;
     uint8 internal constant PERMS = 6;
@@ -89,7 +89,7 @@ abstract contract RegistryTestBase is Test {
 
     function _settleAs(address payer, IRightsRegistry.ReceiptParams memory p) internal returns (bytes32) {
         vm.prank(payer);
-        return reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+        return reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(p);
     }
 
     function _expectedHash(IRightsRegistry.ReceiptParams memory p) internal view returns (bytes32) {

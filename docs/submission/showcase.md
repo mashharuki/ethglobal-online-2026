@@ -110,10 +110,11 @@ success (see README → Verification status). <update this paragraph after deplo
   Testnet through the Blocky402 facilitator (facilitator client, custodial/primary/fallback rails
   and the MCP tools are implemented and unit-tested). `RightsNFT`
   (`0x3524049309DC3F7f1dE83a8687a55Afa927dAe7A`) and `RightsRegistry`
-  (`0xf397F1C1697Fe777AEE97994a4b686519bD26877`) are deployed on Hedera Testnet and verified on
-  Sourcify (exact match) — see the README's Deployed Contract table for the links. **Pending:**
-  the live deployment of the gateway itself and the first real paid request completed end-to-end
-  by the MCP agent in native HBAR. Setup, architecture and the payment flow are in the README.
+  (`0x18fD81Ef7caA46e104772B23F27351FD8748152b`) are deployed on Hedera Testnet and verified on
+  Sourcify (exact match) — see the README's Deployed Contract table for the links. The live Gateway
+  and MCP endpoint completed `discover_assets → buy_access → decrypt_content` with a real 0.1 HBAR
+  Testnet payment, Receipt issuance and consumption. Setup, architecture and the payment flow are
+  in the README.
 - **Privy — Best Financial Flow.** Owners and buyers log in with the Privy embedded wallet, and the
   full flow (x402 payment in HBAR → on-chain receipt → revenue split creator/owner → decrypt) is
   implemented with Privy at the centre of the transfer, not as a decorative login. **Pending:** one
@@ -129,8 +130,8 @@ success (see README → Verification status). <update this paragraph after deplo
 ## Links
 
 - Repository: https://github.com/mashharuki/ethglobal-online-2026
-- Live gateway / MCP endpoint: <https://…workers.dev/mcp>
-- Web app: <https://…pages.dev>
+- Live gateway / MCP endpoint: <https://truecollective-gateway.avp-104-106-107-a78.workers.dev/mcp>
+- Web app: <https://truecollective.pages.dev>
 - Demo video (2–4 min, narrated): <URL>
 - Spec Kit artifacts: `specs/001-rights-runtime-mvp/`, `.specify/memory/constitution.md`
 

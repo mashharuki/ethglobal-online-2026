@@ -65,20 +65,20 @@ contract RightsRegistryRevenueTest is RegistryTestBase {
             _params(id, buyer, SURVIVE, keccak256("odd-pay"), keccak256("odd-nonce"));
         p.price = ODD_PRICE;
         vm.prank(buyer);
-        reg.settleAndIssue{value: ODD_PRICE * 1e10}(p);
+        reg.settleAndIssue{value: ODD_PRICE}(p);
         (, uint256 cAmt,, uint256 oAmt,) = reg.allocationOf(p.paymentId);
         assertEq(cAmt + oAmt, ODD_PRICE);
         assertEq(reg.claimable(creator) + reg.claimable(ownerA), ODD_PRICE);
     }
 
-    function test_ClaimPaysOutInWeibarAndZeroesBalanceOnce() public {
+    function test_ClaimPaysOutInTinybarAndZeroesBalanceOnce() public {
         _settleAs(buyer, _params(buyer, "claim1"));
         uint256 before = ownerA.balance;
         vm.prank(ownerA);
         vm.expectEmit(true, false, false, true);
         emit IRightsRegistry.Claimed(ownerA, 350_000_000);
         reg.claim();
-        assertEq(ownerA.balance - before, 350_000_000 * 1e10);
+        assertEq(ownerA.balance - before, 350_000_000);
         assertEq(reg.claimable(ownerA), 0);
         vm.prank(ownerA);
         vm.expectRevert(RightsRegistry.NothingToClaim.selector);
@@ -119,7 +119,7 @@ contract RightsRegistryRevenueTest is RegistryTestBase {
         // the nested claim must be stopped by the reentrancy guard itself (not merely by
         // the zeroed balance, which would surface as NothingToClaim)
         assertEq(attacker.innerSelector(), ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
-        assertEq(address(attacker).balance, owed * 1e10); // paid exactly once
+        assertEq(address(attacker).balance, owed); // paid exactly once
         assertEq(reg.claimable(address(attacker)), 0);
     }
 }

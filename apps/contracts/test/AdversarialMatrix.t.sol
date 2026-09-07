@@ -31,7 +31,7 @@ contract AdversarialMatrixTest is RegistryTestBase {
         p.resourceHash = nft.resourceHash(tokenId); // asset A's resource on asset B's receipt
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.ResourceHashMismatch.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(p);
     }
 
     /// #4 POLICY_HASH_MISMATCH - tampered policy
@@ -40,7 +40,7 @@ contract AdversarialMatrixTest is RegistryTestBase {
         p.policyHash = keccak256("tampered");
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.PolicyHashMismatch.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(p);
     }
 
     /// #5 CHAIN_ID_MISMATCH - contract-side evidence only: the receipt hash is domain-bound, so a
@@ -85,7 +85,7 @@ contract AdversarialMatrixTest is RegistryTestBase {
         IRightsRegistry.ReceiptParams memory p = _params(buyer, "r9");
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.UnderPayment.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR / 2}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE / 2}(p);
     }
 
     /// #10 PAYMENT_ID_PAYLOAD_CONFLICT - same paymentId, different body
@@ -94,7 +94,7 @@ contract AdversarialMatrixTest is RegistryTestBase {
         p.nonce = keccak256("different-body");
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.ReceiptAlreadyIssued.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(p);
     }
 
     /// #11 OWNER_EPOCH_MISMATCH - quote taken before a transfer
@@ -103,7 +103,7 @@ contract AdversarialMatrixTest is RegistryTestBase {
         _transfer(ownerA, ownerB);
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.OwnerEpochMismatch.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(p);
     }
 
     /// #12 PAID_LICENSE_TRANSFER_OK - SURVIVE receipt keeps working after transfer (negative test)

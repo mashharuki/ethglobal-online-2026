@@ -9,6 +9,8 @@
     "typecheck": "bunx hardhat build && tsc --noEmit",
     "deploy:local": "bunx hardhat run scripts/deploy.ts",
     "deploy:testnet": "bunx hardhat run scripts/deploy.ts --network testnet",
+    "redeploy:registry:testnet": "bunx hardhat run scripts/redeploy-registry.ts --network testnet",
+    "refresh:manifests:testnet": "bunx hardhat run scripts/refresh-manifests.ts --network testnet",
     "seed:local": "bunx hardhat run scripts/seed.ts",
     "seed:testnet": "bunx hardhat run scripts/seed.ts --network testnet",
     "seed:testnet:lean": "SEED_PROFILE=lean bunx hardhat run scripts/seed.ts --network testnet",

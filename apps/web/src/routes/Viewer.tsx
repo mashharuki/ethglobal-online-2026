@@ -223,6 +223,11 @@ export default function Viewer() {
           : ownership.creator.toLowerCase() === wallet.address.toLowerCase()
             ? "creator"
             : "none";
+  const ownerMismatch =
+    path === "owner" &&
+    ownership !== undefined &&
+    wallet.address !== undefined &&
+    role !== "owner";
 
   if (asset === undefined) {
     return error === undefined ? (
@@ -251,7 +256,12 @@ export default function Viewer() {
             type="button"
             className="btn primary"
             onClick={() => void unlock()}
-            disabled={busy !== undefined || deps === undefined}
+            disabled={busy !== undefined || deps === undefined || ownerMismatch}
+            title={
+              ownerMismatch
+                ? "The connected wallet is not the current NFT owner"
+                : undefined
+            }
           >
             {path === "owner" ? "Unlock as owner" : "Consume one use & unlock"}
           </button>
@@ -281,6 +291,13 @@ export default function Viewer() {
             </form>
           )}
         </div>
+        {ownerMismatch && (
+          <p className="error text-sm" role="alert">
+            The connected wallet is not the current NFT owner. Return to the{" "}
+            <a href="/market">Market</a> and choose “Buy access (x402, HBAR)” to
+            use the paid license path.
+          </p>
+        )}
         {busy !== undefined && <p className="text-sm">{busy}</p>}
         {error !== undefined && <ErrorNote error={error} />}
       </div>

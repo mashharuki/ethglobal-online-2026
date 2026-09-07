@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { type AssetSummary, listAssets } from "../api/client";
 import { useGateway } from "../app/gateway";
-import { useEmbeddedWallet, useSigners } from "../chain/hooks";
+import {
+  readOwnership,
+  useEmbeddedWallet,
+  usePublicClient,
+  useSigners,
+} from "../chain/hooks";
 import ErrorNote from "../components/ErrorNote";
 import PricePanel from "../components/PricePanel";
 import { short } from "../graph/queries";
@@ -22,8 +27,12 @@ export default function Market() {
   const { config, api } = useGateway();
   const wallet = useEmbeddedWallet();
   const signers = useSigners(wallet);
+  const publicClient = usePublicClient();
   const navigate = useNavigate();
   const [assets, setAssets] = useState<AssetSummary[] | undefined>();
+  const [currentOwners, setCurrentOwners] = useState<Record<string, string>>(
+    {},
+  );
   const [error, setError] = useState<unknown>();
   const [buying, setBuying] = useState<string | undefined>();
   const [note, setNote] = useState<string | undefined>();
@@ -31,6 +40,35 @@ export default function Market() {
   useEffect(() => {
     listAssets(api).then(setAssets, setError);
   }, [api]);
+
+  // The listing is indexed, but owner-only UI follows fresh Hedera reads. Until a live owner
+  // has been resolved, the free owner action stays hidden instead of trusting indexed data.
+  useEffect(() => {
+    if (assets === undefined) return;
+    let active = true;
+    Promise.all(
+      assets.map(async (asset) => {
+        const ownership = await readOwnership(
+          publicClient,
+          config.deployment,
+          BigInt(asset.tokenId),
+        );
+        return [
+          asset.assetId.toLowerCase(),
+          ownership.owner.toLowerCase(),
+        ] as const;
+      }),
+    )
+      .then((entries) => {
+        if (active) setCurrentOwners(Object.fromEntries(entries));
+      })
+      .catch(() => {
+        if (active) setCurrentOwners({});
+      });
+    return () => {
+      active = false;
+    };
+  }, [assets, config.deployment, publicClient]);
 
   const buy = useCallback(
     async (asset: AssetSummary) => {
@@ -127,13 +165,19 @@ export default function Market() {
                   : undefined
               }
             />
-            <button
-              type="button"
-              className="btn"
-              onClick={() => navigate(`/viewer/${asset.assetId}?path=owner`)}
-            >
-              Access as owner (free)
-            </button>
+            {wallet.address !== undefined &&
+              currentOwners[asset.assetId.toLowerCase()] ===
+                wallet.address.toLowerCase() && (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() =>
+                    navigate(`/viewer/${asset.assetId}?path=owner`)
+                  }
+                >
+                  Access as owner (free)
+                </button>
+              )}
           </section>
         ))}
       </div>

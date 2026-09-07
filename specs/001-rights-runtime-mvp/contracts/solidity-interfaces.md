@@ -78,7 +78,7 @@ interface IRightsRegistry {
         bytes32 paymentId;
         bytes32 nonce;
         uint64  issuedAt;
-        uint256 price;               // **tinybar**（10^8 = 1 HBAR、2026-09-05 R-4 改訂）。settle 側は msg.value（weibar）/ 1e10 と比較
+        uint256 price;               // **tinybar**（10^8 = 1 HBAR）。Hedera EVM の msg.value と直接比較
         uint16  creatorBps;          // + ownerBps == 10000
         uint16  ownerBps;
     }
@@ -87,7 +87,7 @@ interface IRightsRegistry {
         external
         payable
         returns (bytes32 receiptHash);
-    // require(msg.value / 1e10 == p.price) → UnderPayment（tinybar 単位比較、R-4 改訂）
+    // require(msg.value == p.price) → UnderPayment（Hedera Solidityでは両方tinybar、R-4 Testnet実測）
     // revert：UnderPayment / ReceiptAlreadyIssued / LicenseEpochMismatch /
     //         ResourceHashMismatch / PolicyHashMismatch / PolicyContentMismatch / ExpiryMismatch /
     //         BpsInvalid / ContractWalletUnsupported
@@ -115,7 +115,7 @@ interface IRightsRegistry {
     function allocationOf(bytes32 paymentId) external view returns (
         address creator, uint256 creatorAmount, address owner, uint256 ownerAmount, uint256 blockNumber
     ); // creatorAmount/ownerAmount は tinybar
-    function claim() external; // nonReentrant。msg.sender の claimable（tinybar）を weibar 換算して **ネイティブ HBAR** で払い出し（CEI 順）
+    function claim() external; // nonReentrant。msg.sender の claimable（tinybar）を `.call{value: amountTinybar}` で **ネイティブ HBAR** として払い出し（CEI 順）
 
     // ============ 6. R-2 フォールバックのみ（primary が成立すれば未使用）============
     // 2026-09-05 修正（R-2a）：committedParamsHash で購入内容を入金時点に固定し、finalize による収益転用を防ぐ（Codex #2 Critical）
@@ -176,8 +176,8 @@ interface IRightsRegistry {
 6. receiptHash = ReceiptLib.hashStruct(p)                          // EIP-712（R-6）
 7. require(!issued[receiptHash])                                    // ReceiptAlreadyIssued（nonce/二重発行）
 8. require(p.licensee.code.length == 0)                             // ContractWalletUnsupported（FR-025）
-9. priceWeibar = msg.value                                          // 2026-09-05 改訂（R-4・Fable H-7対応）
-   require(priceWeibar / 1e10 == p.price)                           // UnderPayment（tinybar 単位で比較。p.price は tinybar）
+9. priceTinybar = msg.value                                         // Hedera Solidity境界はtinybar（2026-09-07 Testnet実測）
+   require(priceTinybar == p.price)                                 // UnderPayment（p.priceもtinybar）
 10. owner = RightsNFT.ownerOf(p.tokenId)                            // settlement 時点（A-5）
 11. creatorAmount = mulDiv(p.price, p.creatorBps, 10000)            // tinybar 単位（R-4 改訂）
     ownerAmount   = mulDiv(p.price, p.ownerBps, 10000)              // tinybar 単位
@@ -210,7 +210,7 @@ Hedera の合意順序により、同一 `(receiptHash, useIndex)` の 20 並列
 
 ## `PayLib`（library）
 
-- `sendValue(address payable to, uint256 amountTinybar)`：**tinybar 単位の金額を `amountTinybar * 1e10`（weibar）へ変換してから** `to.call{value: ...}("")` を実行し、失敗時は revert（OZ `Address.sendValue` 相当）。`claim` / `refundUnfinalized` が使用（2026-09-05 R-4 改訂：`claimable` は tinybar で保持し、送金の瞬間にのみ weibar へ戻す）。
+- `sendValue(address payable to, uint256 amountTinybar)`：Hedera EVMでは `.call{value: ...}` もtinybar値を取るため、**変換せず** `to.call{value: amountTinybar}("")` を実行し、失敗時はrevertする。`claim` / `refundUnfinalized` が使用する。
 - `RightsRegistry` は OZ `ReentrancyGuard` を継承し、払い出しは CEI 順（`claimable` をゼロ化してから `sendValue`）。
 - **HTS / USDC / `0x167` / token association は不使用**。決済資産はネイティブ HBAR（`/supported` により Blocky402 は `hedera:testnet` で HTS トークンを扱わない、R-4 改訂）。
 

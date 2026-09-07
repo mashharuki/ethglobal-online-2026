@@ -167,7 +167,7 @@ NFTを所有していない第三者、または自律的に行動するAI Agent
 - 保護対象の暗号化コンテンツはクライアント側で暗号化され、暗号化ストレージへ保管される。復号もクライアント側で行われ、仲介者は平文を扱わない。
 - 所有者・購入者のウォレットは、決定的な署名が行える標準的な鍵ペア方式（EOA相当）であることを前提とし、コントラクトウォレット（マルチシグ等）は本MVPの対象外とする。
 - デモ用の保護コンテンツ資産は、1ファイルあたり一定サイズ以下の独占データセット2種類とし、そのうち1種類は別の資産の利用権では開けないことを示すために使う。
-- 決済に用いる資産は**対象チェーンのネイティブトークン（Hedera Testnet の HBAR）**とする。理由：Hedera「AI & Agentic Payments」トラックで必須の Blocky402 facilitator（`https://api.testnet.blocky402.com`）が `hedera:testnet` / `exact` スキームでサポートするのはネイティブトークンであり、HTS の USDC（`0.0.429274`）ではない（`/supported` 応答による）。価格・受取額・claimable 残高はすべて HBAR（EVM の `msg.value` 単位 ＝ weibar、10^18 = 1 HBAR。オンチェーンの精度下限は tinybar ＝ 10^8 なので金額は 10^10 weibar の倍数）で表す。詳細は `plan.md` / `research.md` R-2・R-4。
+- 決済に用いる資産は**対象チェーンのネイティブトークン（Hedera Testnet の HBAR）**とする。理由：Hedera「AI & Agentic Payments」トラックで必須の Blocky402 facilitator（`https://api.testnet.blocky402.com`）が `hedera:testnet` / `exact` スキームでサポートするのはネイティブトークンであり、HTS の USDC（`0.0.429274`）ではない（`/supported` 応答による）。JSON-RPC / Manifest は weibar（10^18 = 1 HBAR）で表す一方、Hedera EVM が Solidity の `msg.value` / `.call{value:}` に公開する値とオンチェーン会計は tinybar（10^8 = 1 HBAR）で統一する。詳細は `plan.md` / `research.md` R-2・R-4。
 - 対象ネットワークは単一のチェーンとし、複数チェーンへの同時対応は本MVPの範囲外とする。
 - 収益分配は作者と現在の所有者の2者構成に限定し、コミュニティ・プロトコル手数料等の追加の分配先は本MVPでは扱わない。
 - 支払いに失敗した場合の返金・クレジット再発行の経路は、本MVPでは設けない（支払い自体が確定しない形で失敗を扱う）。

@@ -120,8 +120,8 @@ export async function sendConsume(
 }
 
 /**
- * `settleAndIssue(p)` with exact native value (weibar = price tinybar * 1e10). Returns the
- * tx hash and the receiptHash the simulation produced.
+ * `settleAndIssue(p)` with an exact JSON-RPC value in weibar. Hedera's relay converts it so
+ * Solidity observes the corresponding tinybar amount. Returns the tx hash and receiptHash.
  */
 export async function submitSettleAndIssue(
   ctx: WriteContext,

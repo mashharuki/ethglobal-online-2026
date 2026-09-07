@@ -22,7 +22,7 @@ contract RightsRegistrySettleTest is RegistryTestBase {
 
         bytes32 receiptHash = _settleAs(buyer, p);
         assertEq(receiptHash, expected);
-        assertEq(address(reg).balance, PRICE_WEIBAR);
+        assertEq(address(reg).balance, PRICE_NATIVE_VALUE);
         assertEq(reg.claimable(creator), 150_000_000);
         assertEq(reg.claimable(ownerA), 350_000_000);
 
@@ -42,10 +42,10 @@ contract RightsRegistrySettleTest is RegistryTestBase {
         IRightsRegistry.ReceiptParams memory p = _params(buyer, "u1");
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.UnderPayment.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR - 1e10}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE - 1}(p);
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.UnderPayment.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR + 1e10}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE + 1}(p);
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.UnderPayment.selector);
         reg.settleAndIssue{value: 0}(p);
@@ -58,12 +58,12 @@ contract RightsRegistrySettleTest is RegistryTestBase {
         // exact replay
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.ReceiptAlreadyIssued.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(p);
         // same paymentId, different nonce (different receiptHash) -> still rejected
         p.nonce = keccak256("other-nonce");
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.ReceiptAlreadyIssued.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(p);
     }
 
     function test_RevertsBpsInvalid() public {
@@ -72,7 +72,7 @@ contract RightsRegistrySettleTest is RegistryTestBase {
         p.ownerBps = 6999;
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.BpsInvalid.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(p);
     }
 
     function test_RevertsResourceHashMismatch() public {
@@ -80,13 +80,13 @@ contract RightsRegistrySettleTest is RegistryTestBase {
         p.resourceHash = keccak256("asset-b");
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.ResourceHashMismatch.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(p);
 
         IRightsRegistry.ReceiptParams memory q = _params(buyer, "h2");
         q.nftContract = address(0xdead);
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.ResourceHashMismatch.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(q);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(q);
     }
 
     function test_RevertsPolicyHashMismatch() public {
@@ -94,7 +94,7 @@ contract RightsRegistrySettleTest is RegistryTestBase {
         p.policyHash = keccak256("tampered");
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.PolicyHashMismatch.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(p);
     }
 
     function test_RevertsPolicyContentMismatchWhenContentChangedUnderGenuineHash() public {
@@ -103,19 +103,19 @@ contract RightsRegistrySettleTest is RegistryTestBase {
         p.price = 1;
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.PolicyContentMismatch.selector);
-        reg.settleAndIssue{value: 1e10}(p);
+        reg.settleAndIssue{value: 1}(p);
 
         IRightsRegistry.ReceiptParams memory q = _params(buyer, "c2");
         q.maxUses = type(uint32).max;
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.PolicyContentMismatch.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(q);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(q);
 
         IRightsRegistry.ReceiptParams memory r = _params(buyer, "c3");
         r.expiresAt = r.issuedAt + DURATION * 10;
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.PolicyContentMismatch.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(r);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(r);
     }
 
     function test_RevertsExpiryMismatchForFutureStaleOrInvertedIssuedAt() public {
@@ -124,19 +124,19 @@ contract RightsRegistrySettleTest is RegistryTestBase {
         p.expiresAt = p.issuedAt + DURATION;
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.ExpiryMismatch.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(p);
 
         IRightsRegistry.ReceiptParams memory q = _params(buyer, "e2");
         vm.warp(block.timestamp + reg.ISSUANCE_WINDOW() + 1);
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.ExpiryMismatch.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(q);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(q);
 
         IRightsRegistry.ReceiptParams memory r = _params(buyer, "e3");
         r.expiresAt = r.issuedAt;
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.ExpiryMismatch.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(r);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(r);
     }
 
     function test_RevertsLicenseEpochMismatchAfterBump() public {
@@ -145,7 +145,7 @@ contract RightsRegistrySettleTest is RegistryTestBase {
         reg.bumpLicenseEpoch(tokenId);
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.LicenseEpochMismatch.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(p);
     }
 
     function test_RevertsOwnerEpochMismatchWhenQuoteIsStaleAcrossTransfer() public {
@@ -153,7 +153,7 @@ contract RightsRegistrySettleTest is RegistryTestBase {
         _transfer(ownerA, ownerB); // accessEpoch -> 2
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.OwnerEpochMismatch.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(p);
     }
 
     function test_RevertsContractWalletUnsupported() public {
@@ -161,12 +161,12 @@ contract RightsRegistrySettleTest is RegistryTestBase {
         IRightsRegistry.ReceiptParams memory p = _params(address(wallet), "w1");
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.ContractWalletUnsupported.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(p);
 
         IRightsRegistry.ReceiptParams memory q = _params(address(0), "w2");
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.ContractWalletUnsupported.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(q);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(q);
     }
 
     function test_RevertsExpiryMismatchWhenReceiptAlreadyExpiredAtSettlement() public {
@@ -178,19 +178,19 @@ contract RightsRegistrySettleTest is RegistryTestBase {
         assertLe(p.expiresAt, block.timestamp);
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.ExpiryMismatch.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(p);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(p);
     }
 
     function test_RevertsWhenPaymentIdHasPendingFallbackDeposit() public {
         // victim deposits on the fallback rail; attacker tries to burn the same paymentId via primary
         IRightsRegistry.ReceiptParams memory victim = _params(buyer, "pend");
         vm.prank(buyer);
-        reg.payFor{value: PRICE_WEIBAR}(victim.paymentId, keccak256(abi.encode(victim)));
+        reg.payFor{value: PRICE_NATIVE_VALUE}(victim.paymentId, keccak256(abi.encode(victim)));
 
         IRightsRegistry.ReceiptParams memory attacker = _params(buyer2, "pend"); // same paymentId
         vm.prank(buyer2);
         vm.expectRevert(IRightsRegistry.ReceiptAlreadyIssued.selector);
-        reg.settleAndIssue{value: PRICE_WEIBAR}(attacker);
+        reg.settleAndIssue{value: PRICE_NATIVE_VALUE}(attacker);
 
         // the depositor can still finalize their own purchase
         vm.prank(stranger);

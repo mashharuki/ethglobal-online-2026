@@ -65,7 +65,7 @@ describe("RightsRegistry concurrent consume", () => {
     };
     const settleTx = await registry
       .connect(buyer)
-      .settleAndIssue(params, { value: price * 10_000_000_000n });
+      .settleAndIssue(params, { value: price });
     const settleReceipt = await settleTx.wait();
     const issued = settleReceipt?.logs
       .map((log) => {

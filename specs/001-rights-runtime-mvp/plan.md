@@ -100,7 +100,7 @@ NFT の所有権と「実際の利用権・将来収益」を同期させる **t
 - R-1: KeyGate の鍵分割構成の最終形（`share_U` の保管・per-wallet blinding・所有者移転時の扱い）
 - R-2: Blocky402 facilitator（`api.testnet.blocky402.com`、`/supported` = `hedera:testnet` / `exact` / `feePayer 0.0.7162784`）が、**ネイティブ HBAR value を添付した ContractCall ペイロード**（`RightsRegistry.settleAndIssue{value: price}` を 1 tx）を verify / settle できるか。不可なら「feePayer 宛 plain transfer + permissionless `finalize`」フォールバックの選択
 - R-3: Receipt 消費の並行制御を「Durable Object 直列化 + DB UNIQUE 制約 + オンチェーン `consume` の三層」で行う設計の妥当性（憲章 II と憲章 V/セキュリティ要件の両立）
-- R-4: Hedera EVM でのネイティブ HBAR value の扱い（`msg.value` は weibar ＝ 10^18、native 精度下限は tinybar ＝ 10^8 → 金額は 10^10 weibar の倍数）、`payable` 関数での受領、`RevenueLib` の分配で dust / 精度ロスが出ないこと、`.call{value:}` での払い出しと返金
+- R-4: Hedera EVM でのネイティブ HBAR value の扱い（JSON-RPC は weibar ＝ 10^18、Solidity の `msg.value` / `.call{value:}` は tinybar ＝ 10^8）、`payable` 関数での受領、`RevenueLib` の分配で dust / 精度ロスが出ないこと、`.call{value:}` での払い出しと返金
 - R-5: Rights Graph の Hedera Testnet デプロイ（**自前 Graph Node 一択**＝Subgraph Studio / Hosted Service が Hedera 非対応。The Graph 賞トラックには submit しない）。**ホスティングは AWS CDK でプロビジョニングした EC2 1 台 + docker-compose（`apps/cdk/`、ハッカソン期間のみ、終了後 `cdk destroy`）**。`startBlock` 運用、EC2 インスタンスタイプ / EBS サイズ、Hedera relay を provider にした場合の同期速度を day1（T021）で確認。day1 に Subgraph Studio の Hedera 対応も再確認
 - R-6: `resourceHash` / `policyHash` / `purchaseRequestHash` / `receiptHash` の正規化仕様（EIP-712 struct hash に統一）
 - R-7: Backend プラットフォーム（Hono + Cloudflare Workers + Durable Objects + Hyperdrive/Postgres）が憲章 II / V と両立するか、Workers runtime で `viem` / `@noble/*` / Postgres ドライバが動くか。**`@modelcontextprotocol/sdk` の Streamable HTTP transport が `workerd` で動くか（FR-026、外部 MCP クライアントからの `tools/list` 疎通。day1 = T019）**

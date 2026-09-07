@@ -89,7 +89,7 @@ Gateway が認可チェック後に **短命署名 URL** または復号済み�
 
 **Primary（目標）**：購入者の x402「exact」ペイロードを **`RightsRegistry.settleAndIssue(...)` への value 付き ContractCall** とし、その関数本体（`payable`）で
 1. `require(msg.value == p.price)`（HBAR は tx に添付済み。`UnderPayment`）、
-2. `RightsNFT.ownerOf(tokenId)` をその場で読み、`RevenueAllocation` を creator / current owner の claimable（weibar）に記録、
+2. `RightsNFT.ownerOf(tokenId)` をその場で読み、`RevenueAllocation` を creator / current owner の claimable（tinybar）に記録、
 3. `ReceiptIssued(receiptHash, ...)` を emit、
 
 を **1 Hedera トランザクションで原子的に**実行する。Blocky402 が gas を肩代わり（`feePayer 0.0.7162784`）してこの tx を submit する。失敗時は tx 全体が revert し HBAR は移動しない（返金経路不要、憲章 VII / spec Assumptions）。
@@ -123,7 +123,7 @@ Gateway が認可チェック後に **短命署名 URL** または復号済み�
 - **ネイティブ HBAR は HTS の allowance / association / ERC-3009 をすべて回避できる**：`transferFrom` も `approve` も不要、association 漏れの事故もない。`settleAndIssue` を `payable` にして `msg.value` を受けるだけで primary が成立しやすくなる（USDC HTS より primary の見込みが高い）。
 - `ownerOf` を settle と同じ tx 内で読むことで、「NFT 移転と Claim の間の再移転で受取人が変わる」曖昧さ（Pull 型特有）を排除（A-5、`docs/idea.md` §6.5）。
 - primary が動くと「権利 anchor ＝決済トランザクションそのもの」になり、Ethereum（Hedera）の必然性（DoD #2）が強化される。
-- **精度**：Hedera EVM の `msg.value` は weibar（10^18 = 1 HBAR）だが native 精度下限は tinybar（10^8）。金額は 10^10 weibar の倍数に制約し、`RevenueLib` の `mulDiv` 端数は treasury（未設定なら creator）へ寄せて dust 0 を保証（R-4 / SC-006）。
+- **精度**：JSON-RPC の transaction `value` は weibar（10^18 = 1 HBAR）で指定する一方、Hedera EVM が Solidity の `msg.value` / `.call{value:}` に公開する値は tinybar（10^8 = 1 HBAR）。オンチェーン会計を tinybar に統一し、`RevenueLib` の `mulDiv` 端数は creator へ寄せて dust 0 を保証する（R-4 / SC-006）。
 
 ### Alternatives considered
 
@@ -196,24 +196,24 @@ Gateway が認可チェック後に **短命署名 URL** または復号済み�
 ### Decision
 
 - 決済は **ネイティブ HBAR**。`RightsRegistry.settleAndIssue` を `payable` にし、`require(msg.value == p.price)` で受領（`UnderPayment`）。HTS system contract（`0x167`）・トークン EVM アドレス・`transferFrom` / `approve` / `associate` は **一切使わない**。
-- **単位（2026-09-05 マルチモデルレビュー対応・Fable H-7 により改訂）**：Hedera EVM の `msg.value` は EVM 境界では weibar（10^18 = 1 HBAR）表現で届くが、**コントラクト内部の会計（`price` パラメータ・`claimable`・`allocationOf` の金額）は全て tinybar（10^8 = 1 HBAR）単位で保持する**。`msg.value` を受け取った直後に `priceTinybar = msg.value / 1e10` へ変換し（Hedera の native 精度下限が tinybar であるため、weibar のまま扱うと `mulDiv` の按分結果が 10^10 の倍数から外れ、tinybar 境界に乗らない値が生成されて `claim()` の `.call{value:}` が失敗するか下位桁が切り捨てられる — 旧設計の欠陥）、以降の按分・`claimable` 加算・払い出しはすべて tinybar 単位の整数で行う。払い出し時にのみ `.call{value: claimableTinybar * 1e10}` で weibar へ戻す。
+- **単位（2026-09-07 Testnet 実測で確定）**：JSON-RPC の transaction `value` は weibar（10^18 = 1 HBAR）で送信するが、Hedera EVM は Solidity の `msg.value` と `.call{value:}` を **tinybar（10^8 = 1 HBAR）**として扱う。したがってコントラクト内部の `price`・`claimable`・`allocationOf` も tinybar に統一し、`settleAndIssue` は `require(msg.value == p.price)` で比較する。アプリ層だけが Manifest の weibar を transaction `value` としてRPCへ渡し、Receiptの `price` には `manifestPriceWeibar / 1e10` を設定する。
 - `RightsManifest.paidAccess.price` は引き続き weibar の整数文字列（人間可読・UI 表示用）で表現するが、**10^10 weibar（= 1 tinybar）の倍数であることを zod スキーマで強制**し、コントラクトへ渡す前に `priceTinybar` へ変換する（`packages/shared/src/manifest.ts`）。
 - **分配**（SC-006 / FR-022）：`RevenueLib` で `creatorAmountTinybar = mulDiv(priceTinybar, creatorBps, 10000)` / `ownerAmountTinybar = mulDiv(priceTinybar, ownerBps, 10000)` / `dustTinybar = priceTinybar - creatorAmountTinybar - ownerAmountTinybar` を計算し、`dustTinybar` を `creator` の claimable へ寄せる（M-4 対応、treasury は導入しない。下記「マルチモデルレビュー対応」参照）。tinybar は整数単位のため `mulDiv` の丸めは常にちょうど tinybar 境界に乗り、精度ロスが発生しない。
-- **払い出し**：`claim()` / `refundUnfinalized()` は `PayLib.sendValue`（`claimableTinybar * 1e10` を `to.call{value:}` + 失敗 revert）。`RightsRegistry` は `ReentrancyGuard` を継承し CEI 順（`claimable` ゼロ化 → 送金）。受領側の EOA には association 概念がないためそのまま届く。
-- **⚠ day1 検証（T018）**：最小 `payable` コントラクトで、`msg.value` が weibar で来ること／`payable` 関数への value 添付／`msg.value / 1e10` が期待どおり tinybar 整数になること／tinybar 単位の `mulDiv` 分配で dust が想定内（常に 0〜数 tinybar）／`.call{value:}` の成功・失敗ハンドリング／10^10 未満の端数を送ったときの挙動、を実 Testnet で確認。
+- **払い出し**：`claim()` / `refundUnfinalized()` は `PayLib.sendValue` へ tinybar 金額を渡し、`to.call{value: amountTinybar}` で送金する。`RightsRegistry` は `ReentrancyGuard` を継承し CEI 順（`claimable` ゼロ化 → 送金）。受領側の EOA には association 概念がないためそのまま届く。
+- **Testnet 検証（T018）**：最小 `payable` コントラクトと実際の `RightsRegistry` で、RPCへ 0.1 HBAR相当の weibarを指定すると Solidity の `msg.value` が 10,000,000 tinybarになること、tinybar単位の分配・払い出しが成功することを確認した。
 
 ### Rationale
 
 - Hedera の EVM 互換は「Ethereum そのものではない」（`hedra-sample` README）。**ネイティブ value 転送は HTS 特有の allowance / association / ERC-3009 をすべて回避**でき、デモの資金フロー（buyer → registry → creator/owner）で事故りやすい association 漏れが構造的に消える。
 - `payable` + `msg.value` は x402「exact」の ContractCall に最も載せやすく、R-2 primary の成立見込みが USDC HTS より高い。
-- **会計を tinybar 単位にすることで、weibar 建て会計が抱えていた「按分結果が tinybar 境界に乗らず claim が失敗するか dust が滞留する」問題を構造的に解消する**（Fable H-7）。weibar はコントラクト境界（`msg.value` / `.call{value:}`）でのみ現れる表現であり、内部会計には持ち込まない。
+- **会計を tinybar 単位にすることで、Hedera Solidity境界の実際の単位と一致し、過少支払い判定や払い出し倍率の誤りを防ぐ**。weibar はJSON-RPCとManifestの表現に限定する。
 
 ### Alternatives considered
 
 | 代替案 | 却下理由 |
 |---|---|
 | USDC（HTS `0.0.429274`）を EVM ファサードで `transferFrom` | Blocky402 `/supported` が `hedera:testnet` で native のみ。トラック必須 facilitator が扱えない（R-2）。allowance / association / ERC-3009 非対応の複雑さも |
-| 価格を tinybar（10^8）建てにして contract 内で weibar 変換 | 変換ミスの温床。`msg.value` と同じ weibar に統一し、倍数制約 + dust 規則で扱う方が単純 |
+| コントラクト内部を weibar（10^18）建てにする | Solidity の `msg.value` / `.call{value:}` が tinybar であるHederaの実挙動と一致せず、受領比較と払い出しを誤る |
 | `msg.value >= price` を許容し overpay を claimable に載せる | x402「exact」は正確な額を保証する。`==` にして仕様に忠実にする（overpay は facilitator 側で弾かれる想定） |
 
 ---
@@ -423,7 +423,7 @@ Cross-Resource 攻撃は licensee パス（`resourceHash` 照合）では既に�
 - x402 facilitator を Blocky402 にするか自前にするか：day1 に Blocky402 facilitator の Hedera Testnet エンドポイントの死活と ContractCall 対応を確認して決定。**R-2a により、T020 の probe は primary（`settleAndIssue{value}`）と fallback（`payFor{value}`）の両方の ContractCall 対応を同時に確認する。**
 - **R-7 の Workers 疎通（day1）**：`viem` / `@noble/hashes` / `@noble/curves` / Postgres ドライバ（`postgres`）が `workerd` で動くこと、Hyperdrive 経由で `SELECT ... FOR UPDATE` が使えること、`@cloudflare/vitest-pool-workers` で `ReceiptLock` DO をテストできることを最小 Worker で確認。`x402-hono` の Hedera「exact」対応も確認。
 - **R-8 の CI ゲート（day1）**：`turbo` タスクグラフ（`apps/contracts#compile` / `packages/openapi#generate` → `packages/shared#build` → `apps/gateway|web|agent#build`）と、`biome ci` / `knip` / `jscpd` / golden test（EIP-712 一致）/ `redocly lint openapi.yaml` / `newman run`（デプロイ済み gateway に対する API 契約テスト）を GitHub Actions に載せる。`.claude/rules/development.md` の「サブエージェント逐次」「大規模出力を親に取り込まない」に沿って重い処理は scripts に切り出す。
-- **R-4（day1、T018 の拡張）**：`msg.value / 1e10` の tinybar 変換と、tinybar 単位での `mulDiv` 分配が dust ゼロで成立することを実 Testnet で確認（旧・weibar 単位のまま分配する設計は Fable H-7 により撤回）。
+- **R-4（T018 完了）**：JSON-RPCはweibar、Solidityの `msg.value` / `.call{value:}` はtinybarであることを実Testnetで確認。コントラクトは直接tinybarで比較・分配・払い出す。
 - **R-6a（Phase 3 着手時に必須）**：`settleAndIssue` の policy 内容再ハッシュ検証（`PolicyContentMismatch` / `ExpiryMismatch`）を T041 / T045 の実装に含める。これを含めないまま Phase 3 を green にしない。
 - **R-9a（Phase 7 着手時に必須）**：`decrypt_content` の MCP セッション束縛（`mcp_session_binding`）を T092/T095 の実装に含める。
 
@@ -434,6 +434,6 @@ T018–T021 に加え、本レビューで拡張が必要になった検証項�
 | 項目 | 検証内容 | 結果（未実施） |
 |---|---|---|
 | R-2a | `payFor{value}` 相当の ContractCall も Blocky402 で成立するか（primary/fallback 同時確認） | TBD |
-| R-4（拡張） | `msg.value / 1e10` の tinybar 変換・tinybar 単位 `mulDiv` の dust がゼロになること | TBD |
+| R-4（拡張） | RPC valueはweibar、Solidity valueはtinybar。tinybar単位の比較・分配・払い出し | PASS（2026-09-07、0.1 HBARの購入・Receipt発行・消費をTestnetで完走） |
 | R-9a | Privy spend policy が実際に拒否を発火する陽性対照（上限超過リクエストで reject） | TBD |
 | R-9a | x402 決済で Privy に渡す署名要求が typed tx か raw hash か | TBD |

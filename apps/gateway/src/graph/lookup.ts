@@ -7,11 +7,11 @@ import type { Hex } from "viem";
  * undefined (asset unknown), never a grant.
  */
 const QUERY = `query TokenByAsset($assetId: Bytes!) {
-  rightsTokens(where: { assetId: $assetId }, first: 1) { tokenId }
+  rightsTokens(where: { assetId: $assetId }, first: 1) { id }
 }`;
 
 type GraphResponse = {
-  data?: { rightsTokens?: Array<{ tokenId: string }> };
+  data?: { rightsTokens?: Array<{ id: string }> };
   errors?: Array<{ message: string }>;
 };
 
@@ -31,7 +31,8 @@ export async function lookupTokenIdByAssetId(
   });
   if (!response.ok) return undefined;
   const body = (await response.json()) as GraphResponse;
-  const tokenId = body.data?.rightsTokens?.[0]?.tokenId;
+  // RightsToken.id is the tokenId in the subgraph schema.
+  const tokenId = body.data?.rightsTokens?.[0]?.id;
   if (tokenId === undefined || !/^\d+$/.test(tokenId)) return undefined;
   return BigInt(tokenId);
 }

@@ -23,7 +23,7 @@ contract RightsRegistryFallbackTest is RegistryTestBase {
         vm.prank(buyer);
         vm.expectEmit(true, true, false, true);
         emit IRightsRegistry.PaymentPending(p.paymentId, buyer, PRICE, committed);
-        reg.payFor{value: PRICE_WEIBAR}(p.paymentId, committed);
+        reg.payFor{value: PRICE_NATIVE_VALUE}(p.paymentId, committed);
         (address payer,, uint256 amount, bytes32 stored) = reg.pendingOf(p.paymentId);
         assertEq(payer, buyer);
         assertEq(amount, PRICE);
@@ -43,7 +43,7 @@ contract RightsRegistryFallbackTest is RegistryTestBase {
     function test_FinalizeRejectsParamsThatDifferFromCommitment() public {
         IRightsRegistry.ReceiptParams memory p = _params(buyer, "fb2");
         vm.prank(buyer);
-        reg.payFor{value: PRICE_WEIBAR}(p.paymentId, _commit(p));
+        reg.payFor{value: PRICE_NATIVE_VALUE}(p.paymentId, _commit(p));
 
         // attacker tries to redirect the deposit to themselves as licensee
         // (fresh copies: memory struct assignment would alias `p`)
@@ -64,25 +64,22 @@ contract RightsRegistryFallbackTest is RegistryTestBase {
     function test_FinalizeRejectsWhenDepositDoesNotMatchPrice() public {
         IRightsRegistry.ReceiptParams memory p = _params(buyer, "fb3");
         vm.prank(buyer);
-        reg.payFor{value: PRICE_WEIBAR - 1e10}(p.paymentId, _commit(p));
+        reg.payFor{value: PRICE_NATIVE_VALUE - 1}(p.paymentId, _commit(p));
         vm.prank(stranger);
         vm.expectRevert(IRightsRegistry.UnderPayment.selector);
         reg.finalize(p.paymentId, p);
     }
 
-    function test_PayForRejectsZeroDuplicateAndSubTinybarValues() public {
+    function test_PayForRejectsZeroAndDuplicatePayments() public {
         IRightsRegistry.ReceiptParams memory p = _params(buyer, "fb4");
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.UnderPayment.selector);
         reg.payFor{value: 0}(p.paymentId, _commit(p));
         vm.prank(buyer);
-        vm.expectRevert(IRightsRegistry.UnderPayment.selector);
-        reg.payFor{value: PRICE_WEIBAR + 1}(p.paymentId, _commit(p));
-        vm.prank(buyer);
-        reg.payFor{value: PRICE_WEIBAR}(p.paymentId, _commit(p));
+        reg.payFor{value: PRICE_NATIVE_VALUE}(p.paymentId, _commit(p));
         vm.prank(buyer2);
         vm.expectRevert(IRightsRegistry.ReceiptAlreadyIssued.selector);
-        reg.payFor{value: PRICE_WEIBAR}(p.paymentId, _commit(p));
+        reg.payFor{value: PRICE_NATIVE_VALUE}(p.paymentId, _commit(p));
     }
 
     function test_FinalizeRequiresPendingAndCannotDoubleFinalize() public {
@@ -91,7 +88,7 @@ contract RightsRegistryFallbackTest is RegistryTestBase {
         vm.expectRevert(IRightsRegistry.PaymentNotPending.selector);
         reg.finalize(p.paymentId, p);
         vm.prank(buyer);
-        reg.payFor{value: PRICE_WEIBAR}(p.paymentId, _commit(p));
+        reg.payFor{value: PRICE_NATIVE_VALUE}(p.paymentId, _commit(p));
         reg.finalize(p.paymentId, p);
         vm.expectRevert(IRightsRegistry.PaymentNotPending.selector);
         reg.finalize(p.paymentId, p);
@@ -100,7 +97,7 @@ contract RightsRegistryFallbackTest is RegistryTestBase {
     function test_RefundOnlyPayerAfterTimeout() public {
         IRightsRegistry.ReceiptParams memory p = _params(buyer, "fb6");
         vm.prank(buyer);
-        reg.payFor{value: PRICE_WEIBAR}(p.paymentId, _commit(p));
+        reg.payFor{value: PRICE_NATIVE_VALUE}(p.paymentId, _commit(p));
 
         vm.prank(buyer);
         vm.expectRevert(IRightsRegistry.RefundNotYetAllowed.selector);
@@ -116,7 +113,7 @@ contract RightsRegistryFallbackTest is RegistryTestBase {
         vm.expectEmit(true, true, false, true);
         emit IRightsRegistry.PaymentRefunded(p.paymentId, buyer, PRICE);
         reg.refundUnfinalized(p.paymentId);
-        assertEq(buyer.balance - before, PRICE_WEIBAR);
+        assertEq(buyer.balance - before, PRICE_NATIVE_VALUE);
         assertEq(address(reg).balance, 0);
 
         vm.prank(buyer);

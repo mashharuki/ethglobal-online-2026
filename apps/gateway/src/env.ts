@@ -28,6 +28,8 @@ export type Env = {
   RIGHTS_REGISTRY_ADDRESS: string;
   /** HTTP gateway used to fetch ipfs:// manifests / content. */
   IPFS_GATEWAY_URL: string;
+  /** Comma-separated browser origins allowed to call the public HTTP API. */
+  CORS_ALLOWED_ORIGINS: string;
   /** MCP spend policy (R-9): hard cap per Mcp-Session-Id, tinybar */
   MCP_SESSION_SPEND_CAP_TINYBAR: string;
   // secrets (wrangler secret put / .dev.vars)

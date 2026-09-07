@@ -111,7 +111,7 @@ settleAndIssue(auth, receiptParams) payable  ── R-2 primary：1 tx で原子
 
 | フィールド | 型 | 説明 |
 |---|---|---|
-| `claimable[account]` | `uint256` | 引き出し可能なネイティブ HBAR 残高（**tinybar**、10^8 = 1 HBAR。2026-09-05 R-4 改訂：weibar 建てだと `mulDiv` 按分が tinybar 境界に乗らず claim 失敗・dust 滞留の原因になるため tinybar に変更。`.call{value:}` 送金時にのみ `× 1e10` で weibar へ戻す） |
+| `claimable[account]` | `uint256` | 引き出し可能なネイティブ HBAR 残高（**tinybar**、10^8 = 1 HBAR）。Hedera EVM の `.call{value:}` もtinybar値を取るため変換せず送金する。 |
 | `allocationOf[paymentId]` | `struct{creator, creatorAmount, owner, ownerAmount, blockNumber}` | 監査用の不可逆記録（FR-009, FR-010）。`creatorAmount`/`ownerAmount` は tinybar |
 
 **状態遷移**

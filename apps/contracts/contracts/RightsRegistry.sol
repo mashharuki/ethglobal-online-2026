@@ -14,7 +14,7 @@ import {RevenueLib} from "./libraries/RevenueLib.sol";
 ///         `consume` (operator only, exactly one success per (receiptHash, useIndex)),
 ///         `hasValidConsumption` / `receiptStatus` views, License Epoch, pull-based `claim`,
 ///         and the R-2a `payFor` / `finalize` / `refundUnfinalized` fallback rail.
-///         All amounts are tinybar; weibar appears only at the EVM boundary (PayLib).
+///         All Solidity-visible and stored amounts are tinybar; JSON-RPC relays accept weibar.
 contract RightsRegistry is IRightsRegistry, ReentrancyGuard {
     // ------------------------------------------------------------------ config
 
@@ -98,8 +98,8 @@ contract RightsRegistry is IRightsRegistry, ReentrancyGuard {
 
     /// @inheritdoc IRightsRegistry
     function settleAndIssue(ReceiptParams calldata p) external payable nonReentrant returns (bytes32 receiptHash) {
-        // exact-amount rail: msg.value (weibar) must equal price (tinybar) * 1e10
-        if (p.price == 0 || msg.value != PayLib.toWeibar(p.price)) revert UnderPayment();
+        // Hedera exposes msg.value to Solidity in tinybar; p.price uses the same unit.
+        if (p.price == 0 || msg.value != p.price) revert UnderPayment();
         receiptHash = _settle(p);
     }
 
@@ -272,11 +272,11 @@ contract RightsRegistry is IRightsRegistry, ReentrancyGuard {
 
     /// @inheritdoc IRightsRegistry
     function payFor(bytes32 paymentId, bytes32 committedParamsHash) external payable {
-        if (msg.value == 0 || msg.value % PayLib.WEIBAR_PER_TINYBAR != 0) revert UnderPayment();
+        if (msg.value == 0) revert UnderPayment();
         if (_pending[paymentId].payer != address(0) || _allocations[paymentId].blockNumber != 0) {
             revert ReceiptAlreadyIssued();
         }
-        uint256 amountTinybar = msg.value / PayLib.WEIBAR_PER_TINYBAR;
+        uint256 amountTinybar = msg.value;
         _pending[paymentId] = Pending({
             payer: msg.sender,
             depositedAt: uint64(block.timestamp),

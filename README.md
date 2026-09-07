@@ -209,14 +209,14 @@ Stated as precisely as we can (constitution VII):
 | Contracts | `pnpm --filter contracts exec hardhat run scripts/deploy.ts --network testnet`, then `pnpm --filter contracts exec hardhat run scripts/seed.ts --network testnet` | writes addresses back to `packages/shared` / subgraph config; verify on HashScan |
 | Graph Node | `pnpm --filter cdk deploy` → `pnpm --filter subgraph deploy` | hackathon only; **`pnpm --filter cdk destroy` after the event** |
 | Gateway | `pnpm --filter gateway deploy`, then `pnpm --filter gateway exec tsx scripts/load-shares.ts` (loads the seeded key shares into KV / secrets), then `pnpm --filter gateway deploy` again | secrets in `apps/gateway/CONFIG.md` |
-| Web | `pnpm --filter web build` → Cloudflare Pages | `VITE_*` in `apps/web/README.md` |
+| Web | `pnpm --filter web build` → Cloudflare Pages | [https://truecollective.pages.dev](https://truecollective.pages.dev); `VITE_*` in `apps/web/README.md` |
 
 ## Deployed Contract
 
 |Contract Name|Address|Verify|
 |:----|:----|:----|
 |RightsNFT|[0x3524049309DC3F7f1dE83a8687a55Afa927dAe7A](https://explorer.arkhia.io/testnet/contract/0.0.10391301)|[0x3524049309DC3F7f1dE83a8687a55Afa927dAe7A](https://sourcify.dev/server/repo-ui/296/0x3524049309DC3F7f1dE83a8687a55Afa927dAe7A)|
-|RightsRegistry|[0xf397f1c1697fe777aee97994a4b686519bd26877](https://explorer.arkhia.io/testnet/contract/0.0.10391305)|[0xf397F1C1697Fe777AEE97994a4b686519bD26877](https://sourcify.dev/server/repo-ui/296/0xf397F1C1697Fe777AEE97994a4b686519bD26877)|
+|RightsRegistry|[0x18fD81Ef7caA46e104772B23F27351FD8748152b](https://explorer.arkhia.io/testnet/contract/0.0.10403546)|[0x18fD81Ef7caA46e104772B23F27351FD8748152b](https://sourcify.dev/server/repo-ui/296/0x18fD81Ef7caA46e104772B23F27351FD8748152b)|
 
 ## Verification status (honest)
 
@@ -231,12 +231,11 @@ on Hedera Testnet and verified on Sourcify (see the Deployed Contract table abov
 runtime bytecode). The self-hosted Rights Graph (subgraph) is deployed and reachable at the
 `SUBGRAPH_URL` in `apps/gateway/wrangler.toml`.
 
-**Not yet verified at the time of writing (needs credentials / a completed deployment, or
-hasn't been re-checked against the current state — see issues #31–#37, #40):** the demo
-seed data actually minted on Testnet, Blocky402 settlement, the gateway Cloudflare Workers
-deployment and the web Cloudflare Pages deployment, Privy live login, the day-1 probes'
-recorded results, and the live Playwright / Newman / agent runs. Those specs **skip with a
-printed notice and never report success** until the targets exist.
+The demo seed data, Gateway Worker, Web Pages site and self-hosted Rights Graph are live. A real
+MCP run completed `discover_assets → buy_access → decrypt_content` with a 0.1 HBAR Testnet
+payment, on-chain Receipt issuance and consumption. The Pages origin is allowed by Privy and the
+login UI loads in the deployed site. Remaining live checks are the interactive Privy wallet flow
+and the full deployed Playwright / Newman suites.
 
 ## Prior work and disclosure (ETHOnline rules)
 
