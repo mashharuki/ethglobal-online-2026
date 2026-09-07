@@ -339,6 +339,7 @@ code {
     #191122 85%
   );
   box-shadow: var(--shadow-lg);
+  isolation: isolate;
 }
 .market-feature-orb {
   position: absolute;
@@ -348,7 +349,6 @@ code {
     rgba(210, 160, 255, 0.55),
     transparent 60%
   );
-  animation: market-orb-drift 9s ease-in-out infinite;
 }
 @keyframes market-orb-drift {
   0%,
@@ -362,6 +362,7 @@ code {
   }
 }
 .market-feature-caption {
+  z-index: 2;
   position: absolute;
   bottom: 0;
   left: 0;
@@ -434,22 +435,11 @@ code {
   position: relative;
   overflow: hidden;
   padding: 0;
-  animation: asset-card-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
-.asset-card:hover {
-  transform: translateY(-4px);
+.asset-card:hover,
+.asset-card:focus-within {
   border-color: color-mix(in srgb, var(--accent-strong) 65%, transparent);
   box-shadow: var(--shadow-lg);
-}
-@keyframes asset-card-in {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .asset-art {
@@ -461,10 +451,6 @@ code {
   width: 100%;
   height: 100%;
   display: block;
-  transition: transform 0.6s ease;
-}
-.asset-card:hover .asset-art svg {
-  transform: scale(1.06);
 }
 .asset-art-badge {
   position: absolute;
@@ -521,4 +507,331 @@ code {
   padding: 1.25rem 0;
   color: var(--text-dim);
   font-size: 0.8125rem;
+}
+
+/* ---- Market motion: orbital light, responsive artwork, stable action targets ---- */
+
+.market-feature::before,
+.market-feature::after,
+.market-feature-orb::before,
+.market-feature-orb::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+.market-feature::before {
+  inset: -30%;
+  opacity: 0.3;
+  background:
+    linear-gradient(90deg, #e0baff14 1px, transparent 1px),
+    linear-gradient(#e0baff14 1px, transparent 1px),
+    conic-gradient(
+      from 45deg at 50% 45%,
+      transparent,
+      #dbaaff70,
+      transparent 45%
+    );
+  background-size:
+    32px 32px,
+    32px 32px,
+    100% 100%;
+  transform: perspective(500px) rotateX(35deg) rotateZ(-15deg);
+}
+.market-feature-orb::before {
+  width: 112px;
+  height: 112px;
+  left: 55%;
+  top: 40%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle at 30% 25%,
+    #fff0fc,
+    #d6a4ff 16%,
+    #8650c4 42%,
+    #27123c 76%
+  );
+  box-shadow:
+    inset -12px -14px 24px #16072899,
+    inset 2px 2px 9px #fff7,
+    0 0 48px #bd9aff66;
+}
+.market-feature::after,
+.market-feature-orb::after {
+  width: 248px;
+  height: 248px;
+  left: 55%;
+  top: 40%;
+  border-radius: 50%;
+  border: 1px solid #edccff85;
+  border-left-color: #b276ff;
+  background: radial-gradient(
+    ellipse at 50% 1%,
+    #fff 0 3px,
+    #dab5ff80 4px,
+    transparent 8px
+  );
+  box-shadow:
+    0 0 12px #d6a4ff33,
+    inset 0 0 10px #d6a4ff22;
+  transform: translate(-50%, -50%) perspective(600px) rotateX(66deg)
+    rotateY(-18deg) rotateZ(0deg);
+}
+.market-feature::after {
+  width: 206px;
+  height: 206px;
+  opacity: 0.65;
+  transform: translate(-50%, -50%) perspective(600px) rotateX(58deg)
+    rotateY(38deg) rotateZ(120deg);
+}
+
+/* Reveal and tilt live on separate art layers; section and button geometry never animate. */
+.asset-art-motion {
+  position: absolute;
+  inset: 0;
+  animation-delay: inherit;
+}
+.asset-art {
+  animation-delay: inherit;
+}
+.asset-art::after,
+.asset-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.asset-card::after {
+  border-radius: inherit;
+  background: radial-gradient(
+    360px circle at var(--light-x, 50%) var(--light-y, 20%),
+    #d5b7ff12,
+    transparent 70%
+  );
+}
+.asset-art::after {
+  background: linear-gradient(
+    110deg,
+    transparent 25%,
+    #fff1 42%,
+    #fff5 50%,
+    #fff1 58%,
+    transparent 75%
+  );
+  transform: translateX(-110%) skewX(-12deg);
+}
+.asset-art-badge {
+  z-index: 1;
+}
+
+.nav a::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 25%;
+  right: 25%;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.nav a.active::after {
+  opacity: 1;
+  box-shadow: 0 3px 10px #bd9aff55;
+}
+.btn {
+  position: relative;
+}
+.btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, #ffffff50, transparent 75%);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.btn:active:not(:disabled)::after {
+  opacity: 1;
+}
+.btn:focus-visible,
+.market-filter:focus-visible,
+.nav a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .market-hero-copy > * {
+    animation: market-copy-in 0.8s ease-out both;
+  }
+  .market-hero-copy > h1 {
+    animation-delay: 80ms;
+  }
+  .market-hero-copy > p {
+    animation-delay: 160ms;
+  }
+  .market-hero-copy > .market-stats {
+    animation-delay: 240ms;
+  }
+  .market-hero h1 span {
+    background-image: linear-gradient(
+      100deg,
+      var(--accent-strong),
+      #f3b8ed 35%,
+      #ffedf9 50%,
+      var(--accent-strong) 70%
+    );
+    background-size: 250% 100%;
+    animation: market-type-sheen 7s ease-in-out infinite;
+  }
+  .market-feature-orb {
+    animation: market-orb-drift 9s ease-in-out infinite;
+  }
+  .market-feature-orb::after {
+    animation: market-orbit 16s linear infinite;
+  }
+  .market-feature::after {
+    animation: market-counter-orbit 22s linear infinite;
+  }
+  .asset-card[data-revealed] .asset-art-motion {
+    animation-name: asset-art-in;
+    animation-duration: 0.85s;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    /* backwards: without it, the element renders at its normal (post-animation) state during
+       the inherited animation-delay, then jumps to the "from" keyframe the instant the
+       animation starts - a visible pop right before the reveal (independent review finding). */
+    animation-fill-mode: backwards;
+  }
+  .nav a.active::after {
+    animation: market-nav-in 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .btn::after {
+    transform: scale(0.5);
+    transition:
+      opacity 0.35s ease,
+      transform 0.45s ease;
+  }
+  .btn:active:not(:disabled)::after {
+    transform: scale(1);
+    transition-duration: 0.08s;
+  }
+  .market-filter {
+    transition:
+      background 0.2s ease,
+      color 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  .market-filter.active {
+    box-shadow: 0 0 18px -6px var(--accent);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) and (hover: hover) and (
+    pointer: fine
+  ) {
+  .asset-art svg {
+    transform: perspective(700px) rotateX(var(--art-y, 0deg))
+      rotateY(var(--art-x, 0deg)) scale(1.035);
+    transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    /* Defensive: WebKit/Safari can z-fight or flicker on 3D-transformed elements without this
+       (independent review finding) - untested on real Safari, cheap and harmless either way. */
+    backface-visibility: hidden;
+  }
+  .asset-card[data-pointer] .asset-art svg {
+    transform: perspective(700px) rotateX(var(--art-y, 0deg))
+      rotateY(var(--art-x, 0deg)) scale(1.1);
+    transition-duration: 0.15s;
+  }
+  .asset-card[data-pointer]::after {
+    opacity: 1;
+  }
+  .asset-card:hover .asset-art::after {
+    animation: asset-foil-sweep 0.95s ease-out;
+  }
+  .asset-art-orbit {
+    transition: transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .asset-card:hover .asset-art-orbit-primary {
+    transform: translate(12px, -8px);
+  }
+  .asset-card:hover .asset-art-orbit-secondary {
+    transform: translate(-10px, 6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn:hover:not(:disabled) {
+    transform: none;
+  }
+}
+
+@keyframes market-copy-in {
+  from {
+    opacity: 0.45;
+    translate: 0 10px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes market-type-sheen {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+@keyframes market-orbit {
+  to {
+    transform: translate(-50%, -50%) perspective(600px) rotateX(66deg)
+      rotateY(-18deg) rotateZ(360deg);
+  }
+}
+@keyframes market-counter-orbit {
+  to {
+    transform: translate(-50%, -50%) perspective(600px) rotateX(58deg)
+      rotateY(38deg) rotateZ(-240deg);
+  }
+}
+@keyframes asset-art-in {
+  from {
+    opacity: 0.6;
+    transform: scale(1.12) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes asset-foil-sweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-110%) skewX(-12deg);
+  }
+  30% {
+    opacity: 0.65;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(110%) skewX(-12deg);
+  }
+}
+@keyframes market-nav-in {
+  from {
+    transform: scaleX(0.2);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
 }

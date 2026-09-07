@@ -1,5 +1,6 @@
 import type { AssetSummary } from "../api/client";
 import { short } from "../graph/queries";
+import { useAssetMotion } from "../lib/useAssetMotion";
 import AssetArt from "./AssetArt";
 import PricePanel from "./PricePanel";
 
@@ -20,13 +21,17 @@ export default function AssetCard(props: {
   isOwner: boolean;
 }) {
   const { asset } = props;
+  const motionRef = useAssetMotion();
   return (
     <section
+      ref={motionRef}
       className="card asset-card"
       style={{ animationDelay: `${Math.min(props.index, 8) * 60}ms` }}
     >
       <div className="asset-art">
-        <AssetArt assetId={asset.assetId} />
+        <div className="asset-art-motion">
+          <AssetArt assetId={asset.assetId} />
+        </div>
         <span className="asset-art-badge">
           {props.isOwner ? "you own this" : "preview available"}
         </span>

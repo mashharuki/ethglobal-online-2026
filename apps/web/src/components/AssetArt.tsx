@@ -23,6 +23,7 @@ export default function AssetArt(props: { assetId: string }) {
       </defs>
       <rect width="400" height="220" fill={`url(#${gradId})`} />
       <circle
+        className="asset-art-orbit asset-art-orbit-primary"
         cx={60 + (seed % 280)}
         cy={40 + ((seed >>> 5) % 140)}
         r={70}
@@ -30,6 +31,7 @@ export default function AssetArt(props: { assetId: string }) {
         opacity="0.18"
       />
       <circle
+        className="asset-art-orbit asset-art-orbit-secondary"
         cx={340 - (seed % 260)}
         cy={170 - ((seed >>> 9) % 120)}
         r={44}
