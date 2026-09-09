@@ -27,6 +27,8 @@ RIGHTS_NFT_ADDRESS = "0x3524049309DC3F7f1dE83a8687a55Afa927dAe7A"
 RIGHTS_REGISTRY_ADDRESS = "0x18fD81Ef7caA46e104772B23F27351FD8748152b"
 IPFS_GATEWAY_URL = "https://chocolate-nice-gazelle-823.mypinata.cloud/"
 CORS_ALLOWED_ORIGINS = "https://truecollective.pages.dev,http://localhost:5173"
+# /oauth/authorize redirects here for the (Phase 9) consent screen.
+WEB_APP_URL = "https://truecollective.pages.dev"
 # MCP spend policy (research.md R-9): hard cap per Mcp-Session-Id in tinybar (20 HBAR).
 MCP_SESSION_SPEND_CAP_TINYBAR = "2000000000"
 # MCP OAuth remediation (specs/mcp-auth-remediation-plan.md): per-principal daily cap

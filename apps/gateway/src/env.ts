@@ -30,6 +30,9 @@ export type Env = {
   IPFS_GATEWAY_URL: string;
   /** Comma-separated browser origins allowed to call the public HTTP API. */
   CORS_ALLOWED_ORIGINS: string;
+  /** Base URL of apps/web - /oauth/authorize redirects here (`/ai-consent?request_id=...`)
+   * for the Phase 9 consent screen. */
+  WEB_APP_URL: string;
   /** MCP spend policy (R-9): hard cap per Mcp-Session-Id, tinybar */
   MCP_SESSION_SPEND_CAP_TINYBAR: string;
   /**
