@@ -1,25 +1,59 @@
 import type { Hono } from "hono";
 import { z } from "zod";
+import { getChainId } from "../env";
+import { AppError } from "../errors";
+import { extractBearerToken } from "../mcp/auth";
+import { verifyPrincipalAccessToken } from "../mcp/privyClient";
 import { beginAuthorization } from "../oauth/authorize";
 import { registerClient } from "../oauth/clients";
+import { getConsentRequestDetails, resolveConsent } from "../oauth/consent";
 import { revokeToken } from "../oauth/revoke";
 import {
   exchangeAuthorizationCode,
   refreshAccessToken,
   type TokenResult,
 } from "../oauth/token";
+import type { Services } from "../services";
 import type { AppEnv } from "./schemas";
 import { badRequest, parseBody } from "./schemas";
+
+/** Shared by GET and POST /oauth/consent: both authenticate the caller the same way (a Privy
+ * access token, never this gateway's own OAuth Bearer tokens) and must fail identically. */
+async function requirePrincipalFromPrivyToken(
+  services: Services,
+  authorizationHeader: string | null | undefined,
+): Promise<string> {
+  const token = extractBearerToken(authorizationHeader);
+  if (token === undefined) {
+    throw new AppError(
+      "AUTH_TOKEN_INVALID",
+      "missing or malformed Authorization header",
+    );
+  }
+  try {
+    return (await verifyPrincipalAccessToken(services.env, token)).principalId;
+  } catch {
+    // Same "single code, no oracle" choice AUTH_TOKEN_INVALID already makes for /mcp's Bearer
+    // auth (mcp/auth.ts) and the agent-grant admin routes (routes/agentGrants.ts).
+    throw new AppError("AUTH_TOKEN_INVALID", "invalid or expired access token");
+  }
+}
 
 /**
  * OAuth 2.1 authorization-server flow endpoints (specs/mcp-auth-remediation-plan.md §6).
  * /token and /revoke are form-urlencoded per RFC 6749/RFC 7009 (not this codebase's usual
  * JSON `parseBody`) - every standard OAuth client library sends these as
  * application/x-www-form-urlencoded, so accepting only JSON here would make this server
- * incompatible with all of them. /oauth/consent (verifies the user's Privy identity,
- * provisions the AI wallet, creates the grant) is NOT in this PR - it needs its own design
- * pass together with the Phase 9 web consent UI it's called from, tracked as a follow-up.
+ * incompatible with all of them. /oauth/consent (Phase 9) is JSON instead - it is not part of
+ * the OAuth spec proper, it is THIS gateway's own endpoint the web "AI access" screen calls
+ * via `fetch()` after the user approves or declines, authenticated by a Privy access token
+ * (mcp/privyClient.ts's `verifyPrincipalAccessToken`) rather than an OAuth Bearer token, which
+ * doesn't exist yet at this point in the flow.
  */
+const ConsentBody = z.object({
+  request_id: z.string().min(1),
+  decision: z.enum(["allow", "deny"]),
+});
 const RegisterBody = z.object({
   // client_name is OPTIONAL per RFC 7591 §2 - clients.ts falls back to a display name when
   // it's omitted, rather than rejecting the request.
@@ -82,6 +116,52 @@ export function registerOauthRoutes(app: Hono<AppEnv>): void {
     target.searchParams.set("error_description", outcome.errorDescription);
     if (outcome.state !== null) target.searchParams.set("state", outcome.state);
     return c.redirect(target.toString(), 302);
+  });
+
+  app.get("/oauth/consent", async (c) => {
+    const services = c.get("services");
+    await requirePrincipalFromPrivyToken(
+      services,
+      c.req.header("Authorization"),
+    );
+    const requestId = c.req.query("request_id");
+    if (requestId === undefined || requestId.length === 0) {
+      throw badRequest("request_id is required");
+    }
+    const details = await getConsentRequestDetails(
+      c.get("authzDb"),
+      requestId,
+      services.now(),
+    );
+    return c.json({
+      client_id: details.clientId,
+      client_name: details.clientName,
+      scope: details.scope,
+      resource: details.resource,
+      expires_at: details.expiresAt.toISOString(),
+    });
+  });
+
+  app.post("/oauth/consent", async (c) => {
+    const services = c.get("services");
+    const principalId = await requirePrincipalFromPrivyToken(
+      services,
+      c.req.header("Authorization"),
+    );
+    const body = await parseBody(c, ConsentBody);
+    const result = await resolveConsent(
+      c.get("authzDb"),
+      services.env,
+      services.env,
+      {
+        requestId: body.request_id,
+        principalId,
+        decision: body.decision,
+        chainId: getChainId(services.env),
+      },
+      services.now(),
+    );
+    return c.json({ redirect_uri: result.redirectUri });
   });
 
   app.post("/oauth/token", async (c) => {

@@ -6,6 +6,7 @@ import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
 import App from "./App.tsx";
 import { getConfig } from "./config.ts";
 import "./css/index.css";
+import AiConsent from "./routes/AiConsent.tsx";
 import Creator from "./routes/Creator.tsx";
 import Dashboard from "./routes/Dashboard.tsx";
 import Market from "./routes/Market.tsx";
@@ -21,6 +22,7 @@ const router = createBrowserRouter([
       { path: "creator", Component: Creator },
       { path: "viewer/:assetId", Component: Viewer },
       { path: "dashboard", Component: Dashboard },
+      { path: "ai-consent", Component: AiConsent },
     ],
   },
 ]);

@@ -33,6 +33,34 @@ export async function resolveDelegation(
 }
 
 /**
+ * Finds the `state = 'active'` grant for a (principal, client) pair, if one exists -
+ * `agent_grant_live_principal_client_uniq` (schema.ts) guarantees there is at most one. This
+ * is intentionally narrower than "usable": it does NOT check `expiresAt` or `scope`, unlike
+ * `assertGrantUsable` - a caller deciding whether to REUSE this row (rather than just
+ * detecting that one exists, e.g. to know it must be revoked before creating a replacement)
+ * must additionally check both itself (Codex review, Phase 9: the consent flow's own reuse
+ * decision does exactly this in oauth/consent.ts).
+ */
+export async function resolveActiveDelegationForClient(
+  db: AuthzDb,
+  principalId: string,
+  clientId: string,
+): Promise<AgentGrant | undefined> {
+  const [row] = await db
+    .select()
+    .from(agentGrant)
+    .where(
+      and(
+        eq(agentGrant.principalId, principalId),
+        eq(agentGrant.clientId, clientId),
+        eq(agentGrant.state, "active"),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+/**
  * Reads the grant fresh by id and returns it only if usable, or throws the specific domain
  * error a caller (an MCP tool handler, an HTTP route) can surface as-is. Deliberately takes
  * `grantId`, not a `grant` object, so it is impossible to call this with a stale snapshot held
