@@ -185,9 +185,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -277,10 +275,7 @@
       "compositePrimaryKeys": {
         "agent_principal_spend_principal_id_utc_day_pk": {
           "name": "agent_principal_spend_principal_id_utc_day_pk",
-          "columns": [
-            "principal_id",
-            "utc_day"
-          ]
+          "columns": ["principal_id", "utc_day"]
         }
       },
       "uniqueConstraints": {},
@@ -289,9 +284,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -520,9 +513,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -777,9 +768,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -873,9 +862,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -933,9 +920,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -1043,9 +1028,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -1126,9 +1109,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -1170,9 +1151,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -1303,9 +1282,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -1423,9 +1400,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -1519,9 +1494,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -1654,9 +1627,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -1746,9 +1717,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -1824,10 +1793,7 @@
         "receipt_consumption_receipt_hash_use_index_unique": {
           "name": "receipt_consumption_receipt_hash_use_index_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "receipt_hash",
-            "use_index"
-          ]
+          "columns": ["receipt_hash", "use_index"]
         }
       },
       "policies": {
@@ -1835,9 +1801,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -1887,9 +1851,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
@@ -1950,11 +1912,7 @@
       "compositePrimaryKeys": {
         "wallet_blinded_shares_asset_id_wallet_path_pk": {
           "name": "wallet_blinded_shares_asset_id_wallet_path_pk",
-          "columns": [
-            "asset_id",
-            "wallet",
-            "path"
-          ]
+          "columns": ["asset_id", "wallet", "path"]
         }
       },
       "uniqueConstraints": {},
@@ -1963,9 +1921,7 @@
           "name": "gateway_service_access",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "true",
           "withCheck": "true"
         }
