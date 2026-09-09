@@ -4,9 +4,11 @@ import { registerAuditRoutes } from "./audit";
 import { registerGraphRoutes } from "./graph";
 import { registerKeygateRoutes } from "./keygate";
 import { registerMcpRoutes } from "./mcp";
+import { registerOauthRoutes } from "./oauth";
 import { registerOwnerRoutes } from "./ownerAccess";
 import { registerPreviewRoutes } from "./preview";
 import type { AppEnv } from "./schemas";
+import { registerWellKnownRoutes } from "./wellKnown";
 import { registerX402Routes } from "./x402";
 
 /** Mounts every HTTP route (tasks.md T086-T091). `services` must already be set on the context. */
@@ -19,6 +21,8 @@ export function registerRoutes(app: Hono<AppEnv>): void {
   registerAuditRoutes(app);
   registerAdminRoutes(app);
   registerMcpRoutes(app);
+  registerWellKnownRoutes(app);
+  registerOauthRoutes(app);
 }
 
 export type { AppEnv } from "./schemas";
