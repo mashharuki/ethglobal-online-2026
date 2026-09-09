@@ -91,11 +91,15 @@ jobs:
     # REQUIRE_PG=1 (test/pg/helpers.ts) turns "couldn't connect" into a failure rather than a
     # silent skip, since a service container being unavailable here is this job's own fault,
     # never a legitimately-absent live credential.
+    # Not a real secret (a throwaway CI-only service-container password, discarded with the
+    # job/container - never used by anything persistent or production) - kept in a repository
+    # *variable*, not written as a literal here, purely so it doesn't read as a hardcoded
+    # credential to a scanner that has no way to know that from the YAML alone.
     services:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_PASSWORD: ${{ vars.CI_POSTGRES_PASSWORD }}
           POSTGRES_DB: gateway_pg_test
         ports:
           - 5432:5432
@@ -116,7 +120,7 @@ jobs:
         run: pnpm --filter gateway test:pg
         env:
           REQUIRE_PG: "1"
-          DATABASE_URL_PG: postgres://postgres:postgres@localhost:5432/gateway_pg_test
+          DATABASE_URL_PG: postgres://postgres:${{ vars.CI_POSTGRES_PASSWORD }}@localhost:5432/gateway_pg_test
 
   subgraph:
     name: subgraph build + matchstick

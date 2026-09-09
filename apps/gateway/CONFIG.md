@@ -174,7 +174,12 @@ would silently let a request through that should have been denied.
   (`mcp/spend.ts`) exists to survive. Each test file gets a fresh, isolated schema (dropped on
   completion) so concurrent runs against the same server never collide. Without
   `DATABASE_URL_PG` this SKIPS with a printed notice; CI's dedicated `postgres-concurrency` job
-  sets `REQUIRE_PG=1`, which turns a missing/broken connection into a failure instead.
+  sets `REQUIRE_PG=1`, which turns a missing/broken connection into a failure instead. That job's
+  Postgres service container password comes from the repository variable
+  `CI_POSTGRES_PASSWORD` (not a secret - a throwaway value for an ephemeral container discarded
+  with the job, kept out of the workflow file only so a scanner has no literal to flag). A fork
+  or independent copy of this repo must set that variable (any value) or the service container
+  fails to start - GitHub Actions resolves an unset `vars.*` reference to an empty string.
 - Every table has Row Level Security enabled (`.enableRLS()`, satisfying the hosting
   provider's "unrestricted table" advisory) plus one `gateway_service_access` policy
   granting `FOR ALL TO public USING (true) WITH CHECK (true)` - these tables are internal
