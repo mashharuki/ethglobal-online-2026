@@ -34,6 +34,18 @@ import type { AppEnv } from "./schemas";
  * best-effort cleanup afterward (the plan's explicit ordering) - its failure never undoes or
  * fails the revoke itself, only shows up as `signerDetached: false` for the caller to retry
  * later.
+ *
+ * KNOWN LIMITATION (Codex review, Phase 8, accepted for this PR - not a security bypass): the
+ * "count active grants on this wallet, then detach" sequence is check-then-act, not
+ * transactionally serialized against a NEW grant being created for the same wallet in that
+ * narrow window. Worst case, a just-created grant's Privy signer gets detached too - the
+ * grant itself stays correctly `active` in the DB (this gateway's own authorization never
+ * reads Privy's signer-attachment state at request time), so the caller just has to redo
+ * consent for that wallet; no unauthorized access is possible either way. Closing this fully
+ * needs a wallet-scoped lock shared with grant creation (grant.ts's `createGrant`), and a
+ * durable "detach pending/failed" retry story keyed on `agent_wallet_binding.signerState`
+ * (currently unused by this file) rather than best-effort-and-forget - tracked as a follow-up,
+ * out of scope for the admin routes themselves.
  */
 async function requirePrincipal(
   env: PrivyPrincipalAuthEnv,
@@ -153,26 +165,36 @@ export function registerAgentGrantRoutes(app: Hono<AppEnv>): void {
       c.req.header("Authorization"),
     );
     const now = services.now();
-    const grants = await listActiveDelegations(authzDb, principalId);
     const revokedGrantIds = await revokeAllDelegations(
       authzDb,
       principalId,
       "principal_requested_revoke_all",
       now,
     );
+    // Wallets to check are derived from the grants the atomic revoke ITSELF returned, never
+    // from a pre-revoke snapshot (Codex review, Phase 8: a snapshot taken before
+    // revokeAllDelegations's own fresh read can miss a grant created in between, leaving its
+    // wallet un-checked). Re-reading each grant post-revoke also means a wallet only ever
+    // enters `walletIds` once its state is `revoked` in the DB.
+    const walletIds = new Set<string>();
     for (const grantId of revokedGrantIds) {
       await revokeAllTokensForGrant(authzDb, grantId, now);
+      const grant = await resolveDelegation(authzDb, grantId);
+      if (grant !== undefined) walletIds.add(grant.walletId);
     }
-    // "Revoke all" means every grant this principal had is gone, so every distinct wallet
-    // among them is now unused - detach all of them (not just one).
-    const walletIds = [...new Set(grants.map((g) => g.walletId))];
+    // Same gate as the single-grant route, applied per wallet immediately before its own
+    // detach attempt: a grant created for this wallet after the bulk revoke (but before this
+    // loop reaches it) must keep the signer attached, exactly like a sibling grant would.
     const signerResults: Record<string, boolean> = {};
     for (const walletId of walletIds) {
-      signerResults[walletId] = await tryDetachSigner(
+      const remaining = await countActiveDelegationsForWallet(
         authzDb,
-        services.env,
         walletId,
       );
+      signerResults[walletId] =
+        remaining === 0
+          ? await tryDetachSigner(authzDb, services.env, walletId)
+          : false;
     }
     await writeAudit(services.db, {
       action: "delegation_revoke",

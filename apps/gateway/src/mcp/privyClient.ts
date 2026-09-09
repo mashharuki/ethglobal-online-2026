@@ -292,6 +292,14 @@ export type PrivyPrincipalAuthEnv = Partial<
  * `jose.jwtVerify` code path end-to-end (constitution III/IV) without a network stub - the
  * SDK's own `createRemoteJWKSet` call does not honor a custom `fetch` (it never receives one),
  * so an HTTP-boundary stub like the sibling functions in this module use would not work here.
+ *
+ * KNOWN OPTIMIZATION OPPORTUNITY (Codex review, Suggestion tier - not fixed here): a fresh
+ * `PrivyClient` (and its own `createRemoteJWKSet`) is built on every call, so the JWKS itself
+ * is never cached across requests despite the SDK's own 60-minute `cacheMaxAge`. The
+ * `/agent/*` per-IP rate limit (index.ts) bounds abuse from a single caller, but not aggregate
+ * JWKS-fetch cost across many callers. Caching a client per `appId` would need care on
+ * Workers (module-level state persists per isolate, not guaranteed across requests) - left as
+ * a deferred scale optimization, not a correctness or security issue.
  */
 export async function verifyPrincipalAccessToken(
   env: PrivyPrincipalAuthEnv,
