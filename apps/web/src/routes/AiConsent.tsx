@@ -29,26 +29,39 @@ function describeScope(scope: string): string[] {
     .map((s) => SCOPE_DESCRIPTIONS[s] ?? s);
 }
 
+/**
+ * Every load result is tagged with the request_id it was fetched FOR - never a bare
+ * details/error pair. Whether a tagged result is safe to ACT ON (render, enable Allow/Deny)
+ * is decided at render time by comparing it against `requestId` read fresh from the URL, not
+ * against anything an earlier async callback happened to see - so a stale response can still
+ * land in `loadState` (see the `latestRequestId` guard below for why that's rare, not why it's
+ * safe), but it can never be the one that's read (Codex review round 1: a ref-based guard used
+ * to gate RENDERING directly had a timing window between `requestId` changing and the new
+ * `load()` call actually starting).
+ */
+type LoadState =
+  | { kind: "loaded"; requestId: string; details: ConsentDetails }
+  | { kind: "error"; requestId: string; error: unknown };
+
 export default function AiConsent() {
   const { getAccessToken } = usePrivy();
   const [searchParams] = useSearchParams();
   const requestId = searchParams.get("request_id");
-  const [details, setDetails] = useState<ConsentDetails | undefined>();
-  const [error, setError] = useState<unknown>();
+  const [loadState, setLoadState] = useState<LoadState | undefined>();
   const [submitting, setSubmitting] = useState(false);
-  // Which request_id `details`/`error` actually belong to - a ref (not state) so `load` can
-  // read the LATEST value at the moment its fetch resolves, not the value it was created with
-  // (Codex review: `requestId` changing while a fetch is in flight must never let a stale
-  // response for request A render, or be approved/denied, while the URL already points at a
-  // different request B).
+  // Best-effort ONLY (see the type doc above): avoids a slow, now-superseded load() clobbering
+  // a faster, already-rendered CURRENT result with stale data and leaving the screen stuck on
+  // "loading" (Codex review round 2: the render-time guard alone prevents ever SHOWING wrong
+  // data, but a stale write landing after a correct one still overwrote it with nothing then
+  // re-fetching it). If this check ever loses its own narrow race, the worst case is exactly
+  // that same "stuck loading" state, not a correctness/security regression - the render guard
+  // above is unconditional and independent of this ref's timing.
   const latestRequestId = useRef<string | null>(null);
 
   const load = useCallback(async () => {
-    latestRequestId.current = requestId;
-    setDetails(undefined);
-    setError(undefined);
     if (requestId === null) return;
     const forRequestId = requestId;
+    latestRequestId.current = forRequestId;
     try {
       const accessToken = await getAccessToken();
       if (accessToken === null) throw new Error("not logged in to Privy");
@@ -57,11 +70,11 @@ export default function AiConsent() {
         accessToken,
         forRequestId,
       );
-      if (latestRequestId.current !== forRequestId) return; // superseded meanwhile
-      setDetails(details);
+      if (latestRequestId.current !== forRequestId) return;
+      setLoadState({ kind: "loaded", requestId: forRequestId, details });
     } catch (e) {
       if (latestRequestId.current !== forRequestId) return;
-      setError(e);
+      setLoadState({ kind: "error", requestId: forRequestId, error: e });
     }
   }, [requestId, getAccessToken]);
 
@@ -72,20 +85,25 @@ export default function AiConsent() {
   const decide = useCallback(
     async (decision: "allow" | "deny") => {
       if (requestId === null) return;
+      const forRequestId = requestId;
       setSubmitting(true);
-      setError(undefined);
       try {
         const accessToken = await getAccessToken();
         if (accessToken === null) throw new Error("not logged in to Privy");
         const { redirectUri } = await submitConsentDecision(
           getConfig().gatewayUrl,
           accessToken,
-          requestId,
+          forRequestId,
           decision,
         );
         window.location.href = redirectUri;
       } catch (e) {
-        setError(e);
+        // Same best-effort stale-write guard as load() (Codex review round 3: this catch
+        // wrote unconditionally, so a decision submitted for a since-superseded request could
+        // still clobber a newer, already-rendered valid result on its way out).
+        if (latestRequestId.current === forRequestId) {
+          setLoadState({ kind: "error", requestId: forRequestId, error: e });
+        }
         setSubmitting(false);
       }
     },
@@ -100,6 +118,13 @@ export default function AiConsent() {
       </p>
     );
   }
+
+  // Only ever act on a result that belongs to THIS request_id, read fresh from the URL on
+  // every render - a stale response for a superseded request may still be sitting in
+  // `loadState`, but it will never match here.
+  const current = loadState?.requestId === requestId ? loadState : undefined;
+  const details = current?.kind === "loaded" ? current.details : undefined;
+  const error = current?.kind === "error" ? current.error : undefined;
 
   return (
     <div className="space-y-4 max-w-lg">
