@@ -28,13 +28,20 @@ export async function resolveDelegation(
   return row;
 }
 
-/** Narrows `grant` to a usable one, or throws the specific domain error a caller (an MCP tool
- * handler, an HTTP route) can surface as-is. Never mutates - this is a read-time check, run
- * fresh on every call site rather than cached. */
-export function assertGrantUsable(
-  grant: AgentGrant | undefined,
+/**
+ * Reads the grant fresh by id and returns it only if usable, or throws the specific domain
+ * error a caller (an MCP tool handler, an HTTP route) can surface as-is. Deliberately takes
+ * `grantId`, not a `grant` object, so it is impossible to call this with a stale snapshot held
+ * from an earlier read (Codex review, Phase 4: a `grant: AgentGrant` parameter let a caller
+ * resolve once, hold the object across a revoke, and still pass validation against the
+ * now-stale copy) - every call does its own DB read at the instant it runs.
+ */
+export async function assertGrantUsable(
+  db: Db,
+  grantId: string,
   now: Date,
-): asserts grant is AgentGrant {
+): Promise<AgentGrant> {
+  const grant = await resolveDelegation(db, grantId);
   if (grant === undefined) {
     throw new AppError("DELEGATION_NOT_FOUND", "no such delegation");
   }
@@ -44,19 +51,19 @@ export function assertGrantUsable(
   if (grant.state === "expired" || grant.expiresAt <= now) {
     throw new AppError("DELEGATION_EXPIRED");
   }
+  return grant;
 }
 
-/** Resolve + assert-usable in one call, then hand the live grant to `fn` - the shape every MCP
- * tool handler that acts on behalf of a delegation should use, so "read fresh, check usable,
- * then act" can never be split across call sites and drift apart. */
+/** Assert-usable, then hand the live grant to `fn` - the shape every MCP tool handler that acts
+ * on behalf of a delegation should use, so "read fresh, check usable, then act" can never be
+ * split across call sites and drift apart. */
 export async function withGrantHeld<T>(
   db: Db,
   grantId: string,
   now: Date,
   fn: (grant: AgentGrant) => Promise<T>,
 ): Promise<T> {
-  const grant = await resolveDelegation(db, grantId);
-  assertGrantUsable(grant, now);
+  const grant = await assertGrantUsable(db, grantId, now);
   return fn(grant);
 }
 

@@ -138,10 +138,12 @@ describe("resolveDelegation / assertGrantUsable", () => {
     expect(resolved).toBeUndefined();
   });
 
-  it("should throw AppError(DELEGATION_NOT_FOUND) for an undefined grant", () => {
-    expect(() => assertGrantUsable(undefined, NOW)).toThrow(AppError);
+  it("should throw AppError(DELEGATION_NOT_FOUND) for an unknown grant id", async () => {
+    await expect(
+      assertGrantUsable(db, crypto.randomUUID(), NOW),
+    ).rejects.toThrow(AppError);
     try {
-      assertGrantUsable(undefined, NOW);
+      await assertGrantUsable(db, crypto.randomUUID(), NOW);
     } catch (e) {
       expect((e as AppError).code).toBe("DELEGATION_NOT_FOUND");
     }
@@ -158,10 +160,11 @@ describe("resolveDelegation / assertGrantUsable", () => {
       now: NOW,
     });
     await revokeGrant(db, created.id, "user requested", NOW);
-    const revoked = await resolveDelegation(db, created.id);
-    expect(() => assertGrantUsable(revoked, NOW)).toThrow(AppError);
+    await expect(assertGrantUsable(db, created.id, NOW)).rejects.toThrow(
+      AppError,
+    );
     try {
-      assertGrantUsable(revoked, NOW);
+      await assertGrantUsable(db, created.id, NOW);
     } catch (e) {
       expect((e as AppError).code).toBe("DELEGATION_REVOKED");
     }
@@ -179,12 +182,39 @@ describe("resolveDelegation / assertGrantUsable", () => {
       ttlSec: 60,
     });
     const afterExpiry = new Date(NOW.getTime() + 61 * 1000);
-    expect(() => assertGrantUsable(created, afterExpiry)).toThrow(AppError);
+    await expect(
+      assertGrantUsable(db, created.id, afterExpiry),
+    ).rejects.toThrow(AppError);
     try {
-      assertGrantUsable(created, afterExpiry);
+      await assertGrantUsable(db, created.id, afterExpiry);
     } catch (e) {
       expect((e as AppError).code).toBe("DELEGATION_EXPIRED");
     }
+  });
+
+  it("should require a fresh DB read rather than trusting a stale snapshot: a grant object held before a revoke is never accepted", async () => {
+    // Regression test (Codex review): assertGrantUsable previously took a `grant: AgentGrant`
+    // snapshot parameter, so a caller could resolve once, hold the object across a revoke
+    // that happened elsewhere, and still pass validation against the now-stale copy. Taking
+    // `grantId` and reading fresh internally makes this impossible - there is no snapshot
+    // parameter to smuggle a stale object through any more.
+    const walletId = await seedWallet("did:privy:stale-snapshot");
+    const created = await createGrant(db, GRANT_ENV, {
+      principalId: "did:privy:stale-snapshot",
+      walletId,
+      clientId: "client-1",
+      scope: "assets:read",
+      chainId: 296,
+      now: NOW,
+    });
+    const snapshotBeforeRevoke = await resolveDelegation(db, created.id);
+    expect(snapshotBeforeRevoke?.state).toBe("active"); // the stale snapshot itself looks fine
+    await revokeGrant(db, created.id, "revoked after snapshot taken", NOW);
+    // assertGrantUsable only ever takes grantId - there is no way to pass the stale snapshot
+    // in, so this call necessarily re-reads and correctly rejects.
+    await expect(assertGrantUsable(db, created.id, NOW)).rejects.toThrow(
+      AppError,
+    );
   });
 });
 
