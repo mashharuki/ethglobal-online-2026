@@ -402,14 +402,16 @@ describe("detachDelegatedSigner", () => {
 describe("verifyPrincipalAccessToken", () => {
   const APP_ID = "app-id";
 
-  async function buildToken(overrides: {
-    userId?: string;
-    sessionId?: string;
-    issuer?: string;
-    audience?: string;
-    expiresInSeconds?: number;
-    signWithDifferentKey?: boolean;
-  } = {}): Promise<{ token: string; verificationKeyPem: string }> {
+  async function buildToken(
+    overrides: {
+      userId?: string;
+      sessionId?: string;
+      issuer?: string;
+      audience?: string;
+      expiresInSeconds?: number;
+      signWithDifferentKey?: boolean;
+    } = {},
+  ): Promise<{ token: string; verificationKeyPem: string }> {
     const { publicKey, privateKey } = await generateKeyPair("ES256", {
       extractable: true,
     });
@@ -497,10 +499,7 @@ describe("verifyPrincipalAccessToken", () => {
       verifyPrincipalAccessToken({}, "irrelevant-token"),
     ).rejects.toThrow(PrivyAuthUnavailableError);
     await expect(
-      verifyPrincipalAccessToken(
-        { PRIVY_APP_ID: APP_ID },
-        "irrelevant-token",
-      ),
+      verifyPrincipalAccessToken({ PRIVY_APP_ID: APP_ID }, "irrelevant-token"),
     ).rejects.toThrow(PrivyAuthUnavailableError);
   });
 });

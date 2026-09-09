@@ -85,10 +85,7 @@ for (const prefix of ["/owner/*", "/keygate/*"]) {
 // Agent delegation admin routes (Phase 8): each call verifies a Bearer token against Privy's
 // JWKS before touching the DB, so an unbounded caller could still spend that verification
 // cost repeatedly even though every attempt fails - rate-limit by IP the same way DCR is.
-app.use(
-  "/agent/*",
-  rateLimit({ limit: 30, windowMs: MINUTE, key: clientIp }),
-);
+app.use("/agent/*", rateLimit({ limit: 30, windowMs: MINUTE, key: clientIp }));
 
 app.get("/healthz", (c) => {
   const body: JsonResponse<"/healthz", "get"> = {

@@ -4,7 +4,11 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { exportJWK, exportSPKI, generateKeyPair, SignJWT } from "jose";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { agentGrant, agentWalletBinding, oauthToken } from "../../src/db/schema";
+import {
+  agentGrant,
+  agentWalletBinding,
+  oauthToken,
+} from "../../src/db/schema";
 import type { AuthzDb, Db } from "../../src/db/types";
 import type { Env } from "../../src/env";
 import { handleError } from "../../src/errors";
@@ -12,7 +16,7 @@ import { hashOpaqueValue } from "../../src/oauth/tokenHash";
 import { type AppEnv, registerRoutes } from "../../src/routes";
 import type { Services } from "../../src/services";
 import { buildServices, createFake, type Fake, NOW } from "./fakeServices";
-import { buildAsset, createTestDb, makeEnv, MemoryKv } from "./helpers";
+import { buildAsset, createTestDb, MemoryKv, makeEnv } from "./helpers";
 
 /**
  * Agent delegation admin routes (Phase 8): the route-level wiring (auth extraction ->
@@ -157,34 +161,34 @@ async function mintPrivyTokenAndStubFetch(
     .sign(privateKey);
   // sanity: exercise the exported SPKI path too isn't needed here (route uses live JWKS).
   await exportSPKI(publicKey);
-  vi.stubGlobal(
-    "fetch",
-    (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      const method = init?.method ?? "GET";
-      if (method === "GET" && url.endsWith(`/v1/apps/${APP_ID}/jwks.json`)) {
-        return new Response(JSON.stringify(jwks), {
-          status: 200,
+  vi.stubGlobal("fetch", (async (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => {
+    const url = typeof input === "string" ? input : input.toString();
+    const method = init?.method ?? "GET";
+    if (method === "GET" && url.endsWith(`/v1/apps/${APP_ID}/jwks.json`)) {
+      return new Response(JSON.stringify(jwks), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (method === "PATCH" && url.includes("/v1/wallets/")) {
+      return new Response(
+        JSON.stringify({
+          id: "wallet-x",
+          address: "0x1111111111111111111111111111111111111111",
+          chain_type: "ethereum",
+          additional_signers: [],
+        }),
+        {
+          status: options.walletPatchStatus ?? 200,
           headers: { "content-type": "application/json" },
-        });
-      }
-      if (method === "PATCH" && url.includes("/v1/wallets/")) {
-        return new Response(
-          JSON.stringify({
-            id: "wallet-x",
-            address: "0x1111111111111111111111111111111111111111",
-            chain_type: "ethereum",
-            additional_signers: [],
-          }),
-          {
-            status: options.walletPatchStatus ?? 200,
-            headers: { "content-type": "application/json" },
-          },
-        );
-      }
-      throw new Error(`unstubbed fetch: ${method} ${url}`);
-    }) as typeof fetch,
-  );
+        },
+      );
+    }
+    throw new Error(`unstubbed fetch: ${method} ${url}`);
+  }) as typeof fetch);
   return token;
 }
 
@@ -197,7 +201,10 @@ async function call(
     headers: { "content-type": "application/json", ...init.headers },
     body: init.body,
   });
-  return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+  return {
+    status: res.status,
+    body: (await res.json()) as Record<string, unknown>,
+  };
 }
 
 describe("GET /agent/grants", () => {
@@ -354,10 +361,7 @@ describe("POST /agent/grants/revoke-all", () => {
     expect(result.status).toBe(200);
     const revokedGrantIds = result.body.revokedGrantIds as string[];
     expect(revokedGrantIds.sort()).toEqual([a.grantId, b.grantId].sort());
-    const signerResults = result.body.signerResults as Record<
-      string,
-      boolean
-    >;
+    const signerResults = result.body.signerResults as Record<string, boolean>;
     expect(Object.keys(signerResults)).toEqual([a.walletId]);
     expect(signerResults[a.walletId]).toBe(true);
 
@@ -377,7 +381,9 @@ describe("POST /agent/grants/revoke-all", () => {
 
   it("should return empty results for a principal with no active grants", async () => {
     await setup();
-    const token = await mintPrivyTokenAndStubFetch("did:privy:no-grants-at-all");
+    const token = await mintPrivyTokenAndStubFetch(
+      "did:privy:no-grants-at-all",
+    );
     const result = await call("/agent/grants/revoke-all", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },

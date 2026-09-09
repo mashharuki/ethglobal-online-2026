@@ -53,10 +53,7 @@ async function requirePrincipal(
     // Deliberately one code for every failure (misconfigured server, expired/forged/wrong-
     // audience token) - the same "single code, no oracle" choice AUTH_TOKEN_INVALID already
     // makes for /mcp's Bearer auth (mcp/auth.ts).
-    throw new AppError(
-      "AUTH_TOKEN_INVALID",
-      "invalid or expired access token",
-    );
+    throw new AppError("AUTH_TOKEN_INVALID", "invalid or expired access token");
   }
 }
 
