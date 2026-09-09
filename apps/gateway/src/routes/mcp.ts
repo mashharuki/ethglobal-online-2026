@@ -1,12 +1,19 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { Hono } from "hono";
+import {
+  assertSessionMatchesPrincipal,
+  type McpPrincipal,
+  openAuthenticatedSession,
+  requireMcpAuth,
+} from "../mcp/auth";
 import { createMcpServer } from "../mcp/server";
 import {
   issueSessionId,
   MCP_SESSION_HEADER,
+  sessionKey,
   verifySessionId,
 } from "../mcp/session";
-import { type AppEnv, badRequest } from "./schemas";
+import { type AppEnv, badRequest, notFound } from "./schemas";
 
 /**
  * POST/GET/DELETE /mcp (tasks.md T096, openapi `mcp*`): Streamable HTTP, stateless
@@ -26,6 +33,10 @@ function isInitialize(body: unknown): boolean {
 export function registerMcpRoutes(app: Hono<AppEnv>): void {
   app.all("/mcp", async (c) => {
     const services = c.get("services");
+    if (services.env.MCP_ENABLED === "false") {
+      throw notFound("MCP is disabled");
+    }
+    const authzDb = c.get("authzDb");
     let parsedBody: unknown;
     let initialize = false;
     if (c.req.method === "POST") {
@@ -43,7 +54,33 @@ export function registerMcpRoutes(app: Hono<AppEnv>): void {
       ? await issueSessionId(services.env, now)
       : c.req.header(MCP_SESSION_HEADER);
     const sessionId = await verifySessionId(services.env, token, now);
-    const server = createMcpServer({ services, sessionId });
+
+    // Best-effort OAuth Bearer auth (specs/mcp-auth-remediation-plan.md §7): `/mcp` never
+    // hard-401s here - discover_assets must keep working with no Authorization header at all.
+    // A present-but-invalid token degrades to "unauthenticated" rather than failing the whole
+    // request; withScope (mcp/server.ts) is what turns a missing/invalid token into a hard
+    // failure for the tools that actually require one.
+    let auth: McpPrincipal | undefined;
+    const authorizationHeader = c.req.header("Authorization");
+    if (authorizationHeader !== undefined) {
+      try {
+        auth = await requireMcpAuth(authzDb, authorizationHeader, now);
+      } catch {
+        auth = undefined;
+      }
+    }
+    if (sessionId !== undefined && auth !== undefined) {
+      const key = sessionKey(sessionId);
+      if (initialize) {
+        await openAuthenticatedSession(authzDb, key, auth, now);
+      } else {
+        // A session `initialize`d by one principal must not be usable by another just
+        // because both happen to echo the same Mcp-Session-Id.
+        await assertSessionMatchesPrincipal(authzDb, key, auth);
+      }
+    }
+
+    const server = createMcpServer({ services, sessionId, auth });
     // Transport objects are request-local. Purchase ownership and budgets survive requests
     // through the verified session identity and database, not an in-memory MCP connection.
     const transport = new WebStandardStreamableHTTPServerTransport({

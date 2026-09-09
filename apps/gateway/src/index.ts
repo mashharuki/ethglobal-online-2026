@@ -30,8 +30,10 @@ app.use(
       );
       return allowed.includes(origin) ? origin : undefined;
     },
-    allowMethods: ["GET", "HEAD", "POST", "OPTIONS"],
-    allowHeaders: ["Content-Type", "X-PAYMENT"],
+    // DELETE: MCP Streamable HTTP's explicit session-termination method (mcp/session.ts) -
+    // omitting it here silently broke DELETE /mcp for any browser-based MCP client.
+    allowMethods: ["GET", "HEAD", "POST", "DELETE", "OPTIONS"],
+    allowHeaders: ["Content-Type", "X-PAYMENT", "Authorization"],
     exposeHeaders: ["Mcp-Session-Id", "X-PAYMENT-RESPONSE"],
     maxAge: 86_400,
   }),

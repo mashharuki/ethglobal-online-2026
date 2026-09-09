@@ -22,6 +22,49 @@ const MCP_SERVER_INFO = {
   version: "0.1.0",
 } as const;
 
+/**
+ * OAuth scope each tool requires (undefined = unauthenticated, `discover_assets` only - it is
+ * discovery-only and must keep working for callers that never went through consent).
+ */
+const REQUIRED_SCOPE: Record<string, string | undefined> = {
+  discover_assets: undefined,
+  buy_access: "access:buy",
+  decrypt_content: "assets:read",
+};
+
+/**
+ * Gates a tool handler on `ctx.auth` carrying the scope `toolName` needs (specs/mcp-auth-
+ * remediation-plan.md §7). `MCP_AUTH_REQUIRED` (env.ts, cutover kill switch) controls how a
+ * MISSING token is treated: once "true" it is a hard `AUTH_TOKEN_INVALID`; while still "false"
+ * (apps/agent's CI harness does not send one yet, Phase 10) a missing token is let through
+ * unchanged, exactly like before this phase. A PRESENT token is always held to its scope
+ * regardless of the flag - a caller that DID authenticate gets real enforcement immediately.
+ */
+function withScope<TInput, TOutput>(
+  toolName: string,
+  fn: (ctx: McpContext, input: TInput) => Promise<TOutput>,
+): (ctx: McpContext, input: TInput) => Promise<TOutput> {
+  const requiredScope = REQUIRED_SCOPE[toolName];
+  return async (ctx, input) => {
+    if (requiredScope !== undefined) {
+      if (ctx.auth === undefined) {
+        if (ctx.services.env.MCP_AUTH_REQUIRED === "true") {
+          throw new AppError(
+            "AUTH_TOKEN_INVALID",
+            `${toolName} requires a valid Bearer token`,
+          );
+        }
+      } else if (!ctx.auth.scope.split(" ").includes(requiredScope)) {
+        throw new AppError(
+          "INSUFFICIENT_SCOPE",
+          `${toolName} requires the "${requiredScope}" scope`,
+        );
+      }
+    }
+    return fn(ctx, input);
+  };
+}
+
 function ok(value: unknown): CallToolResult {
   return {
     content: [{ type: "text", text: JSON.stringify(jsonSafe(value)) }],
@@ -77,7 +120,8 @@ export function createMcpServer(ctx: McpContext): McpServer {
         "Buy paid access to an asset with x402 (native HBAR on Hedera Testnet) through the agent's Privy server wallet. Returns the Rights Receipt bound to this MCP session.",
       inputSchema: z.object({ assetId: hex32 }),
     },
-    ({ assetId }) => run(() => buyAccess(ctx, { assetId })),
+    ({ assetId }) =>
+      run(() => withScope("buy_access", buyAccess)(ctx, { assetId })),
   );
   server.registerTool(
     "decrypt_content",
@@ -87,7 +131,12 @@ export function createMcpServer(ctx: McpContext): McpServer {
       inputSchema: z.object({ assetId: hex32, receiptHash: hex32 }),
     },
     ({ assetId, receiptHash }) =>
-      run(() => decryptContent(ctx, { assetId, receiptHash })),
+      run(() =>
+        withScope("decrypt_content", decryptContent)(ctx, {
+          assetId,
+          receiptHash,
+        }),
+      ),
   );
   return server;
 }
