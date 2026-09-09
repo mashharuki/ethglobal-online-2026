@@ -35,6 +35,7 @@ describe("buildUserData", () => {
       `umask 077 && printf 'HEDERA_RPC_URL=%s\\nGRAPH_NODE_HOSTNAME=%s\\n' 'https://testnet.hashio.io/api' '${GRAPH_NODE_HOSTNAME}' > /opt/graph-node/.env`,
     );
     expect(script).toContain("chmod 600 /opt/graph-node/.env");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: asserts compose-native env-var substitution, not a baked-in value
     expect(compose).toContain('ethereum: "testnet:${HEDERA_RPC_URL}"');
   });
 
@@ -45,6 +46,7 @@ describe("buildUserData", () => {
     expect(script).not.toContain("169.254.169.254");
     expect(script).not.toContain("public-ipv4");
     expect(script).not.toContain("16-76-149-54");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: asserts compose-native env-var substitution, not a baked-in value
     expect(compose).toContain("https://${GRAPH_NODE_HOSTNAME}");
     expect(compose).not.toContain("16-76-149-54");
   });

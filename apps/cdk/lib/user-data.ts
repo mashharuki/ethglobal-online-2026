@@ -82,6 +82,7 @@ export function buildUserData(opts: UserDataOptions): ec2.UserData {
     "chmod a+r /etc/apt/keyrings/docker.asc",
     'UBUNTU_CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")',
     "DEB_ARCH=$(dpkg --print-architecture)",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: bash vars set above, expanded by the shell on the EC2 instance - not JS interpolation
     'echo "deb [arch=${DEB_ARCH} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${UBUNTU_CODENAME} stable" > /etc/apt/sources.list.d/docker.list',
     "apt-get update -y",
     "apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin",

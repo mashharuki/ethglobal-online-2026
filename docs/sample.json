@@ -1,20 +1,8 @@
 {
   "title": "Exclusive dataset C - Tokyo cafe foot-traffic sample (synthetic)",
   "description": "Daily visitors, average spend and peak hour for three districts. 9 rows, 5 columns. Paid access unlocks the full table for AI analysis.",
-  "columns": [
-    "date",
-    "district",
-    "visitors",
-    "avgSpendJpy",
-    "peakHour"
-  ],
-  "sampleRow": [
-    "2026-09-08",
-    "Tokyo",
-    "***",
-    "***",
-    "***"
-  ],
+  "columns": ["date", "district", "visitors", "avgSpendJpy", "peakHour"],
+  "sampleRow": ["2026-09-08", "Tokyo", "***", "***", "***"],
   "rowCount": 9,
   "transferMode": "SURVIVE_TRANSFER"
 }
