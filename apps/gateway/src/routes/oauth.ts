@@ -70,7 +70,7 @@ export function registerOauthRoutes(app: Hono<AppEnv>): void {
         codeChallengeMethod: query.data.code_challenge_method,
         state: query.data.state ?? null,
       },
-      new Date(),
+      c.get("services").now(),
     );
     if (outcome.kind === "redirect_to_consent") {
       const target = new URL("/ai-consent", c.env.WEB_APP_URL);
@@ -106,7 +106,7 @@ export function registerOauthRoutes(app: Hono<AppEnv>): void {
           codeVerifier: body.data.code_verifier,
           resource: body.data.resource,
         },
-        new Date(),
+        c.get("services").now(),
       );
     } else {
       result = await refreshAccessToken(
@@ -116,7 +116,7 @@ export function registerOauthRoutes(app: Hono<AppEnv>): void {
           clientId: body.data.client_id,
           resource: body.data.resource,
         },
-        new Date(),
+        c.get("services").now(),
       );
     }
     return tokenErrorResponse(result);
@@ -128,7 +128,11 @@ export function registerOauthRoutes(app: Hono<AppEnv>): void {
     if (!body.success) {
       throw badRequest("invalid revocation request", body.error.issues);
     }
-    await revokeToken(c.get("authzDb"), body.data.token, new Date());
+    await revokeToken(
+      c.get("authzDb"),
+      body.data.token,
+      c.get("services").now(),
+    );
     // RFC 7009 §2.2: always 200, whether or not the token existed.
     return c.body(null, 200);
   });
