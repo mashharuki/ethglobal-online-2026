@@ -27,11 +27,14 @@ function evmAddressOf(priv: Uint8Array): string {
 // stand-in for Privy's provider.request({ method: "secp256k1_sign" }):
 // signs the given 32-byte digest raw and returns 0x + 64-byte r||s.
 const fakeSignRawHash = async (hashHex: string): Promise<string> => {
-  const digest = Uint8Array.from(
-    (hashHex.startsWith("0x") ? hashHex.slice(2) : hashHex).match(/.{2}/g) ??
-      [],
-    (b) => Number.parseInt(b, 16),
-  );
+  const hexBody = hashHex.startsWith("0x") ? hashHex.slice(2) : hashHex;
+  const bytePairs = hexBody.match(/.{2}/g);
+  if (bytePairs === null) {
+    // Codex review: silently signing an empty digest would hide a malformed-input bug in
+    // the code under test - fail loudly instead of falling back to `?? []`.
+    throw new Error(`fakeSignRawHash: not a valid hex digest: ${hashHex}`);
+  }
+  const digest = Uint8Array.from(bytePairs, (b) => Number.parseInt(b, 16));
   return `0x${bytesToHex(secp256k1.sign(digest, PRIV).toCompactRawBytes())}`;
 };
 
