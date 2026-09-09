@@ -75,7 +75,7 @@ export async function verifySessionId(
 }
 
 /** Stored as a fixed-length bytea: keccak256 of the authenticated session identity. */
-function sessionKey(sessionId: string): Hex {
+export function sessionKey(sessionId: string): Hex {
   return keccak256(stringToHex(sessionId));
 }
 

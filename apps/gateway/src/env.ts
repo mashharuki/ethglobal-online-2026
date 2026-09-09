@@ -48,6 +48,17 @@ export type Env = {
   MCP_BALANCE_HEADROOM_TINYBAR: string;
   /** Privy `external_id` prefix for per-principal AI-delegated wallets. */
   PRIVY_AI_WALLET_EXTERNAL_ID_PREFIX: string;
+  /** Kill switch (cutover, specs/mcp-auth-remediation-plan.md §12): "false" makes `/mcp`
+   * answer 404 instead of serving the Streamable HTTP transport at all. */
+  MCP_ENABLED: string;
+  /**
+   * Kill switch (cutover, staged "false -> verify -> true"): "true" makes `withScope`
+   * (mcp/server.ts) hard-require a valid Bearer token + scope for `buy_access` /
+   * `decrypt_content`. "false" (the default while apps/agent's CI harness still calls `/mcp`
+   * without a token, per specs/mcp-auth-remediation-plan.md Phase 10) only enforces scope when
+   * a token WAS presented - it never turns "no token" into a hard failure.
+   */
+  MCP_AUTH_REQUIRED: string;
   // secrets (wrangler secret put / .dev.vars)
   HEDERA_OPERATOR_KEY?: string;
   RECEIPT_SIGNER_KEY?: string;

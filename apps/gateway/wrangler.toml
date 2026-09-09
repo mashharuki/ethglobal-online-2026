@@ -44,6 +44,11 @@ MCP_GRANT_DEFAULT_TTL_SEC = "1800"
 MCP_BALANCE_HEADROOM_TINYBAR = "1000000"
 # Privy external_id prefix for per-principal AI-delegated wallets (agent_wallet_binding).
 PRIVY_AI_WALLET_EXTERNAL_ID_PREFIX = "truecollective-ai-wallet"
+# Cutover kill switches (specs/mcp-auth-remediation-plan.md §12, "false -> verify -> true").
+# MCP_AUTH_REQUIRED stays "false" until Phase 10 (apps/agent CI harness) sends a Bearer token -
+# flipping it early would 401 the harness's own buy_access/decrypt_content calls.
+MCP_ENABLED = "true"
+MCP_AUTH_REQUIRED = "false"
 
 # share_G ciphertext store (KEK-encrypted with packages/shared/src/kv-format.ts).
 # Replace `id` with the output of `wrangler kv namespace create SHARE_G`.
