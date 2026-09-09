@@ -14,6 +14,7 @@ import {
   hashOpaqueValue,
 } from "../../src/oauth/tokenHash";
 import { type AppEnv, registerRoutes } from "../../src/routes";
+import type { Services } from "../../src/services";
 import { createTestDb } from "./helpers";
 
 /**
@@ -21,6 +22,12 @@ import { createTestDb } from "./helpers";
  * HTTP wiring (status codes, content type, response shape, env-derived redirect target) - the
  * business-logic edge cases are covered directly against oauth/authorize.ts, oauth/token.ts,
  * oauth/revoke.ts in their own test files.
+ *
+ * The routes read "now" from `services.now()` (not `new Date()`), exactly like every other
+ * route in this codebase - so this suite can inject the same fixed `NOW` its fixtures are
+ * seeded relative to, instead of racing the real wall clock (a bug found in review: a
+ * 60-second authorization-code TTL seeded relative to a hardcoded calendar date started
+ * failing for real once wall-clock time passed that date's window).
  */
 const WEB_APP_URL = "https://truecollective.pages.dev";
 const NOW = new Date("2026-09-09T12:00:00Z");
@@ -41,6 +48,7 @@ beforeEach(async () => {
   app.use("*", async (c, next) => {
     c.set("db", db);
     c.set("authzDb", db as unknown as AuthzDb);
+    c.set("services", { now: () => NOW } as unknown as Services);
     await next();
   });
   registerRoutes(app);
