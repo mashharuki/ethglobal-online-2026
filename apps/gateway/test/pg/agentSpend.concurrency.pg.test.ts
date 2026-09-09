@@ -1,10 +1,15 @@
 import { eq } from "drizzle-orm";
+import postgres from "postgres";
 import type { Hex } from "viem";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { agentGrant, agentWalletBinding } from "../../src/db/schema";
 import type { Db } from "../../src/db/types";
 import { reserveAgentSpend, SpendDeniedError } from "../../src/mcp/spend";
-import { connectPgTestDb, type PgTestDb } from "./helpers";
+import {
+  connectPgTestDb,
+  observeMaxConcurrentActive,
+  type PgTestDb,
+} from "./helpers";
 
 /**
  * The "20 concurrent purchases" scenario a PGlite (single-connection) suite cannot exercise
@@ -37,14 +42,20 @@ if (!ready) {
 
 let pg: PgTestDb | undefined;
 let db: Db;
+// A dedicated connection for pg_stat_activity introspection (observeMaxConcurrentActive) -
+// separate from the 20-connection pool under test, so sampling it never queues behind (or
+// competes for a slot with) the very transactions it's trying to observe.
+let probe: postgres.Sql | undefined;
 
 beforeAll(async () => {
   pg = await connectPgTestDb();
   if (pg === undefined) return;
   db = pg.db;
+  probe = postgres(process.env.DATABASE_URL_PG as string, { max: 1 });
 });
 
 afterAll(async () => {
+  await probe?.end({ timeout: 5 });
   await pg?.close();
 });
 
@@ -106,7 +117,24 @@ describe.skipIf(!ready)(
         }),
       );
 
+      // Proves the 20 reservations actually raced INSIDE Postgres, not merely that 20 JS
+      // promises were issued (Codex review): sample pg_stat_activity for this pool's own
+      // backends while the burst is in flight.
+      const stop = { done: false };
+      const watcher = observeMaxConcurrentActive(
+        probe as postgres.Sql,
+        (pg as PgTestDb).applicationName,
+        stop,
+      );
+
       const results = await Promise.allSettled(attempts);
+      stop.done = true;
+      const maxConcurrentBackends = await watcher;
+      // >=2, not >=CONCURRENCY: sampling every 2ms cannot guarantee catching the single widest
+      // instant of overlap, but observing even 2 simultaneously-active backends running this
+      // pool's own queries is direct evidence of genuine concurrent transactions, which is the
+      // one thing this whole suite exists to exercise that PGlite structurally cannot.
+      expect(maxConcurrentBackends).toBeGreaterThanOrEqual(2);
 
       const succeeded = results.filter((r) => r.status === "fulfilled");
       const failed = results.filter(
