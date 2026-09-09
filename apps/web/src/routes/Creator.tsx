@@ -57,6 +57,11 @@ export default function Creator() {
   >();
   const [error, setError] = useState<unknown>();
   const [busy, setBusy] = useState<string | undefined>();
+  const [selectedFile, setSelectedFile] = useState<
+    { name: string; size: number } | undefined
+  >();
+  const [encrypting, setEncrypting] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
 
   // the two shares together are the content key: they leave memory with the component
   useEffect(
@@ -80,6 +85,9 @@ export default function Creator() {
 
   const onFile = useCallback(async (file: File) => {
     setError(undefined);
+    setSelectedFile({ name: file.name, size: file.size });
+    setPrepared(undefined);
+    setEncrypting(true);
     try {
       const { key, blob } = await encryptDataset(
         new Uint8Array(await file.arrayBuffer()),
@@ -89,6 +97,8 @@ export default function Creator() {
       setPrepared({ blob, contentHash: contentHashOf(blob), shares });
     } catch (e) {
       setError(e);
+    } finally {
+      setEncrypting(false);
     }
   }, []);
 
@@ -211,18 +221,83 @@ export default function Creator() {
       <h2>Creator console</h2>
       <section className="card space-y-3">
         <h3>1. Encrypt the dataset in your browser</h3>
-        <input
-          type="file"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
+        <p className="creator-upload-intro">
+          Your file is encrypted locally before anything leaves this device.
+        </p>
+        <div
+          className={`creator-upload${dragActive ? " is-dragging" : ""}${
+            prepared !== undefined ? " is-ready" : ""
+          }`}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            setDragActive(true);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragActive(true);
+          }}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+              setDragActive(false);
+            }
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragActive(false);
+            const file = event.dataTransfer.files[0];
             if (file !== undefined) void onFile(file);
           }}
-        />
+        >
+          <div className="creator-upload-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" />
+              <path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
+            </svg>
+          </div>
+          <div className="creator-upload-copy">
+            <strong>
+              {dragActive
+                ? "Drop your dataset here"
+                : selectedFile?.name ?? "Choose a dataset to encrypt"}
+            </strong>
+            <span>
+              {selectedFile === undefined
+                ? "Drag and drop a JSON, CSV, or data file"
+                : `${(selectedFile.size / 1024).toLocaleString(undefined, {
+                    maximumFractionDigits: 1,
+                  })} KB · ${
+                    encrypting
+                      ? "Encrypting in your browser…"
+                      : prepared === undefined
+                        ? "Encryption failed — choose another file"
+                        : "Encrypted and ready"
+                  }`}
+            </span>
+          </div>
+          <label className="creator-upload-button" htmlFor="creator-dataset">
+            {selectedFile === undefined ? "Choose file" : "Replace file"}
+          </label>
+          <input
+            id="creator-dataset"
+            className="creator-file-input"
+            type="file"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file !== undefined) void onFile(file);
+              event.target.value = "";
+            }}
+          />
+        </div>
         {prepared !== undefined && (
-          <p className="text-sm mono">
-            {prepared.blob.length} bytes encrypted · contentHash{" "}
-            {prepared.contentHash}
-          </p>
+          <div className="creator-upload-result">
+            <span className="creator-upload-check" aria-hidden="true">
+              ✓
+            </span>
+            <div>
+              <strong>{prepared.blob.length.toLocaleString()} bytes encrypted</strong>
+              <code>{prepared.contentHash}</code>
+            </div>
+          </div>
         )}
       </section>
       <section className="card grid gap-3 md:grid-cols-2">

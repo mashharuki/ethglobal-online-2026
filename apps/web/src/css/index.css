@@ -224,6 +224,178 @@ code {
   color: var(--deny);
 }
 
+/* ---- Creator: local encryption drop zone ---- */
+
+.creator-upload-intro {
+  margin: -0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--text);
+}
+
+.creator-upload {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  min-height: 116px;
+  padding: 1.15rem;
+  overflow: hidden;
+  border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-radius: 12px;
+  background:
+    radial-gradient(
+      circle at 0% 50%,
+      color-mix(in srgb, var(--accent-strong) 15%, transparent),
+      transparent 38%
+    ),
+    color-mix(in srgb, var(--bg-2) 85%, transparent);
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.creator-upload.is-dragging {
+  border-color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent-bg) 70%, var(--bg-2));
+  box-shadow: inset 0 0 0 1px var(--accent-strong);
+}
+
+.creator-upload.is-ready {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--ok) 65%, var(--border));
+}
+
+.creator-upload-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, transparent);
+  border-radius: 12px;
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.creator-upload-icon svg {
+  width: 24px;
+  height: 24px;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.creator-upload-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.creator-upload-copy strong {
+  overflow: hidden;
+  color: var(--text-h);
+  font-size: 0.9375rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creator-upload-copy span {
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+}
+
+.creator-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.creator-upload-button {
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--accent-strong);
+  border-radius: 9px;
+  color: var(--text-h);
+  background: var(--accent-bg);
+  font-size: 0.875rem;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.creator-upload-button:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  box-shadow: 0 8px 22px -10px var(--accent-strong);
+}
+
+.creator-upload:has(.creator-file-input:focus-visible) .creator-upload-button {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.creator-upload-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 10px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--ok) 9%, transparent);
+}
+
+.creator-upload-result > div {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+
+.creator-upload-result strong {
+  color: var(--ok);
+  font-size: 0.8125rem;
+}
+
+.creator-upload-result code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creator-upload-check {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--bg);
+  background: var(--ok);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+@media (max-width: 640px) {
+  .creator-upload {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .creator-upload-button {
+    grid-column: 1 / -1;
+    text-align: center;
+  }
+}
+
 /* ---- App shell: topbar / brand ---- */
 
 .topbar {

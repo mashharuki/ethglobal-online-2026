@@ -144,8 +144,9 @@ The gateway hosts an MCP server (Streamable HTTP) with three tools: `discover_as
 step; the receipt bought in a session can only be decrypted by that session
 (`MCP_SESSION_MISMATCH` otherwise), and spending is capped per session
 (`MCP_SESSION_SPEND_CAP_TINYBAR`). The tools, the session binding and the cap are covered by the
-gateway's unit suite (real MCP SDK transport, in-process); the zero-human live run is the pending
-acceptance criterion in `apps/agent`.
+gateway's unit suite (real MCP SDK transport, in-process). A live Claude Code run on
+2026-09-08 completed discovery, a 0.1 testnet HBAR purchase, decryption and analysis of token #1.
+The separate `apps/agent` CI acceptance run remains independently verifiable.
 
 `mcp.json` for a generic client:
 
@@ -154,13 +155,37 @@ acceptance criterion in `apps/agent`.
   "mcpServers": {
     "rights-runtime": {
       "type": "http",
-      "url": "https://<your-gateway>.workers.dev/mcp"
+      "url": "https://truecollective-gateway.avp-104-106-107-a78.workers.dev/mcp"
     }
   }
 }
 ```
 
-With Claude Code the same server is registered by the `claude mcp add --transport http rights-runtime https://<your-gateway>.workers.dev/mcp` command.
+This repository includes a project-scoped `.mcp.json`. Start Claude Code from the repository,
+accept the project MCP server when prompted, and check `rights-runtime` with `/mcp`.
+For another directory, register it with:
+
+```bash
+claude mcp add --transport http rights-runtime https://truecollective-gateway.avp-104-106-107-a78.workers.dev/mcp
+```
+
+Example prompt: “Discover the assets, buy token #1 once if it costs 0.1 Hedera Testnet HBAR,
+then immediately decrypt it and report the row with the highest visitors count.” Keep purchase
+and decryption in the same MCP connection; browser receipts or receipts from a previous
+connection cannot be reused. The demo license expires 300 seconds after purchase.
+The gateway's Privy wallet pays, so fund it with testnet HBAR before repeating the demo.
+No Anthropic API key is required by the gateway or this MCP configuration.
+
+Live verification (2026-09-08):
+
+- Receipt: `0x5d14b654f06dce23601e4e5916eeac0a93f6542fb3fdc7e0ec4d456122c98bd5`.
+- [Purchase transaction](https://hashscan.io/testnet/transaction/0xcc4e4e96c27f3aa89db1d135410090c43a4e0b646c2c64bfec4a29eb18ebb94b) and
+  [consume transaction](https://hashscan.io/testnet/transaction/0x89b04ceeadb43c8678e981925f377c88f04a28df7737022468fbd5a3a82be1c1)
+  independently returned `SUCCESS` from Hedera Mirror Node, with the same receipt hash in
+  issuance and consumption logs.
+- Claude Code returned the decrypted synthetic Tokyo cafe dataset (9 rows), first use
+  (`useIndex = 0`), and the maximum visitors row: Shinjuku, 2026-08-03, 2,401 visitors.
+
 `apps/agent` reproduces this in CI and verifies the model's answer against the decrypted data
 itself (see its README); it skips, with a notice, until a gateway and an API key are configured.
 
