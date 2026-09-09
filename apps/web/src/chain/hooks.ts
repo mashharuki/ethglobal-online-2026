@@ -45,9 +45,29 @@ function serializeTypedData(typedData: TypedDataLike): string {
   );
 }
 
+/**
+ * Picks the user's primary embedded wallet, not "whichever `useWallets()` happens to list
+ * first" - `useWallets()` order is not guaranteed stable once a second embedded wallet
+ * exists (the MCP OAuth remediation provisions one AI-delegated wallet per principal
+ * alongside the user's own browser wallet). The primary wallet is the one with the lowest
+ * `walletIndex` (nullish for the very first HD wallet, which sorts first).
+ */
+export function selectPrimaryWallet<T extends { walletIndex?: number | null }>(
+  wallets: readonly T[],
+): T | undefined {
+  return wallets.reduce<T | undefined>((primary, candidate) => {
+    if (primary === undefined) return candidate;
+    const primaryIndex = primary.walletIndex ?? 0;
+    const candidateIndex = candidate.walletIndex ?? 0;
+    return candidateIndex < primaryIndex ? candidate : primary;
+  }, undefined);
+}
+
 export function useEmbeddedWallet(): EmbeddedWallet {
   const { ready, wallets } = useWallets();
-  const embedded = wallets.find((w) => w.walletClientType === "privy");
+  const embedded = selectPrimaryWallet(
+    wallets.filter((w) => w.walletClientType === "privy"),
+  );
   const getProvider = useCallback(async (): Promise<EIP1193Provider> => {
     if (embedded === undefined) {
       throw new Error("Privy embedded wallet is not available");

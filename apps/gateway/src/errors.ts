@@ -50,6 +50,23 @@ export const ERROR_MESSAGE: Readonly<Record<ErrorCode, string>> = {
   SETTLEMENT_IN_PROGRESS:
     "A settlement for this paymentId is already in progress",
   NOT_AUTHORIZED: "Not authorized",
+  AUTH_TOKEN_INVALID:
+    "Bearer token is missing, malformed, expired, revoked, or issued for a different resource",
+  INSUFFICIENT_SCOPE:
+    "OAuth token does not carry the scope required for this operation",
+  DELEGATION_REVOKED: "This AI delegation grant has been revoked",
+  DELEGATION_EXPIRED: "This AI delegation grant has expired",
+  DELEGATION_NOT_FOUND: "No delegation grant found for this id",
+  AI_WALLET_NOT_PROVISIONED:
+    "No AI wallet has been provisioned for this principal yet - complete AI access consent first",
+  AI_WALLET_OWNER_MISMATCH:
+    "The AI wallet's Privy owner does not match the verified principal",
+  AI_WALLET_ALREADY_BOUND:
+    "An AI wallet is already provisioned for this principal",
+  AI_SIGNER_NOT_GRANTED:
+    "The gateway's signer has not been attached to this AI wallet",
+  CONSENT_REQUEST_INVALID:
+    "Unknown, expired, or already-consumed authorization request",
 };
 
 export class AppError extends Error {
