@@ -88,12 +88,14 @@ describe("POST /oauth/register", () => {
     expect(res.status).toBeLessThan(500);
   });
 
-  it("should answer 400 for a missing client_name", async () => {
+  it("should succeed with a fallback display name when client_name is omitted (RFC 7591 §2: optional)", async () => {
     const res = await app.request("https://gateway.example/oauth/register", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ redirect_uris: ["https://x.example/cb"] }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { client_name: string };
+    expect(body.client_name).toBe("Unnamed client");
   });
 });

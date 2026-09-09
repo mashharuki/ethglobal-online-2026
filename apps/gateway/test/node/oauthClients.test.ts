@@ -36,12 +36,44 @@ describe("registerClient", () => {
     ]);
   });
 
-  it("should reject an empty client_name", async () => {
+  it("should fall back to a display name when client_name is omitted (RFC 7591 §2: optional)", async () => {
+    const registered = await registerClient(db, {
+      redirectUris: ["https://client.example/cb"],
+    });
+    expect(registered.clientName).toBe("Unnamed client");
+  });
+
+  it("should fall back to a display name when client_name is empty or whitespace-only", async () => {
+    const registered = await registerClient(db, {
+      clientName: "   ",
+      redirectUris: ["https://client.example/cb"],
+    });
+    expect(registered.clientName).toBe("Unnamed client");
+  });
+
+  it("should reject a client_name over the length cap", async () => {
     await expect(
       registerClient(db, {
-        clientName: "",
+        clientName: "a".repeat(201),
         redirectUris: ["https://client.example/cb"],
       }),
+    ).rejects.toThrow(AppError);
+  });
+
+  it("should reject more than 10 redirect_uris", async () => {
+    const redirectUris = Array.from(
+      { length: 11 },
+      (_, i) => `https://client.example/cb${i}`,
+    );
+    await expect(
+      registerClient(db, { clientName: "x", redirectUris }),
+    ).rejects.toThrow(AppError);
+  });
+
+  it("should reject a redirect_uri over the length cap", async () => {
+    const longUri = `https://client.example/${"a".repeat(2000)}`;
+    await expect(
+      registerClient(db, { clientName: "x", redirectUris: [longUri] }),
     ).rejects.toThrow(AppError);
   });
 

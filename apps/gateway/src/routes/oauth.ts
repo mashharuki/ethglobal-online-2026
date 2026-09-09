@@ -11,7 +11,9 @@ import { parseBody } from "./schemas";
  * merged, but need their own dedicated review given the security surface).
  */
 const RegisterBody = z.object({
-  client_name: z.string().min(1),
+  // client_name is OPTIONAL per RFC 7591 §2 - clients.ts falls back to a display name when
+  // it's omitted, rather than rejecting the request.
+  client_name: z.string().optional(),
   redirect_uris: z.array(z.string()).min(1),
   scope: z.string().optional(),
 });

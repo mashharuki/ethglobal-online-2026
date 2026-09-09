@@ -25,6 +25,12 @@ export function hashOpaqueValue(value: string): Hex {
   return keccak256(stringToHex(value));
 }
 
+/** RFC 7636 §4.1: `code-verifier = 43*128unreserved`, `unreserved = ALPHA / DIGIT / "-" / "."
+ * / "_" / "~"`. Rejecting anything outside this shape before hashing (Codex review) means an
+ * empty, oversized, or non-ASCII verifier is refused outright rather than silently hashed and
+ * compared - a shape no compliant client would ever send in the first place. */
+const CODE_VERIFIER_PATTERN = /^[A-Za-z0-9._~-]{43,128}$/;
+
 /**
  * PKCE S256 verification (RFC 7636 §4.6). This MUST be literal SHA-256, not this codebase's
  * usual keccak256 - every real OAuth client library computes `code_challenge` as
@@ -35,6 +41,7 @@ export async function verifyPkceS256(
   codeVerifier: string,
   codeChallenge: string,
 ): Promise<boolean> {
+  if (!CODE_VERIFIER_PATTERN.test(codeVerifier)) return false;
   const digest = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(codeVerifier),

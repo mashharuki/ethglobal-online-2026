@@ -14,8 +14,18 @@ import { isAllowedRedirectUriForRegistration } from "./redirectUri";
  */
 export type OauthClient = typeof oauthClient.$inferSelect;
 
+// RFC 7591 makes every field here optional except redirect_uris - client_name has no
+// mandated limit, but the DB column is NOT NULL, so an omitted name gets this fallback rather
+// than a schema change. The length/count caps (Codex review) exist purely to bound storage
+// growth and validation work on this deliberately-unauthenticated endpoint, not because the
+// RFC requires them.
+const MAX_CLIENT_NAME_LENGTH = 200;
+const MAX_REDIRECT_URIS = 10;
+const MAX_REDIRECT_URI_LENGTH = 2000;
+const UNNAMED_CLIENT_FALLBACK = "Unnamed client";
+
 export type RegisterClientInput = {
-  clientName: string;
+  clientName?: string;
   redirectUris: string[];
   scope?: string;
 };
@@ -29,10 +39,11 @@ export async function registerClient(
   db: AuthzDb,
   input: RegisterClientInput,
 ): Promise<OauthClient> {
-  if (input.clientName.trim().length === 0) {
+  const clientName = input.clientName?.trim() || UNNAMED_CLIENT_FALLBACK;
+  if (clientName.length > MAX_CLIENT_NAME_LENGTH) {
     throw new AppError(
       "CONSENT_REQUEST_INVALID",
-      "client_name must not be empty",
+      `client_name must be at most ${MAX_CLIENT_NAME_LENGTH} characters`,
     );
   }
   if (input.redirectUris.length === 0) {
@@ -41,11 +52,23 @@ export async function registerClient(
       "redirect_uris must contain at least one URI",
     );
   }
+  if (input.redirectUris.length > MAX_REDIRECT_URIS) {
+    throw new AppError(
+      "CONSENT_REQUEST_INVALID",
+      `redirect_uris must contain at most ${MAX_REDIRECT_URIS} URIs`,
+    );
+  }
   for (const uri of input.redirectUris) {
+    if (uri.length > MAX_REDIRECT_URI_LENGTH) {
+      throw new AppError(
+        "CONSENT_REQUEST_INVALID",
+        `redirect_uri exceeds ${MAX_REDIRECT_URI_LENGTH} characters`,
+      );
+    }
     if (!isAllowedRedirectUriForRegistration(uri)) {
       throw new AppError(
         "CONSENT_REQUEST_INVALID",
-        `redirect_uri is not allowed: ${uri} (must be https:, or http: to a loopback address)`,
+        `redirect_uri is not allowed: ${uri} (must be https:, or http: to a loopback address, with no fragment)`,
       );
     }
   }
@@ -53,7 +76,7 @@ export async function registerClient(
     .insert(oauthClient)
     .values({
       clientId: crypto.randomUUID(),
-      clientName: input.clientName,
+      clientName,
       redirectUris: input.redirectUris,
       scope: input.scope,
       source: "dcr",

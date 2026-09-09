@@ -69,4 +69,31 @@ describe("verifyPkceS256", () => {
       true,
     );
   });
+
+  it("should reject a code_verifier shorter than the RFC 7636 §4.1 minimum (43 chars)", async () => {
+    const shortVerifier = "a".repeat(42);
+    await expect(
+      verifyPkceS256(shortVerifier, referenceChallenge(shortVerifier)),
+    ).resolves.toBe(false);
+  });
+
+  it("should reject a code_verifier longer than the RFC 7636 §4.1 maximum (128 chars)", async () => {
+    const longVerifier = "a".repeat(129);
+    await expect(
+      verifyPkceS256(longVerifier, referenceChallenge(longVerifier)),
+    ).resolves.toBe(false);
+  });
+
+  it("should reject an empty code_verifier even if the challenge happens to match", async () => {
+    await expect(verifyPkceS256("", referenceChallenge(""))).resolves.toBe(
+      false,
+    );
+  });
+
+  it("should reject a code_verifier containing a character outside RFC 7636's unreserved set", async () => {
+    const verifier = `${"a".repeat(42)}!`; // 43 chars, but "!" is not in [A-Za-z0-9._~-]
+    await expect(
+      verifyPkceS256(verifier, referenceChallenge(verifier)),
+    ).resolves.toBe(false);
+  });
 });
