@@ -13,7 +13,10 @@ import type { Services } from "../services";
  */
 export type AppEnv = {
   Bindings: Env;
-  Variables: { db: Db; services: Services };
+  // authzDb is the cache-disabled handle (db/client.ts createAuthzDb) - authorization-critical
+  // reads (agent_grant, agent_wallet_binding, oauth_token, mcp_authenticated_session) must use
+  // it instead of `db`, enforced by test/node/authzHandle.test.ts.
+  Variables: { db: Db; authzDb: Db; services: Services };
 };
 
 export const hex32 = z

@@ -1,7 +1,7 @@
 import type { JsonResponse } from "@truenft/openapi";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { createDb } from "./db/client";
+import { createAuthzDb, createDb } from "./db/client";
 import { getChainId } from "./env";
 import { handleError } from "./errors";
 import { clientIp, rateLimit, walletOrIp } from "./middleware/rateLimit";
@@ -37,16 +37,22 @@ app.use(
   }),
 );
 
-// One Hyperdrive-backed drizzle handle per request (postgres.js connects lazily on the
-// first query, so routes that never touch Postgres - /healthz - open no connection).
+// Two Hyperdrive-backed drizzle handles per request (postgres.js connects lazily on the
+// first query, so routes that never touch Postgres - /healthz - open no connections). `authzDb`
+// goes through the cache-disabled HYPERDRIVE_AUTHZ binding - authorization-critical reads
+// (agent_grant, agent_wallet_binding, oauth_token, mcp_authenticated_session) must use it
+// instead of `db` (test/node/authzHandle.test.ts enforces this at the call-site level).
 app.use("*", async (c, next) => {
   const handle = createDb(c.env);
+  const authzHandle = createAuthzDb(c.env);
   c.set("db", handle.db);
+  c.set("authzDb", authzHandle.db);
   c.set("services", createServices(c.env, handle.db));
   try {
     await next();
   } finally {
     c.executionCtx.waitUntil(handle.close());
+    c.executionCtx.waitUntil(authzHandle.close());
   }
 });
 

@@ -27,3 +27,27 @@ export function createDb(env: Env): DbHandle {
     },
   };
 }
+
+/**
+ * Same Postgres, through the cache-disabled HYPERDRIVE_AUTHZ binding (env.ts,
+ * specs/mcp-auth-remediation-plan.md §5) - the ONLY handle authorization-critical reads
+ * (agent_grant, agent_wallet_binding, oauth_token, mcp_authenticated_session) may use.
+ * test/node/authzHandle.test.ts greps the rest of src/ to enforce that call sites doing those
+ * reads pass this handle, not createDb's. Do not read env.HYPERDRIVE_AUTHZ.connectionString
+ * anywhere else - that grep-based encapsulation check also asserts this is the only file that
+ * does.
+ */
+export function createAuthzDb(env: Env): DbHandle {
+  const sql = postgres(env.HYPERDRIVE_AUTHZ.connectionString, {
+    max: 5,
+    fetch_types: false,
+    prepare: false,
+  });
+  const db = drizzle(sql, { schema });
+  return {
+    db,
+    close: async () => {
+      await sql.end({ timeout: 5 });
+    },
+  };
+}

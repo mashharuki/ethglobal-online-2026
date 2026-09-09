@@ -55,6 +55,18 @@ binding = "HYPERDRIVE"
 id = "86c8358240ac4dc1b529d926b3e8a5b0"
 localConnectionString = "postgres://postgres:postgres@127.0.0.1:5432/truecollective"
 
+# Second binding to the SAME Postgres, caching disabled (specs/mcp-auth-remediation-plan.md
+# §5) - authorization-critical reads (agent_grant, agent_wallet_binding, oauth_token,
+# mcp_authenticated_session) must go through this one, never the cached HYPERDRIVE binding
+# above (test/node/authzHandle.test.ts enforces this). Replace `id` with the output of
+# `wrangler hyperdrive create truecollective-authz --caching-disabled
+# --connection-string=<same postgres url as HYPERDRIVE>` (needs Cloudflare account access to
+# this project - see issue #64).
+[[hyperdrive]]
+binding = "HYPERDRIVE_AUTHZ"
+id = "REPLACE_WITH_WRANGLER_HYPERDRIVE_CREATE_OUTPUT"
+localConnectionString = "postgres://postgres:postgres@127.0.0.1:5432/truecollective"
+
 # Durable Objects: ReceiptLock serializes consume per receiptHash (R-3),
 # OperatorTxQueue serializes operator-key nonce allocation (R-3a).
 [durable_objects]

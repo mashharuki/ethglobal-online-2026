@@ -27,6 +27,13 @@ describe("workerd runtime probe (T019)", () => {
     expect(env.HYPERDRIVE.connectionString.startsWith("postgres")).toBe(true);
   });
 
+  it("should expose the cache-disabled HYPERDRIVE_AUTHZ binding with a connection string (binding only)", () => {
+    expect(typeof env.HYPERDRIVE_AUTHZ.connectionString).toBe("string");
+    expect(env.HYPERDRIVE_AUTHZ.connectionString.startsWith("postgres")).toBe(
+      true,
+    );
+  });
+
   it("should route to the ReceiptLock Durable Object per receiptHash (input validation answers 400)", async () => {
     const id = env.RECEIPT_LOCK.idFromName(`0x${"01".repeat(32)}`);
     const response = await env.RECEIPT_LOCK.get(id).fetch("http://do/consume", {

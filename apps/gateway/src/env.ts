@@ -72,6 +72,16 @@ export type Env = {
   // bindings
   SHARE_G: KVNamespace;
   HYPERDRIVE: Hyperdrive;
+  /**
+   * Second Hyperdrive binding to the SAME Postgres, with caching disabled at the binding
+   * level (specs/mcp-auth-remediation-plan.md §5). HYPERDRIVE's query-result cache is safe
+   * for everything else in this codebase, but a revoked agent_grant / retired
+   * agent_wallet_binding read back from a stale cache entry would silently let a request
+   * through that should have been denied - authorization-critical reads must always go
+   * through this binding instead. See db/client.ts's createAuthzDb and
+   * test/node/authzHandle.test.ts (enforces this at the call-site level).
+   */
+  HYPERDRIVE_AUTHZ: Hyperdrive;
   RECEIPT_LOCK: DurableObjectNamespace;
   OPERATOR_TX_QUEUE: DurableObjectNamespace;
 };
