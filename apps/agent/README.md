@@ -55,6 +55,7 @@ instruction. That limits prompt injection; step 3 is what makes an injected answ
 | `ANTHROPIC_MODEL` | optional, default `claude-sonnet-5` |
 | `AGENT_CHECK` | optional JSON `{labelColumn, valueColumn, op: max|min}` for the deterministic check |
 | `HEDERA_MIRROR_URL` | optional, mirror node used by the CI spec to confirm both transactions succeeded |
+| `MCP_CLIENT_ID` / `MCP_REFRESH_TOKEN` | optional (tasks.md Phase 10); both must be set together, minted once by `apps/gateway/scripts/bootstrap-ci-oauth-client.ts`. When set, the harness exchanges the refresh token for a short-lived access token (`src/auth.ts`) and sends it as `Authorization: Bearer` on every MCP call. When unset, the harness connects anonymously - still accepted today since `MCP_AUTH_REQUIRED=false` (wrangler.toml). |
 
 ## Tests
 

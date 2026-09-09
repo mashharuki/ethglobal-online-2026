@@ -212,10 +212,27 @@ function validateAssets(value: unknown): DiscoveredAsset[] {
 
 export async function connectRightsRuntime(
   mcpUrl: string,
-  options: { fetch?: typeof fetch; clientName?: string } = {},
+  options: {
+    fetch?: typeof fetch;
+    clientName?: string;
+    /**
+     * A short-lived access token the harness already obtained from `apps/agent/src/auth.ts`
+     * (tasks.md Phase 10). `MCP_AUTH_REQUIRED=false` today (wrangler.toml §12 cutover), so
+     * `/mcp` still accepts anonymous `discover_assets` calls without one - passing it anyway
+     * exercises the Bearer path continuously, ahead of that switch flipping. Attached via
+     * `requestInit`, not the SDK's `authProvider`: that interface is for a client that can run
+     * an interactive authorize/consent redirect, which this non-interactive CI harness never
+     * does (see auth.ts).
+     */
+    accessToken?: string;
+  } = {},
 ): Promise<RightsRuntimeClient> {
   const transport = new StreamableHTTPClientTransport(new URL(mcpUrl), {
     fetch: options.fetch,
+    requestInit:
+      options.accessToken === undefined
+        ? undefined
+        : { headers: { authorization: `Bearer ${options.accessToken}` } },
   });
   const client = new Client({
     name: options.clientName ?? "truecollective-agent-harness",

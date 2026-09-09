@@ -37,14 +37,23 @@ const text = (value: unknown) => ({
 
 function standInServer(options: Options = {}): {
   fetch: typeof fetch;
-  calls: Array<{ tool: string; session: string | null }>;
+  calls: Array<{
+    tool: string;
+    session: string | null;
+    authorization: string | null;
+  }>;
 } {
-  const calls: Array<{ tool: string; session: string | null }> = [];
+  const calls: Array<{
+    tool: string;
+    session: string | null;
+    authorization: string | null;
+  }> = [];
   const tools = options.tools ?? RIGHTS_RUNTIME_TOOLS;
   const fetchImpl: typeof fetch = async (input, init) => {
     const request = new Request(input, init);
     const server = new McpServer({ name: "stand-in", version: "0.0.0" });
     const session = request.headers.get("mcp-session-id");
+    const authorization = request.headers.get("authorization");
     const body = await request
       .clone()
       .text()
@@ -54,7 +63,7 @@ function standInServer(options: Options = {}): {
         "discover_assets",
         { inputSchema: z.object({}) },
         () => {
-          calls.push({ tool: "discover_assets", session });
+          calls.push({ tool: "discover_assets", session, authorization });
           return text([
             {
               assetId: ASSET,
@@ -75,7 +84,7 @@ function standInServer(options: Options = {}): {
         "buy_access",
         { inputSchema: z.object({ assetId: z.string() }) },
         () => {
-          calls.push({ tool: "buy_access", session });
+          calls.push({ tool: "buy_access", session, authorization });
           if (options.failBuy) {
             return {
               isError: true,
@@ -105,7 +114,7 @@ function standInServer(options: Options = {}): {
           }),
         },
         () => {
-          calls.push({ tool: "decrypt_content", session });
+          calls.push({ tool: "decrypt_content", session, authorization });
           return text({
             useIndex: 0,
             onchainTx: "0.0.1234@1757000000.000000001",
@@ -152,6 +161,31 @@ describe("mcpClient (T120)", () => {
     expect(decrypted.dataset.content).toContain("emea,10");
     expect(server.calls.map((c) => c.tool)).toEqual(RIGHTS_RUNTIME_TOOLS);
     expect(server.calls.every((c) => c.session === "0xsession")).toBe(true);
+    await runtime.close();
+  });
+
+  it("should send the access token as an Authorization: Bearer header on every call", async () => {
+    const server = standInServer();
+    const runtime = await connectRightsRuntime("http://gateway.test/mcp", {
+      fetch: server.fetch,
+      accessToken: "ci-access-token",
+    });
+    await runtime.discoverAssets();
+    await runtime.buyAccess(ASSET);
+    expect(server.calls.map((c) => c.authorization)).toEqual([
+      "Bearer ci-access-token",
+      "Bearer ci-access-token",
+    ]);
+    await runtime.close();
+  });
+
+  it("should send no Authorization header when no access token is given", async () => {
+    const server = standInServer();
+    const runtime = await connectRightsRuntime("http://gateway.test/mcp", {
+      fetch: server.fetch,
+    });
+    await runtime.discoverAssets();
+    expect(server.calls[0]?.authorization).toBeNull();
     await runtime.close();
   });
 

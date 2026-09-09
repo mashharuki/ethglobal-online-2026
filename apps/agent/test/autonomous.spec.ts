@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { runAgent, writeAnswer } from "../src/index";
+import { fetchCiAccessToken } from "../src/auth";
+import { resolveCiCredential, runAgent, writeAnswer } from "../src/index";
 import { connectRightsRuntime } from "../src/mcpClient";
 import { parseCheck } from "../src/verify";
 
@@ -16,6 +17,9 @@ const hasApiKey = (process.env.ANTHROPIC_API_KEY ?? "") !== "";
 const mirrorUrl =
   process.env.HEDERA_MIRROR_URL ?? "https://testnet.mirrornode.hedera.com";
 const ready = gatewayUrl !== "" && hasApiKey;
+// absent in local/dev runs (MCP_AUTH_REQUIRED=false today); set in CI once
+// apps/gateway/scripts/bootstrap-ci-oauth-client.ts has minted a credential (tasks.md Phase 10).
+const ciCredential = resolveCiCredential(process.env);
 
 if (!ready) {
   const message =
@@ -49,6 +53,7 @@ describe.skipIf(!ready)("autonomous MCP run (SC-007 / SC-009)", () => {
       gatewayUrl,
       check,
       log: (line) => lines.push(line),
+      ciCredential,
     });
 
     // one MCP session carried the purchase and the decryption (R-9a binding)
@@ -86,9 +91,21 @@ describe.skipIf(!ready)("autonomous MCP run (SC-007 / SC-009)", () => {
       record.receiptHash,
     );
 
-    // negative control (R-9a): the same receipt from a DIFFERENT MCP session is refused
+    // negative control (R-9a): the same receipt from a DIFFERENT MCP session is refused - even
+    // one authenticated as the same CI principal, since the binding is per-session, not per-identity
+    const strangerToken =
+      ciCredential === undefined
+        ? undefined
+        : (
+            await fetchCiAccessToken({
+              gatewayUrl,
+              clientId: ciCredential.clientId,
+              refreshToken: ciCredential.refreshToken,
+            })
+          ).accessToken;
     const stranger = await connectRightsRuntime(
       `${gatewayUrl.replace(/\/$/, "")}/mcp`,
+      { accessToken: strangerToken },
     );
     try {
       expect(stranger.sessionId).not.toBe(record.mcpSession);
@@ -114,6 +131,7 @@ describe.skipIf(!ready)("autonomous MCP run (SC-007 / SC-009)", () => {
           op: "max",
         },
         log: () => {},
+        ciCredential,
       }),
     ).rejects.toThrow(/no district \/ no_such_column columns|no numeric/);
   }, 300_000);

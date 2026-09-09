@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { type Analysis, analyzeDataset } from "./analyze";
+import { fetchCiAccessToken } from "./auth";
 import {
   connectRightsRuntime,
   type DiscoveredAsset,
@@ -48,6 +49,11 @@ export type AnswerRecord = {
 };
 
 export type AgentArgs = { question?: string; assetId?: Hex; out?: string };
+
+/** The CI OAuth client credential (tasks.md Phase 10): both are required together, or both
+ * absent - a partial pair almost always means a misconfigured secret, not "run unauthenticated
+ * on purpose", so it fails fast rather than silently connecting without a Bearer token. */
+export type CiCredential = { clientId: string; refreshToken: string };
 
 const FLAGS = new Set(["--question", "--asset", "--out"]);
 
@@ -118,6 +124,9 @@ export async function runAgent(input: {
   assetId?: Hex;
   anthropic?: Anthropic;
   log?: (line: string) => void;
+  /** absent = connect anonymously (today's default; MCP_AUTH_REQUIRED=false) */
+  ciCredential?: CiCredential;
+  fetch?: typeof fetch;
 }): Promise<AnswerRecord> {
   const log = input.log ?? (() => {});
   // inference must be configured before a single tinybar moves (throws without an API key)
@@ -139,8 +148,23 @@ export async function runAgent(input: {
     log(`[agent] ${step} (+${steps.at(-1)?.ms}ms)`);
   };
 
+  let accessToken: string | undefined;
+  if (input.ciCredential !== undefined) {
+    const token = await fetchCiAccessToken({
+      gatewayUrl: input.gatewayUrl,
+      clientId: input.ciCredential.clientId,
+      refreshToken: input.ciCredential.refreshToken,
+      fetch: input.fetch,
+    });
+    accessToken = token.accessToken;
+    mark(`authenticated: scope "${token.scope}"`);
+  }
+
   const mcpUrl = `${input.gatewayUrl.replace(/\/$/, "")}/mcp`;
-  const runtime = await connectRightsRuntime(mcpUrl);
+  const runtime = await connectRightsRuntime(mcpUrl, {
+    fetch: input.fetch,
+    accessToken,
+  });
   try {
     mark(`connected ${mcpUrl}`);
     const assets = await runtime.discoverAssets();
@@ -217,15 +241,39 @@ export function writeAnswer(record: AnswerRecord, path = DEFAULT_OUT): string {
   return path;
 }
 
+/**
+ * `MCP_CLIENT_ID` / `MCP_REFRESH_TOKEN` (tasks.md Phase 10): both must be present together or
+ * both absent. A single one set is treated as a misconfiguration (a truncated/half-copied
+ * GitHub secret, a typo'd variable name) rather than silently falling back to running the
+ * harness unauthenticated - that fallback would hide the very env-wiring bug it's meant to
+ * catch until MCP_AUTH_REQUIRED flips to true and every run starts failing at once.
+ */
+export function resolveCiCredential(env: {
+  MCP_CLIENT_ID?: string | undefined;
+  MCP_REFRESH_TOKEN?: string | undefined;
+}): CiCredential | undefined {
+  const clientId = env.MCP_CLIENT_ID ?? "";
+  const refreshToken = env.MCP_REFRESH_TOKEN ?? "";
+  if (clientId === "" && refreshToken === "") return undefined;
+  if (clientId === "" || refreshToken === "") {
+    throw new Error(
+      "MCP_CLIENT_ID and MCP_REFRESH_TOKEN must both be set, or both be unset",
+    );
+  }
+  return { clientId, refreshToken };
+}
+
 const isDirectRun = process.argv[1]?.endsWith("src/index.ts") ?? false;
 if (isDirectRun) {
   const usage =
-    'usage: GATEWAY_URL=<url> ANTHROPIC_API_KEY=<key> [AGENT_CHECK=\'{"labelColumn","valueColumn","op"}\'] agent [--question <text>] [--asset 0x…] [--out path]';
+    'usage: GATEWAY_URL=<url> ANTHROPIC_API_KEY=<key> [MCP_CLIENT_ID=<id> MCP_REFRESH_TOKEN=<token>] [AGENT_CHECK=\'{"labelColumn","valueColumn","op"}\'] agent [--question <text>] [--asset 0x…] [--out path]';
   let args: AgentArgs;
   let check: ExtremeCheck;
+  let ciCredential: CiCredential | undefined;
   try {
     args = parseArgs(process.argv.slice(2));
     check = parseCheck(process.env.AGENT_CHECK);
+    ciCredential = resolveCiCredential(process.env);
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     console.error(usage);
@@ -242,6 +290,7 @@ if (isDirectRun) {
     check,
     assetId: args.assetId,
     log: console.error,
+    ciCredential,
   })
     .then((record) => {
       const path = writeAnswer(

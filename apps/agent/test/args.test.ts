@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   chooseAsset,
   parseArgs,
+  resolveCiCredential,
   VerificationError,
   writeAnswer,
 } from "../src/index";
@@ -125,3 +126,33 @@ function listedAsset() {
     transferMode: "SURVIVE_TRANSFER" as const,
   };
 }
+
+describe("resolveCiCredential", () => {
+  it("should return undefined when both MCP_CLIENT_ID and MCP_REFRESH_TOKEN are unset", () => {
+    expect(resolveCiCredential({})).toBeUndefined();
+    expect(
+      resolveCiCredential({ MCP_CLIENT_ID: "", MCP_REFRESH_TOKEN: "" }),
+    ).toBeUndefined();
+  });
+
+  it("should return both fields when both are set", () => {
+    expect(
+      resolveCiCredential({
+        MCP_CLIENT_ID: "client-1",
+        MCP_REFRESH_TOKEN: "refresh-1",
+      }),
+    ).toEqual({ clientId: "client-1", refreshToken: "refresh-1" });
+  });
+
+  it("should throw when only MCP_CLIENT_ID is set", () => {
+    expect(() => resolveCiCredential({ MCP_CLIENT_ID: "client-1" })).toThrow(
+      /must both be set, or both be unset/,
+    );
+  });
+
+  it("should throw when only MCP_REFRESH_TOKEN is set", () => {
+    expect(() =>
+      resolveCiCredential({ MCP_REFRESH_TOKEN: "refresh-1" }),
+    ).toThrow(/must both be set, or both be unset/);
+  });
+});
