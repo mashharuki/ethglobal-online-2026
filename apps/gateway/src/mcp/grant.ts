@@ -33,6 +33,32 @@ export async function resolveDelegation(
 }
 
 /**
+ * Finds the live grant for a (principal, client) pair, if one exists -
+ * `agent_grant_live_principal_client_uniq` (schema.ts) guarantees there is at most one. Used
+ * by the consent flow (Phase 9) to make re-consenting for an already-connected client
+ * idempotent: re-approving must reuse the existing grant's id (and its budget/spend history)
+ * rather than attempt a second `createGrant`, which the same unique index would reject anyway.
+ */
+export async function resolveActiveDelegationForClient(
+  db: AuthzDb,
+  principalId: string,
+  clientId: string,
+): Promise<AgentGrant | undefined> {
+  const [row] = await db
+    .select()
+    .from(agentGrant)
+    .where(
+      and(
+        eq(agentGrant.principalId, principalId),
+        eq(agentGrant.clientId, clientId),
+        eq(agentGrant.state, "active"),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+/**
  * Reads the grant fresh by id and returns it only if usable, or throws the specific domain
  * error a caller (an MCP tool handler, an HTTP route) can surface as-is. Deliberately takes
  * `grantId`, not a `grant` object, so it is impossible to call this with a stale snapshot held

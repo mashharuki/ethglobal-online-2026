@@ -10,6 +10,7 @@ import {
   countActiveDelegationsForWallet,
   createGrant,
   listActiveDelegations,
+  resolveActiveDelegationForClient,
   resolveDelegation,
   revokeAllDelegations,
   revokeGrant,
@@ -465,5 +466,71 @@ describe("countActiveDelegationsForWallet (Phase 8, single-revoke signer-detach 
     expect(await countActiveDelegationsForWallet(db, crypto.randomUUID())).toBe(
       0,
     );
+  });
+});
+
+describe("resolveActiveDelegationForClient (Phase 9, consent re-approval idempotency)", () => {
+  it("should find the live grant for a (principal, client) pair", async () => {
+    const walletId = await seedWallet("did:privy:resolve-by-client");
+    const grant = await createGrant(db, GRANT_ENV, {
+      principalId: "did:privy:resolve-by-client",
+      walletId,
+      clientId: "client-a",
+      scope: "assets:read",
+      chainId: 296,
+      now: NOW,
+    });
+    const found = await resolveActiveDelegationForClient(
+      db,
+      "did:privy:resolve-by-client",
+      "client-a",
+    );
+    expect(found?.id).toBe(grant.id);
+  });
+
+  it("should return undefined when the grant for that client is revoked", async () => {
+    const walletId = await seedWallet("did:privy:resolve-revoked");
+    const grant = await createGrant(db, GRANT_ENV, {
+      principalId: "did:privy:resolve-revoked",
+      walletId,
+      clientId: "client-a",
+      scope: "assets:read",
+      chainId: 296,
+      now: NOW,
+    });
+    await revokeGrant(db, grant.id, "test", NOW);
+    expect(
+      await resolveActiveDelegationForClient(
+        db,
+        "did:privy:resolve-revoked",
+        "client-a",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("should not match a grant for a different client or a different principal", async () => {
+    const walletId = await seedWallet("did:privy:resolve-mismatch");
+    await createGrant(db, GRANT_ENV, {
+      principalId: "did:privy:resolve-mismatch",
+      walletId,
+      clientId: "client-a",
+      scope: "assets:read",
+      chainId: 296,
+      now: NOW,
+    });
+    expect(
+      await resolveActiveDelegationForClient(
+        db,
+        "did:privy:resolve-mismatch",
+        "client-b",
+      ),
+    ).toBeUndefined();
+    expect(
+      await resolveActiveDelegationForClient(
+        db,
+        "did:privy:someone-else",
+        "client-a",
+      ),
+    ).toBeUndefined();
   });
 });
