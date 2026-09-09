@@ -27,7 +27,7 @@ export type OpeningProps = z.infer<typeof openingSchema>;
  * 実収録が未提供の枠は空文字にして「素材待ち」表示に戻せる。
  */
 export const openingDefaults: OpeningProps = {
-  hasNarrationAudio: false,
+  hasNarrationAudio: true, // public/audio/narration.m4a 配置済み
   hasBgm: false,
   coupleClip: "footage/market.png",
   contrastDenyClip: "footage/audit-deny.png",

@@ -8,7 +8,9 @@
 export const FPS = 30;
 export const WIDTH = 1920;
 export const HEIGHT = 1080;
-export const DURATION_IN_FRAMES = 900; // 30秒 固定尺（台本のタイムライン採用）
+// 本人ナレーション（public/audio/narration.m4a、実測 32.49s）に尺を合わせた。
+// 台本の「30秒」は目標値で、音声・映像の速度は変えない方針のため実収録に合わせて拡張。
+export const DURATION_IN_FRAMES = 975; // 32.5秒
 
 /** apps/web のダークテーマ実値。色だけでなく状態の文字も必ず併記すること。 */
 export const COLORS = {
@@ -63,12 +65,5 @@ export const SOURCE_KIND = {
 
 export type SourceKind = keyof typeof SOURCE_KIND;
 
-/** シーン境界（フレーム）。台本のタイムラインをそのまま採用。 */
-export const SCENES = {
-  hook: { from: 0, durationInFrames: 150 }, // 0–5秒
-  couple: { from: 150, durationInFrames: 120 }, // 5–9秒
-  contrast: { from: 270, durationInFrames: 180 }, // 9–15秒
-  revenue: { from: 450, durationInFrames: 150 }, // 15–20秒
-  handover: { from: 600, durationInFrames: 120 }, // 20–24秒
-  close: { from: 720, durationInFrames: 180 }, // 24–30秒
-} as const;
+// シーン境界は src/Opening.tsx の BOUNDS が正（本人ナレーションの無音区間に合わせて調整）。
+// 字幕タイミングは src/narration.ts の SUBTITLE_CUES。

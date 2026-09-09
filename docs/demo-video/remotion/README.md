@@ -2,7 +2,7 @@
 
 制作仕様: [`../opening-30s-ja.md`](../opening-30s-ja.md)（この動画の唯一の正）。
 
-- 解像度 **1920×1080 / 30fps / 900フレーム（30秒）**、日本語。
+- 解像度 **1920×1080 / 30fps / 975フレーム（32.5秒）**、日本語。本人ナレーション `public/audio/narration.m4a`（実測 32.49秒）に尺を合わせた（音声・映像の速度は変えない）。
 - 実アプリ（`apps/web`）のダークテーマを継承（背景 `#101014` / 見出し `#f7f6fb` / アクセント `#bd9aff` / 継続 `#6bcf9a` / 拒否 `#e57a7a`）。
 - ロゴは `apps/web/public/brand/truecollective-logo.png` を継承（ダーク下地では白のリバース表示）。
 
@@ -18,7 +18,7 @@
 | `contrastDenyClip` | `footage/audit-deny.png` | `docs/img/3.jpg` | Gateway audit log：`owner_keygate` は `deny NOT_CURRENT_OWNER`、`consume`・`x402_settle` は `allow` | 15–21秒 |
 | `contrastOkClip` | `footage/viewer-licensee.png` | `docs/img/0.jpg` | Viewer licensee path：`use #1 of 5`、`decrypted in the browser`、license は `SURVIVE_TRANSFER` | 15–21秒 |
 | `revenueClip` | `footage/dashboard-revenue.png` | `docs/img/2.jpg` | Dashboard：Receipts (SURVIVE) ＋ Revenue allocations（`owner 0.07 ħ · creator 0.03 ħ`, block単位の実記録） | 21–27秒 |
-| `hasNarrationAudio` | `false` | — | `public/audio/narration.m4a` を置いて `true`。本人録音のみ（AI音声・速度変更は禁止） | 全編 |
+| `hasNarrationAudio` | `true` | — | `public/audio/narration.m4a`（本人録音・32.49秒）配置済み。録り直したら差し替え（AI音声・速度変更は禁止） | 全編 |
 | `hasBgm` | `false` | — | `public/audio/bgm.m4a` を置いて `true`（`volume=0.16`） | 全編 |
 
 ### スクショ使用にあたっての正確性（台本の「偽の結果を描かない」の順守）
@@ -40,19 +40,19 @@
 
 ## タイムライン（`src/Opening.tsx` / `src/narration.ts`）
 
-| フレーム | 時間 | シーン | メインテロップ |
-|---|---|---|---|
-| 0–300 | 0–10秒 | `S1Hook`（問題提起） | 管理会社が変わるたびに／権限と収益を手作業で整理 |
-| 300–450 | 10–15秒 | `S2Couple` | 所有権と利用権を、／ひとつのNFTで。 |
-| 450–630 | 15–21秒 | `S3Contrast` | 旧管理者：無料アクセス終了／購入企業：利用を継続 |
-| 630–810 | 21–27秒 | `S4Revenue` | 次の利用料 → Creator ＋ 新管理者 |
-| 810–900 | 27–30秒 | `S6Close` | TrueCollective／NFTの、その先へ。 |
+| フレーム | 時間 | シーン | メインテロップ | 発話区間 |
+|---|---|---|---|---|
+| 0–282 | 0–9.4秒 | `S1Hook`（問題提起） | 管理会社が変わるたびに／権限と収益を手作業で整理 | 0.97–8.10 |
+| 282–453 | 9.4–15.1秒 | `S2Couple` | 所有権と利用権を、／ひとつのNFTで。 | 9.40–14.10 |
+| 453–693 | 15.1–23.1秒 | `S3Contrast` | 旧管理者：無料アクセス終了／購入企業：利用を継続 | 15.16–22.42 |
+| 693–819 | 23.1–27.3秒 | `S4Revenue` | 次の利用料 → Creator ＋ 新管理者 | 23.12–26.20 |
+| 819–975 | 27.3–32.5秒 | `S6Close` | TrueCollective／NFTの、その先へ。 | 27.30–31.70 |
 
-5段構成（v3）。問題提起を 7→10秒に拡張、締めは 6→3秒（プレゼンへの「つなぎ／butt-join ワイプ」は削除）。旧 `S5Handover` は不使用（ファイルは残置）。
-字幕は `src/narration.ts` の `SUBTITLE_CUES`（本人の5文を逐語で分割、最大2行）。シーン間は 10フレームのクロスフェード。締めは暗転せずブランドを保持したまま終わる。**5文目の字幕窓は約3秒しかない**ので、本人収録で語尾を詰めるか、`SUBTITLE_CUES` の l5a/l5b を調整する。
+5段構成（v4）。シーン境界・字幕（`src/narration.ts` の `SUBTITLE_CUES`）は本人ナレーションを `ffmpeg silencedetect` で解析した無音区間に同期済み。旧 `S5Handover` は不使用（ファイルは残置）。シーン間は 10フレームのクロスフェード。締めは暗転せずブランドを保持したまま終わる（末尾 ~0.8秒は無音）。
+実収録を録り直したら、同じ手順（`npx remotion ffmpeg -i public/audio/narration.m4a -af silencedetect=noise=-32dB:d=0.35 -f null -`）で無音区間を出し、`SUBTITLE_CUES` と `Opening.tsx` の `BOUNDS`・`theme.ts` の `DURATION_IN_FRAMES` を合わせ直す。
 
-**30秒に収まるかは本人収録で最終確認する。** `src/narration.ts` の `SUBTITLE_CUES`（`from` / `durationInFrames`）は台本タイムラインに沿った初期値。
-実収録の発話の切れ目に合わせて字幕タイミングを調整し、**音声・実演映像の速度は変えない**。読み切れない場合は語尾・副詞を削る。`FULL_SCRIPT` が本人の読む5文。
+**総尺は本人ナレーション（32.49秒）に合わせて 975フレーム（32.5秒）。** `src/narration.ts` の `SUBTITLE_CUES` は発話の無音区間に同期済み。
+録り直したら発話の切れ目に合わせて再調整し、**音声・実演映像の速度は変えない**。`FULL_SCRIPT` が本人の読む5文。
 
 ## コマンド
 

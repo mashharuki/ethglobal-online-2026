@@ -30,61 +30,73 @@ export const FULL_SCRIPT = [
   "所有権と利用権を一体に管理し、TrueCollectiveはNFTの真の価値を再定義します。",
 ];
 
+/**
+ * タイミングは本人ナレーション（public/audio/narration.m4a）を
+ * `ffmpeg silencedetect` で解析した無音区間に合わせて同期済み（音声は速度変更しない）。
+ * 文の切れ目（秒）: 0.97 / 3.18–3.78 / 8.10–9.40 / 12.04–12.42 / 14.10–15.16 /
+ *   18.91–19.56 / 22.42–23.12 / 26.20–27.30 / 31.70。
+ */
 export const SUBTITLE_CUES: NarrationCue[] = [
-  // 0–10秒 問題提起（文1を3分割・逐語。間をとって読める尺）
-  { id: "l1a", text: "企業に貸し出した、ブランドの商材。", from: s(0.5), durationInFrames: s(3.0) },
-  { id: "l1b", text: "管理する会社が変わるたびに、", from: s(4.0), durationInFrames: s(2.5) },
+  // 文1（問題提起）: 0.97–8.10
+  { id: "l1a", text: "企業に貸し出した、ブランドの商材。", from: s(0.9), durationInFrames: s(2.5) },
+  { id: "l1b", text: "管理する会社が変わるたびに、", from: s(3.75), durationInFrames: s(1.95) },
   {
     id: "l1c",
     text: '"誰が使えて、料金は誰に入るのか"を\n毎回手作業で整理し直しています。',
-    from: s(7.0),
-    durationInFrames: s(2.9),
+    from: s(5.75),
+    durationInFrames: s(2.35),
   },
-  // 10–15秒（文2）
+  // 文2: 9.40–14.10（内部の間 12.04–12.42 で切替）
   {
-    id: "l2",
-    text: "TrueCollectiveでは NFTをリビルドし\nこの課題を簡単に終わらせます。",
-    from: s(10.3),
-    durationInFrames: s(4.4),
+    id: "l2a",
+    text: "TrueCollectiveでは NFTをリビルドし",
+    from: s(9.4),
+    durationInFrames: s(2.6),
   },
-  // 15–21秒（文3を2分割）
+  {
+    id: "l2b",
+    text: "この課題を簡単に終わらせます。",
+    from: s(12.4),
+    durationInFrames: s(1.7),
+  },
+  // 文3: 15.16–22.42（内部の間 18.91–19.56 で切替）
   {
     id: "l3a",
     text: "移転が完了したら\n前の管理者の無料アクセスはそこで終了。",
-    from: s(15.2),
-    durationInFrames: s(3.0),
+    from: s(15.15),
+    durationInFrames: s(3.75),
   },
   {
     id: "l3b",
     text: "企業が買った利用権は、\n期限まで有効なまま。",
-    from: s(18.3),
-    durationInFrames: s(2.5),
+    from: s(19.55),
+    durationInFrames: s(2.85),
   },
-  // 21–27秒（文4を2分割）
+  // 文4: 23.12–26.20（内部の間なし＝1息。字幕だけ2分割）
   {
     id: "l4a",
     text: "次の利用料はクリエイターと\n新しい管理者へ。",
-    from: s(21.2),
-    durationInFrames: s(3.0),
+    from: s(23.1),
+    durationInFrames: s(1.8),
   },
   {
     id: "l4b",
     text: "すでに払われた分は、動かしません。",
-    from: s(24.4),
-    durationInFrames: s(2.4),
+    from: s(24.95),
+    durationInFrames: s(1.25),
   },
-  // 27–30秒（文5を2分割・尺は詰まっているので早めに読む or 語尾を削る）
+  // 文5: 27.30–31.70
   {
     id: "l5a",
     text: "所有権と利用権を一体に管理し、",
-    from: s(27.0),
-    durationInFrames: s(1.6),
+    from: s(27.3),
+    durationInFrames: s(2.05),
   },
   {
     id: "l5b",
     text: "TrueCollectiveは\nNFTの真の価値を再定義します。",
-    from: s(28.5),
-    durationInFrames: s(1.5),
+    from: s(29.4),
+    durationInFrames: s(2.3),
   },
 ];
 
