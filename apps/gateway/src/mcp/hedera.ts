@@ -85,29 +85,81 @@ export async function buildSignedTransfer(
 }
 
 /**
- * Mirror node: the Hedera account an EVM address maps to. `undefined` when it does not exist
- * yet; a hollow account (no key) cannot sign x402 payments and is reported as such.
+ * Mirror node: the Hedera account an EVM address maps to, and whether it can actually pay
+ * (MCP OAuth remediation - `hasKey` used to be checked but the real `balance` field was
+ * never read, so a genuinely funded-but-empty-key account and an unreachable mirror node
+ * were both silently treated the same as "not a balance problem"). `unreadable` is
+ * deliberately a distinct outcome from a real zero balance: a network error or a malformed
+ * response must never be reported as `AGENT_WALLET_UNAVAILABLE`/`INSUFFICIENT_AGENT_BALANCE`
+ * (that would tell the caller to fund an account that may already be funded).
  */
+export type HederaAccountView =
+  | { kind: "absent" }
+  | { kind: "unreadable"; reason: "network" | "status" | "malformed" }
+  | { kind: "ok"; accountId: string; hasKey: boolean; balanceTinybar: bigint };
+
+function parseMirrorBalance(value: unknown): bigint | undefined {
+  if (typeof value === "number") {
+    // the max HBAR supply in tinybar exceeds Number.MAX_SAFE_INTEGER - only trust a
+    // number the mirror node sent if it round-trips exactly through the float. A balance
+    // is never negative (Codex review: Number.isSafeInteger(-1) is true).
+    return Number.isSafeInteger(value) && value >= 0
+      ? BigInt(value)
+      : undefined;
+  }
+  // the \d+ pattern already excludes a leading '-', so no separate sign check is needed here
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    return BigInt(value);
+  }
+  return undefined;
+}
+
 export async function resolveHederaAccount(
   mirrorUrl: string,
   evmAddress: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<{ accountId: string; hasKey: boolean } | undefined> {
+): Promise<HederaAccountView> {
   const base = mirrorUrl.endsWith("/") ? mirrorUrl.slice(0, -1) : mirrorUrl;
-  const response = await fetchImpl(
-    `${base}/api/v1/accounts/${evmAddress.toLowerCase()}`,
-  );
-  if (response.status === 404) return undefined;
-  if (!response.ok) {
-    throw new Error(`mirror node answered ${response.status}`);
+  let response: Response;
+  try {
+    response = await fetchImpl(
+      `${base}/api/v1/accounts/${evmAddress.toLowerCase()}`,
+    );
+  } catch {
+    return { kind: "unreadable", reason: "network" };
   }
-  const body = (await response.json()) as {
+  if (response.status === 404) return { kind: "absent" };
+  if (!response.ok) {
+    return { kind: "unreadable", reason: "status" };
+  }
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return { kind: "unreadable", reason: "malformed" };
+  }
+  // Codex review: `body` can be JSON `null` (or any non-object) on a 200 response - casting
+  // straight to a property-bag type and reading `.account` off it would throw instead of
+  // reporting `unreadable`.
+  if (typeof body !== "object" || body === null) {
+    return { kind: "unreadable", reason: "malformed" };
+  }
+  const parsed = body as {
     account?: string;
     key?: { key?: string } | null;
+    balance?: { balance?: unknown } | null;
   };
-  if (typeof body.account !== "string") return undefined;
+  if (typeof parsed.account !== "string") {
+    return { kind: "unreadable", reason: "malformed" };
+  }
+  const balanceTinybar = parseMirrorBalance(parsed.balance?.balance);
+  if (balanceTinybar === undefined) {
+    return { kind: "unreadable", reason: "malformed" };
+  }
   return {
-    accountId: body.account,
-    hasKey: typeof body.key?.key === "string" && body.key.key.length > 0,
+    kind: "ok",
+    accountId: parsed.account,
+    hasKey: typeof parsed.key?.key === "string" && parsed.key.key.length > 0,
+    balanceTinybar,
   };
 }

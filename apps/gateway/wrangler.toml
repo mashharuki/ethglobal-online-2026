@@ -29,6 +29,19 @@ IPFS_GATEWAY_URL = "https://chocolate-nice-gazelle-823.mypinata.cloud/"
 CORS_ALLOWED_ORIGINS = "https://truecollective.pages.dev,http://localhost:5173"
 # MCP spend policy (research.md R-9): hard cap per Mcp-Session-Id in tinybar (20 HBAR).
 MCP_SESSION_SPEND_CAP_TINYBAR = "2000000000"
+# MCP OAuth remediation (specs/mcp-auth-remediation-plan.md): per-principal daily cap
+# across every grant the principal holds, tinybar (1 HBAR).
+MCP_PRINCIPAL_DAILY_CAP_TINYBAR = "100000000"
+# Defaults a new agent_grant is created with at consent time (0.1 HBAR / purchase,
+# 0.3 HBAR total, 30 minute TTL) - user-editable within these ceilings on the consent screen.
+MCP_GRANT_DEFAULT_MAX_PER_PURCHASE_TINYBAR = "10000000"
+MCP_GRANT_DEFAULT_TOTAL_BUDGET_TINYBAR = "30000000"
+MCP_GRANT_DEFAULT_TTL_SEC = "1800"
+# Balance pre-check margin above the quoted price (0.01 HBAR) - covers the fee-payer's
+# own network fee estimate drifting slightly between quote and settle.
+MCP_BALANCE_HEADROOM_TINYBAR = "1000000"
+# Privy external_id prefix for per-principal AI-delegated wallets (agent_wallet_binding).
+PRIVY_AI_WALLET_EXTERNAL_ID_PREFIX = "truecollective-ai-wallet"
 
 # share_G ciphertext store (KEK-encrypted with packages/shared/src/kv-format.ts).
 # Replace `id` with the output of `wrangler kv namespace create SHARE_G`.
