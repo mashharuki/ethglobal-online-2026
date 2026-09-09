@@ -17,7 +17,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate.mjs",
     "load-shares": "tsx scripts/load-shares.ts",
-    "probe:workerd": "tsx scripts/probe-workerd.ts"
+    "probe:workerd": "tsx scripts/probe-workerd.ts",
+    "bootstrap:ci-oauth-client": "tsx scripts/bootstrap-ci-oauth-client.ts"
   },
   "dependencies": {
     "@hiero-ledger/sdk": "2.85.0",

@@ -270,6 +270,11 @@ jobs:
           GATEWAY_URL: ${{ secrets.GATEWAY_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           HEDERA_MIRROR_URL: ${{ secrets.HEDERA_MIRROR_URL }}
+          # Both unset until apps/gateway/scripts/bootstrap-ci-oauth-client.ts has been run once
+          # by a human (tasks.md Phase 10) - the harness then connects unauthenticated, which
+          # /mcp still accepts while MCP_AUTH_REQUIRED=false (wrangler.toml §12 cutover).
+          MCP_CLIENT_ID: ${{ vars.MCP_CI_CLIENT_ID }}
+          MCP_REFRESH_TOKEN: ${{ secrets.MCP_CI_REFRESH_TOKEN }}
       - name: a fresh, verified answer was written by this run
         run: |
           test -s apps/agent/out/answer.json
