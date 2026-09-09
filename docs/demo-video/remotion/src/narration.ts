@@ -55,7 +55,7 @@ export const NARRATION: NarrationLine[] = [
   },
   {
     id: "l6",
-    text: "TrueCollective。所有の、その先へ。\n実際にお見せします。",
+    text: "TrueCollective。NFTの、その先へ。\n実際にお見せします。",
     from: s(24.2),
     durationInFrames: s(5.3),
   },

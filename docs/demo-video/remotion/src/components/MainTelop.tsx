@@ -37,11 +37,16 @@ export const MainTelop: React.FC<{
             easing: Easing.bezier(0.16, 1, 0.3, 1),
           },
         ),
-        translate: interpolate(frame, [appearAt, appearAt + 20], ["0px 14px", "0px 0px"], {
-          extrapolateLeft: "clamp",
-          extrapolateRight: "clamp",
-          easing: Easing.bezier(0.16, 1, 0.3, 1),
-        }),
+        translate: interpolate(
+          frame,
+          [appearAt, appearAt + 20],
+          ["0px 14px", "0px 0px"],
+          {
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+            easing: Easing.bezier(0.16, 1, 0.3, 1),
+          },
+        ),
         fontFamily: FONT_FAMILY,
         fontWeight: 900,
         fontSize: size,

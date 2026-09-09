@@ -57,7 +57,8 @@ export const S3Contrast: React.FC<{ denyClip: string; okClip: string }> = ({
             background: "rgba(107,207,154,0.08)",
           }}
         >
-          継続条件: 移転後も存続するプラン（SURVIVE_TRANSFER）／ 期限・残回数の範囲内に限る
+          継続条件: 移転後も存続するプラン（SURVIVE_TRANSFER）／
+          期限・残回数の範囲内に限る
         </div>
 
         <div

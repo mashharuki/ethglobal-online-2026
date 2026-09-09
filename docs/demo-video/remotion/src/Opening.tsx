@@ -1,16 +1,16 @@
-import type React from "react";
 import { Audio } from "@remotion/media";
+import type React from "react";
 import { AbsoluteFill, Sequence, staticFile } from "remotion";
 import { Scene } from "./components/Scene";
 import { SubtitleTrack } from "./components/SubtitleTrack";
 import { NARRATION_AUDIO_SRC } from "./narration";
-import type { OpeningProps } from "./schema";
 import { S1Hook } from "./scenes/S1Hook";
 import { S2Couple } from "./scenes/S2Couple";
 import { S3Contrast } from "./scenes/S3Contrast";
 import { S4Revenue } from "./scenes/S4Revenue";
 import { S5Handover } from "./scenes/S5Handover";
 import { S6Close } from "./scenes/S6Close";
+import type { OpeningProps } from "./schema";
 
 /** クロスフェード長（フレーム）。台本「最後は長く暗転しない」。 */
 const XF = 10;
@@ -41,7 +41,9 @@ export const Opening: React.FC<OpeningProps> = ({
       case "couple":
         return <S2Couple clip={coupleClip} />;
       case "contrast":
-        return <S3Contrast denyClip={contrastDenyClip} okClip={contrastOkClip} />;
+        return (
+          <S3Contrast denyClip={contrastDenyClip} okClip={contrastOkClip} />
+        );
       case "revenue":
         return <S4Revenue revenueClip={revenueClip} />;
       case "handover":

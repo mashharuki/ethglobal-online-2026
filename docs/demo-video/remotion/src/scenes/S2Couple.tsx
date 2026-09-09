@@ -50,7 +50,9 @@ export const S2Couple: React.FC<{ clip: string }> = ({ clip }) => {
               "移転が確認された後の Viewer 画面（accessEpoch 更新済み）",
             ]}
           />
-          <div style={{ position: "absolute", right: 22, top: 20, opacity: 0.82 }}>
+          <div
+            style={{ position: "absolute", right: 22, top: 20, opacity: 0.82 }}
+          >
             <BrandLockup width={168} />
           </div>
         </div>

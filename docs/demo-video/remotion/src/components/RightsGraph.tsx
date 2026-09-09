@@ -42,7 +42,9 @@ const Node: React.FC<{
     >
       <div style={{ color, fontSize: 30, fontWeight: 700 }}>{title}</div>
       {sub ? (
-        <div style={{ color: COLORS.text, fontSize: 21, marginTop: 4 }}>{sub}</div>
+        <div style={{ color: COLORS.text, fontSize: 21, marginTop: 4 }}>
+          {sub}
+        </div>
       ) : null}
     </div>
   );
@@ -51,9 +53,7 @@ const Node: React.FC<{
 const Connector: React.FC<{ color: string; opacity: number }> = ({
   color,
   opacity,
-}) => (
-  <div style={{ width: 4, height: 22, background: color, opacity }} />
-);
+}) => <div style={{ width: 4, height: 22, background: color, opacity }} />;
 
 export const RightsGraph: React.FC<{
   /** 上段（管理者接続）の状態。 */
@@ -166,7 +166,10 @@ export const RightsGraph: React.FC<{
           </div>
         </div>
 
-        <Connector color={COLORS.ok} opacity={buyerFocused ? buyerPulse : 0.8} />
+        <Connector
+          color={COLORS.ok}
+          opacity={buyerFocused ? buyerPulse : 0.8}
+        />
 
         {/* 下段: 購入企業（維持される） */}
         <div

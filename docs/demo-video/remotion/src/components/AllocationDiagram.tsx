@@ -19,7 +19,11 @@ const Chip: React.FC<{
   sub?: string;
 }> = ({ label, tone, sub }) => {
   const color =
-    tone === "ok" ? COLORS.ok : tone === "accent" ? COLORS.accent : COLORS.textDim;
+    tone === "ok"
+      ? COLORS.ok
+      : tone === "accent"
+        ? COLORS.accent
+        : COLORS.textDim;
   return (
     <div
       style={{
@@ -33,7 +37,9 @@ const Chip: React.FC<{
     >
       <div style={{ color, fontSize: 26, fontWeight: 700 }}>{label}</div>
       {sub ? (
-        <div style={{ color: COLORS.text, fontSize: 18, marginTop: 2 }}>{sub}</div>
+        <div style={{ color: COLORS.text, fontSize: 18, marginTop: 2 }}>
+          {sub}
+        </div>
       ) : null}
     </div>
   );
@@ -113,7 +119,13 @@ export const AllocationDiagram: React.FC = () => {
         <div style={{ display: "flex", gap: 12 }}>
           <Chip label="Creator" tone="ok" sub="配分は維持（固定）" />
           <div style={{ position: "relative", minWidth: 210 }}>
-            <div style={{ opacity: 1 - ownerSwitch, position: "absolute", inset: 0 }}>
+            <div
+              style={{
+                opacity: 1 - ownerSwitch,
+                position: "absolute",
+                inset: 0,
+              }}
+            >
               <Chip label="旧管理者" tone="dim" sub="これ以降は対象外" />
             </div>
             <div style={{ opacity: ownerSwitch }}>
@@ -123,8 +135,11 @@ export const AllocationDiagram: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ fontFamily: FONT_FAMILY, color: COLORS.text, fontSize: 20 }}>
-        ※ 変わるのは未確定分の所有者側のみ。Creator への配分と確定済みの収益は変わらない。
+      <div
+        style={{ fontFamily: FONT_FAMILY, color: COLORS.text, fontSize: 20 }}
+      >
+        ※ 変わるのは未確定分の所有者側のみ。Creator
+        への配分と確定済みの収益は変わらない。
       </div>
     </div>
   );

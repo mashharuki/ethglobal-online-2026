@@ -12,7 +12,10 @@ import { COLORS } from "../theme";
  * 実素材: docs/img/2.jpg → footage/dashboard-revenue.png（Revenue allocations: owner + creator, block単位）。
  * 台本テロップ: 次の利用料 → Creator ＋ 新管理者
  */
-const Pill: React.FC<{ text: string; tone: "ok" | "deny" }> = ({ text, tone }) => (
+const Pill: React.FC<{ text: string; tone: "ok" | "deny" }> = ({
+  text,
+  tone,
+}) => (
   <div
     style={{
       padding: "6px 14px",
@@ -29,7 +32,9 @@ const Pill: React.FC<{ text: string; tone: "ok" | "deny" }> = ({ text, tone }) =
   </div>
 );
 
-export const S4Revenue: React.FC<{ revenueClip: string }> = ({ revenueClip }) => {
+export const S4Revenue: React.FC<{ revenueClip: string }> = ({
+  revenueClip,
+}) => {
   return (
     <SafeArea>
       <div
@@ -99,7 +104,10 @@ export const S4Revenue: React.FC<{ revenueClip: string }> = ({ revenueClip }) =>
             gap: 8,
           }}
         >
-          <SourceTag kind="footage" note="Dashboard · 実決済の記録（owner ＋ creator）" />
+          <SourceTag
+            kind="footage"
+            note="Dashboard · 実決済の記録（owner ＋ creator）"
+          />
           <div
             style={{
               flex: 1,
@@ -128,7 +136,8 @@ export const S4Revenue: React.FC<{ revenueClip: string }> = ({ revenueClip }) =>
                   color: COLORS.text,
                 }}
               >
-                素材待ち: Dashboard の Revenue allocations（owner + creator, block単位の実記録）
+                素材待ち: Dashboard の Revenue allocations（owner + creator,
+                block単位の実記録）
               </div>
             )}
           </div>

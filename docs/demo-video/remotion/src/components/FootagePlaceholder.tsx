@@ -1,6 +1,12 @@
-import type React from "react";
 import { Video } from "@remotion/media";
-import { Easing, Img, interpolate, staticFile, useCurrentFrame } from "remotion";
+import type React from "react";
+import {
+  Easing,
+  Img,
+  interpolate,
+  staticFile,
+  useCurrentFrame,
+} from "remotion";
 import { FONT_FAMILY } from "../font";
 import { COLORS } from "../theme";
 import { SourceTag } from "./SourceTag";
@@ -89,7 +95,9 @@ export const FootagePlaceholder: React.FC<{
             "repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 22px)",
         }}
       >
-        <div style={{ color: COLORS.textHeading, fontSize: 30, fontWeight: 700 }}>
+        <div
+          style={{ color: COLORS.textHeading, fontSize: 30, fontWeight: 700 }}
+        >
           <span style={{ color: COLORS.accent }}>● 素材待ち</span> — {paneTitle}
         </div>
         <div style={{ color: COLORS.textDim, fontSize: 20, fontWeight: 500 }}>
