@@ -11,9 +11,10 @@ import {
 } from "../../src/db/schema";
 import type { AuthzDb, Db } from "../../src/db/types";
 import type { Env } from "../../src/env";
-import { handleError } from "../../src/errors";
+import { AppError, handleError } from "../../src/errors";
 import {
   assertSessionMatchesPrincipal,
+  attemptMcpAuth,
   extractBearerToken,
   openAuthenticatedSession,
   requireMcpAuth,
@@ -131,6 +132,14 @@ describe("mcp/auth.ts", () => {
       expect(extractBearerToken("Bearer abc123")).toBe("abc123");
     });
 
+    // Codex review, Phase 7: auth-scheme tokens are case-insensitive (RFC 7235 §2.1) - real
+    // clients send "bearer"/"BEARER" as often as "Bearer".
+    it("matches the Bearer scheme case-insensitively", () => {
+      expect(extractBearerToken("bearer abc123")).toBe("abc123");
+      expect(extractBearerToken("BEARER abc123")).toBe("abc123");
+      expect(extractBearerToken("BeArEr abc123")).toBe("abc123");
+    });
+
     it("returns undefined for missing, malformed or empty values", () => {
       expect(extractBearerToken(undefined)).toBeUndefined();
       expect(extractBearerToken(null)).toBeUndefined();
@@ -138,7 +147,6 @@ describe("mcp/auth.ts", () => {
       expect(extractBearerToken("Basic abc123")).toBeUndefined();
       expect(extractBearerToken("Bearer")).toBeUndefined();
       expect(extractBearerToken("Bearer ")).toBeUndefined();
-      expect(extractBearerToken("bearer abc123")).toBeUndefined(); // case-sensitive prefix
     });
   });
 
@@ -272,6 +280,74 @@ describe("mcp/auth.ts", () => {
       await expect(
         assertSessionMatchesPrincipal(db, key, principalB),
       ).rejects.toMatchObject({ code: "MCP_SESSION_MISMATCH" });
+    });
+  });
+
+  // Codex review, Phase 7: attemptMcpAuth must distinguish "no header" from "header present
+  // but rejected" - collapsing both into the same result let a caller present a garbage token
+  // and silently fall back to legacy unauthenticated access instead of being refused.
+  describe("attemptMcpAuth", () => {
+    it("returns kind:none when there is no Authorization header", async () => {
+      await expect(attemptMcpAuth(db, undefined, NOW)).resolves.toEqual({
+        kind: "none",
+      });
+      await expect(attemptMcpAuth(db, null, NOW)).resolves.toEqual({
+        kind: "none",
+      });
+    });
+
+    it("returns kind:failed (never kind:none) for a presented-but-invalid token", async () => {
+      await expect(
+        attemptMcpAuth(db, "Bearer nonexistent-token", NOW),
+      ).resolves.toEqual({ kind: "failed" });
+      const { token } = await seedGrantWithAccessToken(db, {
+        tokenRevokedAt: NOW,
+      });
+      await expect(attemptMcpAuth(db, `Bearer ${token}`, NOW)).resolves.toEqual(
+        { kind: "failed" },
+      );
+    });
+
+    it("returns kind:failed for a valid token whose grant was revoked", async () => {
+      const seeded = await seedGrantWithAccessToken(db, {});
+      await db
+        .update(agentGrant)
+        .set({ state: "revoked", revokedAt: NOW })
+        .where(eq(agentGrant.id, seeded.grantId));
+      await expect(
+        attemptMcpAuth(db, `Bearer ${seeded.token}`, NOW),
+      ).resolves.toEqual({ kind: "failed" });
+    });
+
+    it("returns kind:authenticated with the live principal for a valid token", async () => {
+      const seeded = await seedGrantWithAccessToken(db, {});
+      await expect(
+        attemptMcpAuth(db, `Bearer ${seeded.token}`, NOW),
+      ).resolves.toEqual({
+        kind: "authenticated",
+        principal: {
+          principalId: seeded.principalId,
+          grantId: seeded.grantId,
+          walletId: seeded.walletId,
+          clientId: seeded.clientId,
+          scope: seeded.scope,
+        },
+      });
+    });
+
+    it("rethrows a genuine infra failure instead of masking it as a failed auth attempt", async () => {
+      const handle = await createTestDb();
+      const isolatedDb = handle.db as unknown as AuthzDb;
+      const seeded = await seedGrantWithAccessToken(isolatedDb, {});
+      await handle.client.close();
+      let caught: unknown;
+      try {
+        await attemptMcpAuth(isolatedDb, `Bearer ${seeded.token}`, NOW);
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeDefined();
+      expect(caught).not.toBeInstanceOf(AppError);
     });
   });
 });
@@ -424,6 +500,22 @@ describe("/mcp scope gating (Phase 7, withScope + MCP_ENABLED/MCP_AUTH_REQUIRED)
     expect(result).toMatchObject({
       isError: true,
       body: { code: "INSUFFICIENT_SCOPE" },
+    });
+    expect(fake.settleCalls).toBe(0);
+    await mcp.close();
+  });
+
+  // Codex review, Phase 7 (the fix, not just the unit test above): a presented-but-invalid
+  // token must fail closed even during the MCP_AUTH_REQUIRED=false rollout window - it must
+  // NOT be treated the same as no token at all, or a garbage/revoked credential would
+  // silently buy the caller legacy unauthenticated access instead of being refused.
+  it("refuses buy_access with AUTH_TOKEN_INVALID for a presented-but-invalid token even while MCP_AUTH_REQUIRED=false", async () => {
+    await setup({ MCP_AUTH_REQUIRED: "false" });
+    const mcp = await connectWithAuth("this-is-not-a-real-token");
+    const result = await call(mcp, "buy_access", { assetId: asset.assetId });
+    expect(result).toMatchObject({
+      isError: true,
+      body: { code: "AUTH_TOKEN_INVALID" },
     });
     expect(fake.settleCalls).toBe(0);
     await mcp.close();

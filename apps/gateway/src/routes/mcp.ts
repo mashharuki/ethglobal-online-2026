@@ -2,9 +2,8 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { Hono } from "hono";
 import {
   assertSessionMatchesPrincipal,
-  type McpPrincipal,
+  attemptMcpAuth,
   openAuthenticatedSession,
-  requireMcpAuth,
 } from "../mcp/auth";
 import { createMcpServer } from "../mcp/server";
 import {
@@ -57,26 +56,22 @@ export function registerMcpRoutes(app: Hono<AppEnv>): void {
 
     // Best-effort OAuth Bearer auth (specs/mcp-auth-remediation-plan.md §7): `/mcp` never
     // hard-401s here - discover_assets must keep working with no Authorization header at all.
-    // A present-but-invalid token degrades to "unauthenticated" rather than failing the whole
-    // request; withScope (mcp/server.ts) is what turns a missing/invalid token into a hard
-    // failure for the tools that actually require one.
-    let auth: McpPrincipal | undefined;
-    const authorizationHeader = c.req.header("Authorization");
-    if (authorizationHeader !== undefined) {
-      try {
-        auth = await requireMcpAuth(authzDb, authorizationHeader, now);
-      } catch {
-        auth = undefined;
-      }
-    }
-    if (sessionId !== undefined && auth !== undefined) {
+    // attemptMcpAuth distinguishes "no header" from "header present but invalid" (withScope,
+    // mcp/server.ts, fails the latter closed regardless of the MCP_AUTH_REQUIRED flag) and
+    // rethrows a genuine infra failure rather than misreporting it as an invalid credential.
+    const auth = await attemptMcpAuth(
+      authzDb,
+      c.req.header("Authorization"),
+      now,
+    );
+    if (sessionId !== undefined && auth.kind === "authenticated") {
       const key = sessionKey(sessionId);
       if (initialize) {
-        await openAuthenticatedSession(authzDb, key, auth, now);
+        await openAuthenticatedSession(authzDb, key, auth.principal, now);
       } else {
         // A session `initialize`d by one principal must not be usable by another just
         // because both happen to echo the same Mcp-Session-Id.
-        await assertSessionMatchesPrincipal(authzDb, key, auth);
+        await assertSessionMatchesPrincipal(authzDb, key, auth.principal);
       }
     }
 

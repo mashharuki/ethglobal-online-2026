@@ -35,10 +35,13 @@ const REQUIRED_SCOPE: Record<string, string | undefined> = {
 /**
  * Gates a tool handler on `ctx.auth` carrying the scope `toolName` needs (specs/mcp-auth-
  * remediation-plan.md §7). `MCP_AUTH_REQUIRED` (env.ts, cutover kill switch) controls how a
- * MISSING token is treated: once "true" it is a hard `AUTH_TOKEN_INVALID`; while still "false"
- * (apps/agent's CI harness does not send one yet, Phase 10) a missing token is let through
- * unchanged, exactly like before this phase. A PRESENT token is always held to its scope
- * regardless of the flag - a caller that DID authenticate gets real enforcement immediately.
+ * TRULY ABSENT token ("none") is treated: once "true" it is a hard `AUTH_TOKEN_INVALID`; while
+ * still "false" (apps/agent's CI harness does not send one yet, Phase 10) it is let through
+ * unchanged, exactly like before this phase. A PRESENTED-BUT-INVALID token ("failed" - unknown
+ * / expired / revoked token, or a revoked / expired delegation behind it) always fails closed
+ * regardless of the flag - Codex review, Phase 7: collapsing "failed" into the same bucket as
+ * "none" let a caller present a garbage token and silently fall back to legacy access instead
+ * of being refused. A token that DID authenticate is always held to its scope.
  */
 function withScope<TInput, TOutput>(
   toolName: string,
@@ -47,17 +50,20 @@ function withScope<TInput, TOutput>(
   const requiredScope = REQUIRED_SCOPE[toolName];
   return async (ctx, input) => {
     if (requiredScope !== undefined) {
-      if (ctx.auth === undefined) {
-        if (ctx.services.env.MCP_AUTH_REQUIRED === "true") {
+      if (ctx.auth.kind === "authenticated") {
+        if (!ctx.auth.principal.scope.split(" ").includes(requiredScope)) {
           throw new AppError(
-            "AUTH_TOKEN_INVALID",
-            `${toolName} requires a valid Bearer token`,
+            "INSUFFICIENT_SCOPE",
+            `${toolName} requires the "${requiredScope}" scope`,
           );
         }
-      } else if (!ctx.auth.scope.split(" ").includes(requiredScope)) {
+      } else if (
+        ctx.auth.kind === "failed" ||
+        ctx.services.env.MCP_AUTH_REQUIRED === "true"
+      ) {
         throw new AppError(
-          "INSUFFICIENT_SCOPE",
-          `${toolName} requires the "${requiredScope}" scope`,
+          "AUTH_TOKEN_INVALID",
+          `${toolName} requires a valid Bearer token`,
         );
       }
     }

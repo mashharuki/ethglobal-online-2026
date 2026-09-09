@@ -21,14 +21,24 @@ export type McpPrincipal = {
   scope: string;
 };
 
-const BEARER_PREFIX = "Bearer ";
+const BEARER_SCHEME = "bearer";
 
+/** HTTP auth-scheme tokens are case-insensitive (RFC 7235 §2.1) - real clients send `bearer`
+ * as often as `Bearer` (Codex review, Phase 7: a strict `"Bearer "` prefix match silently
+ * rejected those as "no token"). Only the scheme is case-folded; the token value itself is
+ * opaque and compared byte-for-byte via its hash. */
 export function extractBearerToken(
   authorizationHeader: string | null | undefined,
 ): string | undefined {
   if (typeof authorizationHeader !== "string") return undefined;
-  if (!authorizationHeader.startsWith(BEARER_PREFIX)) return undefined;
-  const token = authorizationHeader.slice(BEARER_PREFIX.length).trim();
+  const spaceIndex = authorizationHeader.indexOf(" ");
+  if (spaceIndex === -1) return undefined;
+  if (
+    authorizationHeader.slice(0, spaceIndex).toLowerCase() !== BEARER_SCHEME
+  ) {
+    return undefined;
+  }
+  const token = authorizationHeader.slice(spaceIndex + 1).trim();
   return token.length > 0 ? token : undefined;
 }
 
@@ -76,6 +86,45 @@ export async function requireMcpAuth(
     clientId: row.clientId,
     scope: row.scope,
   };
+}
+
+/**
+ * The three states a `/mcp` request can be in after best-effort auth (routes/mcp.ts):
+ * - "none": no Authorization header at all - the pre-remediation, still-supported legacy path.
+ * - "failed": a header WAS presented but rejected (unknown/expired/revoked token, or a
+ *   revoked/expired delegation behind it) - this must never be treated the same as "none"
+ *   (Codex review, Phase 7: collapsing both into a bare `undefined` let a caller presenting a
+ *   garbage token silently fall back to legacy unauthenticated access while
+ *   MCP_AUTH_REQUIRED=false, instead of being refused - a presented-but-invalid credential
+ *   should always fail closed, regardless of the cutover flag).
+ * - "authenticated": a valid Bearer token, carrying the live principal.
+ */
+export type AuthAttempt =
+  | { kind: "none" }
+  | { kind: "failed" }
+  | { kind: "authenticated"; principal: McpPrincipal };
+
+/**
+ * Best-effort wrapper around `requireMcpAuth` for `/mcp`'s route handler, which must never
+ * hard-401 the whole endpoint (`discover_assets` has to keep working with no Authorization
+ * header at all). A rejection this function KNOWS is a credential problem (any `AppError` -
+ * `AUTH_TOKEN_INVALID`/`DELEGATION_REVOKED`/`DELEGATION_EXPIRED`/`DELEGATION_NOT_FOUND`)
+ * becomes `{ kind: "failed" }`; anything else (a genuine DB/infra failure) is rethrown rather
+ * than misreported as an invalid credential (Codex review, Phase 7).
+ */
+export async function attemptMcpAuth(
+  authzDb: AuthzDb,
+  authorizationHeader: string | null | undefined,
+  now: Date,
+): Promise<AuthAttempt> {
+  if (typeof authorizationHeader !== "string") return { kind: "none" };
+  try {
+    const principal = await requireMcpAuth(authzDb, authorizationHeader, now);
+    return { kind: "authenticated", principal };
+  } catch (error) {
+    if (!(error instanceof AppError)) throw error;
+    return { kind: "failed" };
+  }
 }
 
 /**
