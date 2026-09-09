@@ -22,7 +22,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { oauthClient } from "../src/db/schema";
@@ -63,19 +63,51 @@ function sha256Base64Url(input: string): string {
   return base64url(digest);
 }
 
-/** Ensures the single pre-registered CI client exists (idempotent by client_name+source, so
+/**
+ * Ensures the single pre-registered CI client exists (idempotent by client_name+source, so
  * re-running this script to mint a fresh token after losing the old one reuses the same
- * client_id rather than accumulating duplicate rows). */
+ * client_id rather than accumulating duplicate rows).
+ *
+ * Reuse is scoped to `source = "preregistered"`, not `client_name` alone (Codex review):
+ * `client_name` is an attacker-controllable field on the public DCR endpoint
+ * (`oauth/clients.ts`'s `registerClient`), so anyone could self-register a `source: "dcr"`
+ * client under this exact name ahead of time. Matching on name alone would let this script
+ * silently adopt that attacker-controlled client_id as "the" CI client. A matched
+ * `preregistered` row is still expected to carry the exact configuration this script would
+ * have created - a mismatch there means the DB row was hand-edited or came from a different
+ * bootstrap version, and this refuses to guess which one is right rather than reusing a client
+ * whose `redirect_uris`/`scope`/`refresh_rotation_disabled` might not be what's assumed below.
+ */
 async function ensureCiClient(db: ReturnType<typeof drizzle>): Promise<string> {
   const existing = await db
     .select({
       clientId: oauthClient.clientId,
       disabledAt: oauthClient.disabledAt,
+      redirectUris: oauthClient.redirectUris,
+      scope: oauthClient.scope,
+      refreshRotationDisabled: oauthClient.refreshRotationDisabled,
     })
     .from(oauthClient)
-    .where(eq(oauthClient.clientName, CI_CLIENT_NAME));
+    .where(
+      and(
+        eq(oauthClient.clientName, CI_CLIENT_NAME),
+        eq(oauthClient.source, "preregistered"),
+      ),
+    );
   const live = existing.find((row) => row.disabledAt === null);
   if (live !== undefined) {
+    const matchesExpectedConfig =
+      live.scope === CI_SCOPE &&
+      live.refreshRotationDisabled === true &&
+      live.redirectUris.length === 1 &&
+      live.redirectUris[0] === CI_REDIRECT_URI;
+    if (!matchesExpectedConfig) {
+      throw new Error(
+        `an existing preregistered oauth_client ${live.clientId} named ${JSON.stringify(CI_CLIENT_NAME)} ` +
+          "does not match this script's expected scope/redirect_uris/refresh_rotation_disabled - " +
+          "resolve manually rather than reusing a client with unexpected configuration",
+      );
+    }
     console.error(`[bootstrap] reusing existing CI client ${live.clientId}`);
     return live.clientId;
   }
@@ -97,21 +129,39 @@ async function ensureCiClient(db: ReturnType<typeof drizzle>): Promise<string> {
 }
 
 /** Binds an ephemeral loopback listener, prints the authorize URL, and resolves with the
- * authorization `code` once the browser is redirected back here (or rejects on `error`,
- * a `state` mismatch, or CALLBACK_TIMEOUT_MS of silence). */
+ * authorization `code` once the browser is redirected back here (or rejects on a
+ * state-matched `error`, a state-matched request with no code, or CALLBACK_TIMEOUT_MS of
+ * silence). A request that doesn't match this run's `state` - stray traffic, a stale/reused
+ * tab, someone else's process on the same loopback port - is answered and ignored WITHOUT
+ * tearing down the listener or the timeout (Codex review): only a state-matched callback may
+ * end the flow, and `state` is checked before `error` is ever acted on. */
 async function awaitAuthorizationCode(
   authorizeUrl: URL,
   expectedState: string,
 ): Promise<string> {
   return new Promise((resolvePromise, reject) => {
     const server = createServer((req, res) => {
-      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      let url: URL;
+      try {
+        url = new URL(req.url ?? "/", "http://127.0.0.1");
+      } catch {
+        res.writeHead(400).end();
+        return;
+      }
       if (url.pathname !== CI_REDIRECT_PATH) {
         res.writeHead(404).end();
         return;
       }
-      clearTimeout(timeout);
       const state = url.searchParams.get("state");
+      if (state !== expectedState) {
+        res
+          .writeHead(400, { "content-type": "text/plain" })
+          .end(
+            "unrecognized request - ignored, still waiting for the real callback.",
+          );
+        return; // no timeout/server teardown: this was not the callback this run is waiting for
+      }
+      clearTimeout(timeout);
       const error = url.searchParams.get("error");
       const code = url.searchParams.get("code");
       const finish = (body: string, err?: Error): void => {
@@ -121,15 +171,8 @@ async function awaitAuthorizationCode(
       };
       if (error !== null) {
         finish(
-          `Authorization was denied (${error}). You can close this tab.`,
+          "Authorization was denied. You can close this tab.",
           new Error(`authorization denied: ${error}`),
-        );
-        return;
-      }
-      if (state !== expectedState) {
-        finish(
-          "state mismatch - this callback was not for the request this script started. You can close this tab.",
-          new Error("state mismatch on OAuth callback"),
         );
         return;
       }
@@ -201,20 +244,36 @@ async function exchangeCode(
     }),
   });
   const body: unknown = await response.json().catch(() => undefined);
+  // Never echo the raw response body in an error message (Codex review): a 2xx body that fails
+  // validation below still legitimately contains access_token/refresh_token, and dumping it
+  // would print those secrets to the terminal / a captured log right after minting them.
   if (!response.ok) {
+    const errorBody = (body ?? {}) as {
+      error?: unknown;
+      error_description?: unknown;
+    };
+    const error =
+      typeof errorBody.error === "string" && errorBody.error.length > 0
+        ? errorBody.error
+        : "unknown_error";
+    const description =
+      typeof errorBody.error_description === "string" &&
+      errorBody.error_description.length > 0
+        ? `: ${errorBody.error_description}`
+        : "";
     throw new Error(
-      `/oauth/token exchange failed (${response.status}): ${JSON.stringify(body)}`,
+      `/oauth/token exchange failed (${response.status} ${error}${description})`,
     );
   }
   const record = body as Partial<TokenResponse> | undefined;
-  if (
-    typeof record?.access_token !== "string" ||
-    typeof record?.refresh_token !== "string" ||
-    typeof record?.scope !== "string"
-  ) {
-    throw new Error(
-      `/oauth/token returned an unexpected body: ${JSON.stringify(body)}`,
-    );
+  if (typeof record?.access_token !== "string") {
+    throw new Error("/oauth/token response is missing a valid access_token");
+  }
+  if (typeof record?.refresh_token !== "string") {
+    throw new Error("/oauth/token response is missing a valid refresh_token");
+  }
+  if (typeof record?.scope !== "string") {
+    throw new Error("/oauth/token response is missing a valid scope");
   }
   return {
     access_token: record.access_token,
