@@ -48,4 +48,14 @@ describe("selectPrimaryWallet", () => {
       usersOwnWallet,
     );
   });
+
+  it("should treat a negative walletIndex as 0 rather than letting it win outright", () => {
+    // Privy's HD index is always a non-negative integer, but this normalizes defensively
+    // rather than trusting that - a negative value should not silently outrank walletIndex 0.
+    const negative = { id: "negative", walletIndex: -1 };
+    const zero = { id: "zero", walletIndex: 0 };
+    // both normalize to 0: the reduce keeps whichever it saw first, in either order
+    expect(selectPrimaryWallet([negative, zero])).toBe(negative);
+    expect(selectPrimaryWallet([zero, negative])).toBe(zero);
+  });
 });

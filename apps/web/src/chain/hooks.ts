@@ -50,15 +50,21 @@ function serializeTypedData(typedData: TypedDataLike): string {
  * first" - `useWallets()` order is not guaranteed stable once a second embedded wallet
  * exists (the MCP OAuth remediation provisions one AI-delegated wallet per principal
  * alongside the user's own browser wallet). The primary wallet is the one with the lowest
- * `walletIndex` (nullish for the very first HD wallet, which sorts first).
+ * `walletIndex`; nullish or negative values (Privy's HD index is always a non-negative
+ * integer, but this normalizes defensively rather than trusting that) are treated as 0, the
+ * index of the very first HD wallet.
  */
+function normalizedWalletIndex(walletIndex: number | null | undefined): number {
+  return typeof walletIndex === "number" && walletIndex >= 0 ? walletIndex : 0;
+}
+
 export function selectPrimaryWallet<T extends { walletIndex?: number | null }>(
   wallets: readonly T[],
 ): T | undefined {
   return wallets.reduce<T | undefined>((primary, candidate) => {
     if (primary === undefined) return candidate;
-    const primaryIndex = primary.walletIndex ?? 0;
-    const candidateIndex = candidate.walletIndex ?? 0;
+    const primaryIndex = normalizedWalletIndex(primary.walletIndex);
+    const candidateIndex = normalizedWalletIndex(candidate.walletIndex);
     return candidateIndex < primaryIndex ? candidate : primary;
   }, undefined);
 }
