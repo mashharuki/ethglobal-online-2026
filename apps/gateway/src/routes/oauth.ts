@@ -104,6 +104,7 @@ export function registerOauthRoutes(app: Hono<AppEnv>): void {
           redirectUri: body.data.redirect_uri,
           clientId: body.data.client_id,
           codeVerifier: body.data.code_verifier,
+          resource: body.data.resource,
         },
         new Date(),
       );
@@ -113,6 +114,7 @@ export function registerOauthRoutes(app: Hono<AppEnv>): void {
         {
           refreshToken: body.data.refresh_token,
           clientId: body.data.client_id,
+          resource: body.data.resource,
         },
         new Date(),
       );
@@ -166,11 +168,15 @@ const TokenBody = z.discriminatedUnion("grant_type", [
     redirect_uri: z.string().min(1),
     client_id: z.string().min(1),
     code_verifier: z.string().min(1),
+    // RFC 8707 §2: OPTIONAL - if present, must match what was actually authorized (checked in
+    // oauth/token.ts) rather than silently widening/narrowing the token's audience.
+    resource: z.string().optional(),
   }),
   z.object({
     grant_type: z.literal("refresh_token"),
     refresh_token: z.string().min(1),
     client_id: z.string().min(1),
+    resource: z.string().optional(),
   }),
 ]);
 

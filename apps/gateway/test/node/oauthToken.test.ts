@@ -293,6 +293,113 @@ describe("exchangeAuthorizationCode", () => {
       .where(eq(oauthToken.tokenHash, hashOpaqueValue(result.refreshToken)));
     expect(refreshRow?.expiresAt.getTime()).toBe(grantExpiresAt.getTime());
   });
+
+  it("should NOT revoke the grant's tokens for an already-used code presented with the WRONG code_verifier (Codex review: client/redirect/PKCE checked before the destructive replay path)", async () => {
+    const { code, clientId } = await seedConsentedCode({});
+    const first = await exchangeAuthorizationCode(
+      db,
+      {
+        code,
+        redirectUri: REDIRECT_URI,
+        clientId,
+        codeVerifier: CODE_VERIFIER,
+      },
+      NOW,
+    );
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error("unreachable");
+
+    // an attacker who only observed the (now-used) code value, not the real verifier
+    const attackerAttempt = await exchangeAuthorizationCode(
+      db,
+      {
+        code,
+        redirectUri: REDIRECT_URI,
+        clientId,
+        codeVerifier: "attacker-does-not-know-the-real-verifier-xxxxx",
+      },
+      NOW,
+    );
+    expect(attackerAttempt.ok).toBe(false);
+
+    const [accessRow] = await db
+      .select()
+      .from(oauthToken)
+      .where(eq(oauthToken.tokenHash, hashOpaqueValue(first.accessToken)));
+    // the legitimate tokens survive - PKCE failure alone must not trigger revocation
+    expect(accessRow?.revokedAt).toBeNull();
+  });
+
+  it("should reject exchange for a disabled client, even with an otherwise-valid code", async () => {
+    const { code, clientId } = await seedConsentedCode({});
+    const { oauthClient } = await import("../../src/db/schema");
+    await db
+      .update(oauthClient)
+      .set({ disabledAt: NOW })
+      .where(eq(oauthClient.clientId, clientId));
+    const result = await exchangeAuthorizationCode(
+      db,
+      {
+        code,
+        redirectUri: REDIRECT_URI,
+        clientId,
+        codeVerifier: CODE_VERIFIER,
+      },
+      NOW,
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("should reject a resource in the token request that doesn't match what was authorized", async () => {
+    const { code, clientId } = await seedConsentedCode({});
+    const result = await exchangeAuthorizationCode(
+      db,
+      {
+        code,
+        redirectUri: REDIRECT_URI,
+        clientId,
+        codeVerifier: CODE_VERIFIER,
+        resource: "https://a-different-resource.example/mcp",
+      },
+      NOW,
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.error).toBe("invalid_target");
+  });
+
+  it("should use the same generic error_description regardless of which check failed (Codex review: avoid leaking failure reason)", async () => {
+    const unknownCodeResult = await exchangeAuthorizationCode(
+      db,
+      {
+        code: generateOpaqueValue(),
+        redirectUri: REDIRECT_URI,
+        clientId: crypto.randomUUID(),
+        codeVerifier: CODE_VERIFIER,
+      },
+      NOW,
+    );
+    const { code, clientId } = await seedConsentedCode({
+      codeExpiresAt: new Date(NOW.getTime() - 1000),
+    });
+    const expiredResult = await exchangeAuthorizationCode(
+      db,
+      {
+        code,
+        redirectUri: REDIRECT_URI,
+        clientId,
+        codeVerifier: CODE_VERIFIER,
+      },
+      NOW,
+    );
+    expect(unknownCodeResult.ok).toBe(false);
+    expect(expiredResult.ok).toBe(false);
+    if (unknownCodeResult.ok || expiredResult.ok)
+      throw new Error("unreachable");
+    expect(unknownCodeResult.errorDescription).toBe(
+      expiredResult.errorDescription,
+    );
+  });
 });
 
 describe("refreshAccessToken", () => {
@@ -414,5 +521,36 @@ describe("refreshAccessToken", () => {
       NOW,
     );
     expect(result.ok).toBe(false);
+  });
+
+  it("should reject refresh for a disabled client, even with an otherwise-valid refresh token", async () => {
+    const issued = await issueTokens();
+    const { oauthClient } = await import("../../src/db/schema");
+    await db
+      .update(oauthClient)
+      .set({ disabledAt: NOW })
+      .where(eq(oauthClient.clientId, issued.clientId));
+    const result = await refreshAccessToken(
+      db,
+      { refreshToken: issued.refreshToken, clientId: issued.clientId },
+      NOW,
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("should reject a resource in the refresh request that doesn't match the token's own", async () => {
+    const issued = await issueTokens();
+    const result = await refreshAccessToken(
+      db,
+      {
+        refreshToken: issued.refreshToken,
+        clientId: issued.clientId,
+        resource: "https://a-different-resource.example/mcp",
+      },
+      NOW,
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.error).toBe("invalid_target");
   });
 });
