@@ -437,6 +437,29 @@ export async function readBindingStatus(
   return row === undefined ? "absent" : row.status;
 }
 
+/**
+ * status + stage + paidAt for a paymentId (MCP OAuth remediation, mcp/spend.ts): the
+ * spend-reservation settle/release decision needs to tell "nothing was ever claimed"
+ * (absent), "value moved" (paidAt set, or status settled) and "outcome unknown, still in
+ * flight" (pending at stage settle/anchor) apart - `readBindingStatus` alone collapses all
+ * of these but "pending" into a single case.
+ */
+export async function readBindingDetails(
+  db: Db,
+  paymentId: Hex,
+): Promise<
+  | { status: "absent" }
+  | {
+      status: BindingRow["status"];
+      stage: BindingRow["stage"];
+      paidAt: Date | null;
+    }
+> {
+  const row = await readBinding(db, paymentId);
+  if (row === undefined) return { status: "absent" };
+  return { status: row.status, stage: row.stage, paidAt: row.paidAt };
+}
+
 /** A lifecycle write only the current claim holder may make (ownership token CAS). */
 async function updateOwned(
   db: Db,
