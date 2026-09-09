@@ -36,8 +36,9 @@ export type AuthorizationServerMetadata = {
 
 /** `scopes_supported` mirrors the space-delimited scope tokens grant.ts/agent_grant actually
  * enforces (`assets:read`, `access:buy`) - advertising a scope this server can't actually
- * grant would be misleading to a client choosing what to request. */
-const SCOPES_SUPPORTED = ["assets:read", "access:buy"];
+ * grant would be misleading to a client choosing what to request. Exported so
+ * oauth/authorize.ts can validate a request's `scope` against the same list. */
+export const SCOPES_SUPPORTED = ["assets:read", "access:buy"];
 
 export function buildAuthorizationServerMetadata(
   origin: string,
