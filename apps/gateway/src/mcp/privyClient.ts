@@ -248,3 +248,69 @@ export async function signTypedDataDelegated(
     });
   return result.signature as Hex;
 }
+
+/**
+ * Best-effort removal of the gateway's signer quorum from a delegated wallet
+ * (specs/mcp-auth-remediation-plan.md "取消"). DB revocation (grant.ts's `revokeGrant`) is
+ * what actually stops the Gateway from acting on this wallet's behalf - this call only tidies
+ * up the Privy-side grant so a captured additional-signer credential can't be reused
+ * elsewhere. A caller must treat its failure as retryable, never as the revoke itself failing
+ * (DB revoke happens first and is authoritative on its own).
+ */
+export async function detachDelegatedSigner(
+  delegation: ReturnType<typeof createPrivyDelegationClient>,
+  privyWalletId: string,
+): Promise<void> {
+  await delegation.client.wallets().update(privyWalletId, {
+    authorization_context: delegation.authorizationContext(),
+    additional_signers: [],
+  });
+}
+
+export class PrivyAuthUnavailableError extends Error {
+  override readonly name = "PrivyAuthUnavailableError";
+}
+
+export type PrivyPrincipalAuthEnv = Partial<
+  Pick<Env, "PRIVY_APP_ID" | "PRIVY_APP_SECRET">
+>;
+
+/**
+ * Verifies a Privy access token minted by the user's OWN client-side Privy login (Phase 8/9
+ * admin routes: agent-grant revocation). This is a SEPARATE trust boundary from the gateway's
+ * own OAuth Bearer tokens (mcp/auth.ts's `requireMcpAuth`) - the two never cross paths, and
+ * this function is never called from `/mcp`. A successful verification's `user_id` is exactly
+ * the `principalId` used throughout `agent_grant`/`agent_wallet_binding` -
+ * `createDelegatedWallet` above passes that same string as `owner.user_id` when a wallet is
+ * first provisioned, so Privy's own record of "who owns this token" and "who owns this
+ * wallet" are the same identifier space.
+ *
+ * `jwtVerificationKeyOverride` is a first-class SDK option (`PrivyClientOptions.
+ * jwtVerificationKey`, `@privy-io/node`'s `lib/auth.js`), not test infrastructure this module
+ * invented: passing a static SPKI PEM public key here makes verification purely local (no
+ * JWKS fetch), which is what lets the test suite exercise the REAL `verifyAccessToken` /
+ * `jose.jwtVerify` code path end-to-end (constitution III/IV) without a network stub - the
+ * SDK's own `createRemoteJWKSet` call does not honor a custom `fetch` (it never receives one),
+ * so an HTTP-boundary stub like the sibling functions in this module use would not work here.
+ */
+export async function verifyPrincipalAccessToken(
+  env: PrivyPrincipalAuthEnv,
+  accessToken: string,
+  /** test-only: verify against a fixed key instead of Privy's live JWKS. */
+  jwtVerificationKeyOverride?: string,
+): Promise<{ principalId: string }> {
+  if (env.PRIVY_APP_ID === undefined || env.PRIVY_APP_SECRET === undefined) {
+    throw new PrivyAuthUnavailableError(
+      "PRIVY_APP_ID / PRIVY_APP_SECRET are not set",
+    );
+  }
+  const client = new PrivyClient({
+    appId: env.PRIVY_APP_ID,
+    appSecret: env.PRIVY_APP_SECRET,
+    ...(jwtVerificationKeyOverride === undefined
+      ? {}
+      : { jwtVerificationKey: jwtVerificationKeyOverride }),
+  });
+  const verified = await client.utils().auth().verifyAccessToken(accessToken);
+  return { principalId: verified.user_id };
+}

@@ -41,6 +41,23 @@ export type ProvisionedAgentWallet = {
   signerQuorumId: string;
 };
 
+export type AgentWalletBindingRow = typeof agentWalletBinding.$inferSelect;
+
+/** Read-by-id (Phase 8 admin revocation: resolving `agent_grant.walletId` to the Privy wallet
+ * id a signer-detach call needs). Takes `AuthzDb` for the same reason every other read in this
+ * module does - the caller is deciding whether to touch a live delegation's wallet. */
+export async function resolveWalletBinding(
+  db: AuthzDb,
+  walletId: string,
+): Promise<AgentWalletBindingRow | undefined> {
+  const [row] = await db
+    .select()
+    .from(agentWalletBinding)
+    .where(eq(agentWalletBinding.id, walletId))
+    .limit(1);
+  return row;
+}
+
 function shortHash(value: string): string {
   return keccak256(stringToHex(value)).slice(2, 18);
 }

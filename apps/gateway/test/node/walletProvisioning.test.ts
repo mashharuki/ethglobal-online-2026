@@ -6,7 +6,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { agentWalletBinding } from "../../src/db/schema";
 import type { AuthzDb } from "../../src/db/types";
 import { McpToolError } from "../../src/mcp/toolError";
-import { provisionAgentWallet } from "../../src/mcp/walletProvisioning";
+import {
+  provisionAgentWallet,
+  resolveWalletBinding,
+} from "../../src/mcp/walletProvisioning";
 import { createTestDb } from "./helpers";
 
 /**
@@ -286,5 +289,25 @@ describe("provisionAgentWallet", () => {
       ),
     ).rejects.toThrow(McpToolError);
     expect(backend.createCalls()).toBe(0);
+  });
+});
+
+describe("resolveWalletBinding (Phase 8, agent-grant revocation's signer-detach lookup)", () => {
+  it("should return the wallet binding row by id", async () => {
+    const backend = fakePrivyBackend();
+    const provisioned = await provisionAgentWallet(
+      db,
+      DELEGATION_ENV,
+      { principalId: "did:privy:resolve-test", chainId: 296 },
+      backend.fetchImpl,
+    );
+    const row = await resolveWalletBinding(db, provisioned.id);
+    expect(row?.id).toBe(provisioned.id);
+    expect(row?.privyWalletId).toBe(provisioned.privyWalletId);
+    expect(row?.principalId).toBe("did:privy:resolve-test");
+  });
+
+  it("should return undefined for an id that does not exist", async () => {
+    expect(await resolveWalletBinding(db, crypto.randomUUID())).toBeUndefined();
   });
 });
