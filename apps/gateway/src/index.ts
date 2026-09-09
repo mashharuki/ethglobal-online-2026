@@ -61,6 +61,13 @@ app.use("*", async (c, next) => {
 const MINUTE = 60_000;
 app.use("/assets/*", rateLimit({ limit: 60, windowMs: MINUTE, key: clientIp }));
 app.use("/mcp", rateLimit({ limit: 60, windowMs: MINUTE, key: clientIp }));
+// DCR (Codex review, Phase 6a) is deliberately unauthenticated (that's the point of dynamic
+// registration) - without a rate limit, an unauthenticated caller could grow oauth_client
+// without bound.
+app.use(
+  "/oauth/register",
+  rateLimit({ limit: 20, windowMs: MINUTE, key: clientIp }),
+);
 for (const prefix of ["/owner/*", "/keygate/*"]) {
   app.use(prefix, rateLimit({ limit: 120, windowMs: MINUTE, key: clientIp }));
   app.use(prefix, rateLimit({ limit: 30, windowMs: MINUTE, key: walletOrIp }));
