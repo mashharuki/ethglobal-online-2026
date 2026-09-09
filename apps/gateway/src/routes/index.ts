@@ -1,5 +1,6 @@
 import type { Hono } from "hono";
 import { registerAdminRoutes } from "./admin";
+import { registerAgentGrantRoutes } from "./agentGrants";
 import { registerAuditRoutes } from "./audit";
 import { registerGraphRoutes } from "./graph";
 import { registerKeygateRoutes } from "./keygate";
@@ -20,6 +21,7 @@ export function registerRoutes(app: Hono<AppEnv>): void {
   registerGraphRoutes(app);
   registerAuditRoutes(app);
   registerAdminRoutes(app);
+  registerAgentGrantRoutes(app);
   registerMcpRoutes(app);
   registerWellKnownRoutes(app);
   registerOauthRoutes(app);

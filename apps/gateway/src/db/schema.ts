@@ -269,6 +269,7 @@ export const AUDIT_ACTIONS = [
   "deny",
   "claim",
   "policy_update",
+  "delegation_revoke",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

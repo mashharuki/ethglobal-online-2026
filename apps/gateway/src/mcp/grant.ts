@@ -196,3 +196,37 @@ export async function countActiveDelegations(
     );
   return row?.n ?? 0;
 }
+
+/** Full rows of every currently-active grant for a principal - the admin UI's "your connected
+ * apps" list (Phase 8, GET /agent/grants). */
+export async function listActiveDelegations(
+  db: AuthzDb,
+  principalId: string,
+): Promise<AgentGrant[]> {
+  return db
+    .select()
+    .from(agentGrant)
+    .where(
+      and(
+        eq(agentGrant.principalId, principalId),
+        eq(agentGrant.state, "active"),
+      ),
+    );
+}
+
+/** Count of currently-active grants bound to a wallet - used to decide whether revoking ONE
+ * grant may also detach the wallet's Privy signer. A wallet's signer must only be detached
+ * once NO active grant still depends on it (specs/mcp-auth-remediation-plan.md "取消": revoking
+ * a single grant must not break another grant that shares the same wallet). */
+export async function countActiveDelegationsForWallet(
+  db: AuthzDb,
+  walletId: string,
+): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(agentGrant)
+    .where(
+      and(eq(agentGrant.walletId, walletId), eq(agentGrant.state, "active")),
+    );
+  return row?.n ?? 0;
+}

@@ -1,13 +1,17 @@
 import { generateKeyPairSync } from "node:crypto";
+import { exportSPKI, generateKeyPair, SignJWT } from "jose";
 import { describe, expect, it } from "vitest";
 import {
   createDelegatedWallet,
   createPrivyDelegationClient,
+  detachDelegatedSigner,
   findDelegatedWalletByExternalId,
+  PrivyAuthUnavailableError,
   PrivyDelegationUnavailableError,
   signSecp256k1Delegated,
   signTypedDataDelegated,
   verifyDelegatedWalletOwnership,
+  verifyPrincipalAccessToken,
 } from "../../src/mcp/privyClient";
 
 /**
@@ -362,5 +366,140 @@ describe("signTypedDataDelegated", () => {
         },
       },
     });
+  });
+});
+
+describe("detachDelegatedSigner", () => {
+  it("should update the wallet with an empty additional_signers array, authorized, without leaking the raw key", async () => {
+    let capturedBody: unknown;
+    const fetchImpl = fakeFetch(({ method, url, body, headers }) => {
+      expect(method).toBe("PATCH");
+      expect(url).toBe("https://api.privy.io/v1/wallets/wallet-1");
+      capturedBody = body;
+      assertRawKeyNeverSent({ url, body, headers });
+      expect(headers.has("privy-authorization-signature")).toBe(true);
+      return {
+        id: "wallet-1",
+        address: WALLET_ADDRESS,
+        chain_type: "ethereum",
+        additional_signers: [],
+      };
+    });
+    const delegation = createPrivyDelegationClient(ENV, fetchImpl);
+    await detachDelegatedSigner(delegation, "wallet-1");
+    expect(capturedBody).toMatchObject({ additional_signers: [] });
+  });
+});
+
+/**
+ * verifyPrincipalAccessToken (Phase 8 agent-grant revocation). Privy's own `verifyAccessToken`
+ * / `jose.jwtVerify` is exercised for real (constitution III/IV) via `jwtVerificationKey` - a
+ * first-class SDK option for supplying a static SPKI public key, which makes verification
+ * purely local. This is the correct seam here (not an HTTP `fetch` stub like the tests above):
+ * @privy-io/node's `createPrivyAppJWKS` never receives the client's custom `fetch`, so an
+ * HTTP-boundary stub for the JWKS endpoint would not actually be reachable from outside.
+ */
+describe("verifyPrincipalAccessToken", () => {
+  const APP_ID = "app-id";
+
+  async function buildToken(
+    overrides: {
+      userId?: string;
+      sessionId?: string;
+      issuer?: string;
+      audience?: string;
+      expiresInSeconds?: number;
+      signWithDifferentKey?: boolean;
+    } = {},
+  ): Promise<{ token: string; verificationKeyPem: string }> {
+    const { publicKey, privateKey } = await generateKeyPair("ES256", {
+      extractable: true,
+    });
+    const signingKey = overrides.signWithDifferentKey
+      ? (await generateKeyPair("ES256", { extractable: true })).privateKey
+      : privateKey;
+    const now = Math.floor(Date.now() / 1000);
+    const token = await new SignJWT({ sid: overrides.sessionId ?? "session-1" })
+      .setProtectedHeader({ alg: "ES256", typ: "JWT" })
+      .setIssuer(overrides.issuer ?? "privy.io")
+      .setAudience(overrides.audience ?? APP_ID)
+      .setSubject(overrides.userId ?? "did:privy:abc")
+      .setIssuedAt(now)
+      .setExpirationTime(now + (overrides.expiresInSeconds ?? 3600))
+      .sign(signingKey);
+    return { token, verificationKeyPem: await exportSPKI(publicKey) };
+  }
+
+  it("should return the principalId (Privy's user_id / sub claim) for a valid token", async () => {
+    const { token, verificationKeyPem } = await buildToken({
+      userId: "did:privy:user-1",
+    });
+    const result = await verifyPrincipalAccessToken(
+      { PRIVY_APP_ID: APP_ID, PRIVY_APP_SECRET: "secret" },
+      token,
+      verificationKeyPem,
+    );
+    expect(result).toEqual({ principalId: "did:privy:user-1" });
+  });
+
+  it("should reject a token minted for a different Privy app (audience mismatch)", async () => {
+    const { token, verificationKeyPem } = await buildToken({
+      audience: "some-other-app-id",
+    });
+    await expect(
+      verifyPrincipalAccessToken(
+        { PRIVY_APP_ID: APP_ID, PRIVY_APP_SECRET: "secret" },
+        token,
+        verificationKeyPem,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("should reject a token from an issuer other than privy.io", async () => {
+    const { token, verificationKeyPem } = await buildToken({
+      issuer: "https://attacker.example",
+    });
+    await expect(
+      verifyPrincipalAccessToken(
+        { PRIVY_APP_ID: APP_ID, PRIVY_APP_SECRET: "secret" },
+        token,
+        verificationKeyPem,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("should reject an expired token", async () => {
+    const { token, verificationKeyPem } = await buildToken({
+      expiresInSeconds: -60,
+    });
+    await expect(
+      verifyPrincipalAccessToken(
+        { PRIVY_APP_ID: APP_ID, PRIVY_APP_SECRET: "secret" },
+        token,
+        verificationKeyPem,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("should reject a token whose signature does not verify against the expected key", async () => {
+    const { token, verificationKeyPem } = await buildToken({
+      signWithDifferentKey: true,
+    });
+    await expect(
+      verifyPrincipalAccessToken(
+        { PRIVY_APP_ID: APP_ID, PRIVY_APP_SECRET: "secret" },
+        token,
+        verificationKeyPem,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("should throw PrivyAuthUnavailableError when PRIVY_APP_ID / PRIVY_APP_SECRET are not set", async () => {
+    await expect(
+      verifyPrincipalAccessToken({}, "irrelevant-token"),
+    ).rejects.toThrow(PrivyAuthUnavailableError);
+    await expect(
+      verifyPrincipalAccessToken({ PRIVY_APP_ID: APP_ID }, "irrelevant-token"),
+    ).rejects.toThrow(PrivyAuthUnavailableError);
   });
 });

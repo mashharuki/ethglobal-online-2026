@@ -7,7 +7,9 @@ import { AppError } from "../../src/errors";
 import {
   assertGrantUsable,
   countActiveDelegations,
+  countActiveDelegationsForWallet,
   createGrant,
+  listActiveDelegations,
   resolveDelegation,
   revokeAllDelegations,
   revokeGrant,
@@ -356,5 +358,112 @@ describe("revokeAllDelegations / countActiveDelegations", () => {
       NOW,
     );
     expect(revokedIds).toEqual([]);
+  });
+});
+
+describe("listActiveDelegations (Phase 8, GET /agent/grants)", () => {
+  it("should return only active grants for the given principal, not other principals'", async () => {
+    const walletId = await seedWallet("did:privy:list-test");
+    const a = await createGrant(db, GRANT_ENV, {
+      principalId: "did:privy:list-test",
+      walletId,
+      clientId: "client-a",
+      scope: "assets:read",
+      chainId: 296,
+      now: NOW,
+    });
+    const otherWalletId = await seedWallet("did:privy:list-other");
+    await createGrant(db, GRANT_ENV, {
+      principalId: "did:privy:list-other",
+      walletId: otherWalletId,
+      clientId: "client-a",
+      scope: "assets:read",
+      chainId: 296,
+      now: NOW,
+    });
+
+    const rows = await listActiveDelegations(db, "did:privy:list-test");
+    expect(rows.map((r) => r.id)).toEqual([a.id]);
+  });
+
+  it("should exclude a revoked grant", async () => {
+    const walletId = await seedWallet("did:privy:list-revoked");
+    const grant = await createGrant(db, GRANT_ENV, {
+      principalId: "did:privy:list-revoked",
+      walletId,
+      clientId: "client-a",
+      scope: "assets:read",
+      chainId: 296,
+      now: NOW,
+    });
+    await revokeGrant(db, grant.id, "test", NOW);
+    expect(await listActiveDelegations(db, "did:privy:list-revoked")).toEqual(
+      [],
+    );
+  });
+});
+
+describe("countActiveDelegationsForWallet (Phase 8, single-revoke signer-detach gate)", () => {
+  it("should count active grants sharing one wallet, unaffected by other wallets", async () => {
+    const walletId = await seedWallet("did:privy:shared-wallet");
+    await createGrant(db, GRANT_ENV, {
+      principalId: "did:privy:shared-wallet",
+      walletId,
+      clientId: "client-a",
+      scope: "assets:read",
+      chainId: 296,
+      now: NOW,
+    });
+    await createGrant(db, GRANT_ENV, {
+      principalId: "did:privy:shared-wallet",
+      walletId,
+      clientId: "client-b",
+      scope: "assets:read",
+      chainId: 296,
+      now: NOW,
+    });
+    const otherWalletId = await seedWallet("did:privy:unrelated");
+    await createGrant(db, GRANT_ENV, {
+      principalId: "did:privy:unrelated",
+      walletId: otherWalletId,
+      clientId: "client-a",
+      scope: "assets:read",
+      chainId: 296,
+      now: NOW,
+    });
+
+    expect(await countActiveDelegationsForWallet(db, walletId)).toBe(2);
+    expect(await countActiveDelegationsForWallet(db, otherWalletId)).toBe(1);
+  });
+
+  it("should drop to a value that reflects a revoke of ONE of two grants sharing a wallet, not both", async () => {
+    const walletId = await seedWallet("did:privy:shared-wallet-2");
+    const a = await createGrant(db, GRANT_ENV, {
+      principalId: "did:privy:shared-wallet-2",
+      walletId,
+      clientId: "client-a",
+      scope: "assets:read",
+      chainId: 296,
+      now: NOW,
+    });
+    await createGrant(db, GRANT_ENV, {
+      principalId: "did:privy:shared-wallet-2",
+      walletId,
+      clientId: "client-b",
+      scope: "assets:read",
+      chainId: 296,
+      now: NOW,
+    });
+    await revokeGrant(db, a.id, "test", NOW);
+    // one sibling grant is still active on the same wallet - a caller must NOT detach the
+    // signer yet (specs/mcp-auth-remediation-plan.md "取消": a single revoke must not break a
+    // sibling grant sharing the same wallet).
+    expect(await countActiveDelegationsForWallet(db, walletId)).toBe(1);
+  });
+
+  it("should return 0 for a wallet with no grants at all", async () => {
+    expect(await countActiveDelegationsForWallet(db, crypto.randomUUID())).toBe(
+      0,
+    );
   });
 });
