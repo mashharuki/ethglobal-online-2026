@@ -1,5 +1,5 @@
 import { usePrivy } from "@privy-io/react-auth";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import ErrorNote from "../components/ErrorNote";
 import { getConfig } from "../config";
@@ -36,20 +36,31 @@ export default function AiConsent() {
   const [details, setDetails] = useState<ConsentDetails | undefined>();
   const [error, setError] = useState<unknown>();
   const [submitting, setSubmitting] = useState(false);
+  // Which request_id `details`/`error` actually belong to - a ref (not state) so `load` can
+  // read the LATEST value at the moment its fetch resolves, not the value it was created with
+  // (Codex review: `requestId` changing while a fetch is in flight must never let a stale
+  // response for request A render, or be approved/denied, while the URL already points at a
+  // different request B).
+  const latestRequestId = useRef<string | null>(null);
 
   const load = useCallback(async () => {
-    if (requestId === null) return;
+    latestRequestId.current = requestId;
+    setDetails(undefined);
     setError(undefined);
+    if (requestId === null) return;
+    const forRequestId = requestId;
     try {
       const accessToken = await getAccessToken();
       if (accessToken === null) throw new Error("not logged in to Privy");
       const details = await fetchConsentDetails(
         getConfig().gatewayUrl,
         accessToken,
-        requestId,
+        forRequestId,
       );
+      if (latestRequestId.current !== forRequestId) return; // superseded meanwhile
       setDetails(details);
     } catch (e) {
+      if (latestRequestId.current !== forRequestId) return;
       setError(e);
     }
   }, [requestId, getAccessToken]);

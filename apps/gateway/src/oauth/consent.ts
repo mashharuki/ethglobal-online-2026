@@ -6,7 +6,12 @@ import {
 import type { AuthzDb } from "../db/types";
 import type { Env } from "../env";
 import { AppError } from "../errors";
-import { createGrant, resolveActiveDelegationForClient } from "../mcp/grant";
+import {
+  type AgentGrant,
+  createGrant,
+  resolveActiveDelegationForClient,
+  revokeGrant,
+} from "../mcp/grant";
 import type { PrivyDelegationEnv } from "../mcp/privyClient";
 import { provisionAgentWallet } from "../mcp/walletProvisioning";
 import { resolveClient } from "./clients";
@@ -152,29 +157,44 @@ export async function resolveConsent(
 
   // Re-approving an already-connected client reuses its existing live grant (and budget/spend
   // history) rather than attempting a second createGrant, which
-  // agent_grant_live_principal_client_uniq (schema.ts) would reject anyway.
+  // agent_grant_live_principal_client_uniq (schema.ts) would reject anyway - but ONLY when
+  // that grant is still actually usable for the newly-requested scope (Codex review: reusing
+  // an active-state row that has quietly outlived its own expiresAt, or that carries a
+  // DIFFERENT scope than what was just re-approved, would mint a code advertising permissions
+  // the underlying grant doesn't (or no longer) have). Either case is treated as "this
+  // connection needs a fresh grant" - the stale one is revoked first, since the unique index
+  // forbids two active rows for the same (principal, client) even if one is expired.
   const existingGrant = await resolveActiveDelegationForClient(
     db,
     input.principalId,
     request.clientId,
   );
-  const grant =
-    existingGrant ??
-    (await createGrant(db, grantEnv, {
+  const grantIsReusable =
+    existingGrant !== undefined &&
+    existingGrant.scope === request.scope &&
+    existingGrant.expiresAt > now;
+  let grant: AgentGrant;
+  if (grantIsReusable) {
+    grant = existingGrant as AgentGrant;
+  } else {
+    if (existingGrant !== undefined) {
+      await revokeGrant(db, existingGrant.id, "superseded_by_reconsent", now);
+    }
+    const wallet = await provisionAgentWallet(
+      db,
+      delegationEnv,
+      { principalId: input.principalId, chainId: input.chainId },
+      fetchImpl,
+    );
+    grant = await createGrant(db, grantEnv, {
       principalId: input.principalId,
-      walletId: (
-        await provisionAgentWallet(
-          db,
-          delegationEnv,
-          { principalId: input.principalId, chainId: input.chainId },
-          fetchImpl,
-        )
-      ).id,
+      walletId: wallet.id,
       clientId: request.clientId,
       scope: request.scope,
       chainId: input.chainId,
       now,
-    }));
+    });
+  }
 
   // The WHERE-status='pending' CAS below is what serializes two concurrent resolveConsent
   // calls for the same request (the row lock this UPDATE takes is held until commit, so a

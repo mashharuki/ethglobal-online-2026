@@ -100,4 +100,30 @@ describe("oauth/client (Phase 9, GET/POST /oauth/consent)", () => {
       ),
     ).rejects.toMatchObject({ status: 401, code: "AUTH_TOKEN_INVALID" });
   });
+
+  // Codex review: a malformed-but-2xx response must fail loudly rather than coercing into a
+  // plausible-looking string a caller would then navigate to.
+  it('should throw (not coerce to the string "undefined") when a 2xx response is missing redirect_uri', async () => {
+    const fetchImpl = (async () => Response.json({})) as typeof fetch;
+    await expect(
+      submitConsentDecision(
+        "http://gateway.test",
+        "token",
+        "req-1",
+        "allow",
+        fetchImpl,
+      ),
+    ).rejects.toThrow(/redirect_uri/);
+  });
+
+  it("should throw when a 2xx GET response is missing a required field", async () => {
+    const fetchImpl = (async () =>
+      Response.json({
+        client_id: "c1",
+        client_name: "Claude Code",
+      })) as typeof fetch;
+    await expect(
+      fetchConsentDetails("http://gateway.test", "token", "req-1", fetchImpl),
+    ).rejects.toThrow(/scope/);
+  });
 });

@@ -33,11 +33,13 @@ export async function resolveDelegation(
 }
 
 /**
- * Finds the live grant for a (principal, client) pair, if one exists -
- * `agent_grant_live_principal_client_uniq` (schema.ts) guarantees there is at most one. Used
- * by the consent flow (Phase 9) to make re-consenting for an already-connected client
- * idempotent: re-approving must reuse the existing grant's id (and its budget/spend history)
- * rather than attempt a second `createGrant`, which the same unique index would reject anyway.
+ * Finds the `state = 'active'` grant for a (principal, client) pair, if one exists -
+ * `agent_grant_live_principal_client_uniq` (schema.ts) guarantees there is at most one. This
+ * is intentionally narrower than "usable": it does NOT check `expiresAt` or `scope`, unlike
+ * `assertGrantUsable` - a caller deciding whether to REUSE this row (rather than just
+ * detecting that one exists, e.g. to know it must be revoked before creating a replacement)
+ * must additionally check both itself (Codex review, Phase 9: the consent flow's own reuse
+ * decision does exactly this in oauth/consent.ts).
  */
 export async function resolveActiveDelegationForClient(
   db: AuthzDb,

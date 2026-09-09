@@ -328,6 +328,152 @@ describe("resolveConsent - allow (re-consent, existing grant)", () => {
     );
     expect(reusedGrant?.id).toBe(firstCodeRow?.grantId);
   });
+
+  it("should revoke and replace the existing grant when re-consent requests a DIFFERENT scope (Codex review)", async () => {
+    const principalId = "did:privy:consent-scope-change";
+    const backend = fakePrivyBackend();
+    const first = await seedPendingRequest({ scope: "assets:read" });
+    const firstResult = await resolveConsent(
+      db,
+      GRANT_ENV,
+      DELEGATION_ENV,
+      {
+        requestId: first.requestId,
+        principalId,
+        decision: "allow",
+        chainId: CHAIN_ID,
+      },
+      NOW,
+      backend.fetchImpl,
+    );
+    const firstCode = new URL(firstResult.redirectUri).searchParams.get("code");
+    const [firstCodeRow] = await db
+      .select()
+      .from(oauthAuthorizationCode)
+      .where(
+        eq(
+          oauthAuthorizationCode.codeHash,
+          hashOpaqueValue(firstCode as string),
+        ),
+      );
+
+    // Re-consent for the SAME client, but with a WIDER scope this time.
+    const second = await seedPendingRequest({
+      clientId: first.clientId,
+      scope: "assets:read access:buy",
+    });
+    const secondResult = await resolveConsent(
+      db,
+      GRANT_ENV,
+      DELEGATION_ENV,
+      {
+        requestId: second.requestId,
+        principalId,
+        decision: "allow",
+        chainId: CHAIN_ID,
+      },
+      NOW,
+      backend.fetchImpl,
+    );
+    const secondCode = new URL(secondResult.redirectUri).searchParams.get(
+      "code",
+    );
+    const [secondCodeRow] = await db
+      .select()
+      .from(oauthAuthorizationCode)
+      .where(
+        eq(
+          oauthAuthorizationCode.codeHash,
+          hashOpaqueValue(secondCode as string),
+        ),
+      );
+
+    // A NEW grant, not the old one - the old grant's scope ("assets:read") must never be
+    // silently widened, and the new code must not point at a grant that doesn't actually
+    // carry the scope it advertises.
+    expect(secondCodeRow?.grantId).not.toBe(firstCodeRow?.grantId);
+    const [oldGrantRow] = await db
+      .select()
+      .from(agentGrant)
+      .where(eq(agentGrant.id, firstCodeRow?.grantId as string));
+    expect(oldGrantRow?.state).toBe("revoked");
+    const [newGrantRow] = await db
+      .select()
+      .from(agentGrant)
+      .where(eq(agentGrant.id, secondCodeRow?.grantId as string));
+    expect(newGrantRow?.state).toBe("active");
+    expect(newGrantRow?.scope).toBe("assets:read access:buy");
+  });
+
+  it("should revoke and replace an existing grant that has quietly outlived its own expiresAt (Codex review)", async () => {
+    const principalId = "did:privy:consent-expired-reuse";
+    const backend = fakePrivyBackend();
+    const first = await seedPendingRequest();
+    const firstResult = await resolveConsent(
+      db,
+      GRANT_ENV,
+      DELEGATION_ENV,
+      {
+        requestId: first.requestId,
+        principalId,
+        decision: "allow",
+        chainId: CHAIN_ID,
+      },
+      NOW,
+      backend.fetchImpl,
+    );
+    const firstCode = new URL(firstResult.redirectUri).searchParams.get("code");
+    const [firstCodeRow] = await db
+      .select()
+      .from(oauthAuthorizationCode)
+      .where(
+        eq(
+          oauthAuthorizationCode.codeHash,
+          hashOpaqueValue(firstCode as string),
+        ),
+      );
+    // Simulate the grant's TTL having lapsed WITHOUT anything having flipped its `state` away
+    // from "active" (nothing in this codebase does that automatically - assertGrantUsable
+    // checks expiresAt live instead).
+    await db
+      .update(agentGrant)
+      .set({ expiresAt: new Date(NOW.getTime() - 1000) })
+      .where(eq(agentGrant.id, firstCodeRow?.grantId as string));
+
+    const second = await seedPendingRequest({ clientId: first.clientId });
+    const secondResult = await resolveConsent(
+      db,
+      GRANT_ENV,
+      DELEGATION_ENV,
+      {
+        requestId: second.requestId,
+        principalId,
+        decision: "allow",
+        chainId: CHAIN_ID,
+      },
+      NOW,
+      backend.fetchImpl,
+    );
+    const secondCode = new URL(secondResult.redirectUri).searchParams.get(
+      "code",
+    );
+    const [secondCodeRow] = await db
+      .select()
+      .from(oauthAuthorizationCode)
+      .where(
+        eq(
+          oauthAuthorizationCode.codeHash,
+          hashOpaqueValue(secondCode as string),
+        ),
+      );
+    expect(secondCodeRow?.grantId).not.toBe(firstCodeRow?.grantId);
+    const [newGrantRow] = await db
+      .select()
+      .from(agentGrant)
+      .where(eq(agentGrant.id, secondCodeRow?.grantId as string));
+    expect(newGrantRow?.state).toBe("active");
+    expect(newGrantRow?.expiresAt.getTime()).toBeGreaterThan(NOW.getTime());
+  });
 });
 
 describe("getConsentRequestDetails", () => {

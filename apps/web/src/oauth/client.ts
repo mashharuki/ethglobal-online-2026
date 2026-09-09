@@ -23,6 +23,23 @@ async function parseJson(response: Response): Promise<unknown> {
   }
 }
 
+/**
+ * A malformed-but-2xx response must fail loudly, not coerce into a plausible-looking string
+ * (Codex review: `String(undefined)` silently becomes the literal text "undefined", which
+ * `submitConsentDecision`'s caller would otherwise navigate `window.location.href` to instead
+ * of surfacing an error).
+ */
+function requireStringField(
+  record: Record<string, unknown>,
+  key: string,
+): string {
+  const value = record[key];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`gateway response is missing a valid "${key}" field`);
+  }
+  return value;
+}
+
 export async function fetchConsentDetails(
   gatewayUrl: string,
   accessToken: string,
@@ -37,13 +54,15 @@ export async function fetchConsentDetails(
   });
   const body = await parseJson(response);
   if (!response.ok) throw toGatewayError(response.status, body);
-  const record = body as Record<string, unknown>;
+  const record = (
+    typeof body === "object" && body !== null ? body : {}
+  ) as Record<string, unknown>;
   return {
-    clientId: String(record.client_id),
-    clientName: String(record.client_name),
-    scope: String(record.scope),
-    resource: String(record.resource),
-    expiresAt: String(record.expires_at),
+    clientId: requireStringField(record, "client_id"),
+    clientName: requireStringField(record, "client_name"),
+    scope: requireStringField(record, "scope"),
+    resource: requireStringField(record, "resource"),
+    expiresAt: requireStringField(record, "expires_at"),
   };
 }
 
@@ -65,7 +84,8 @@ export async function submitConsentDecision(
   });
   const body = await parseJson(response);
   if (!response.ok) throw toGatewayError(response.status, body);
-  return {
-    redirectUri: String((body as Record<string, unknown>).redirect_uri),
-  };
+  const record = (
+    typeof body === "object" && body !== null ? body : {}
+  ) as Record<string, unknown>;
+  return { redirectUri: requireStringField(record, "redirect_uri") };
 }
