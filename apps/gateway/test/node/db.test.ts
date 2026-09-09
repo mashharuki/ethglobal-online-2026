@@ -95,6 +95,71 @@ describe("migrations", () => {
       "WHERE (provisioning_state <> 'retired'::text)",
     );
   });
+
+  // The two tests above only assert the index DEFINITION - they would still pass for a
+  // non-unique index with the same name/predicate. Prove the constraint is actually
+  // enforced: a duplicate is rejected inside the predicate and allowed outside it.
+  it("should reject a second active agent_grant for the same (principal_id, client_id) but allow a non-active one", async () => {
+    const grant = (id: string, state: "active" | "revoked" | "expired") =>
+      db.insert(schema.agentGrant).values({
+        id,
+        principalId: "did:privy:grant-uniq-test",
+        walletId: "00000000-0000-4000-8000-000000000001",
+        clientId: "client-grant-uniq-test",
+        scope: "assets:read",
+        chainId: 296,
+        expiresAt: new Date(Date.now() + 3_600_000),
+        totalBudgetTinybar: 10_000_000n,
+        maxPerPurchaseTinybar: 1_000_000n,
+        state,
+        // agent_grant_revoked_consistency_check requires revokedAt whenever state='revoked'
+        revokedAt: state === "revoked" ? new Date() : undefined,
+      });
+    await grant("11111111-1111-4111-8111-111111111101", "active");
+    const dup = await failure(() =>
+      grant("11111111-1111-4111-8111-111111111102", "active"),
+    );
+    expect(isUniqueViolation(dup)).toBe(true);
+    // a revoked row for the same (principal, client) is outside the predicate: allowed
+    await grant("11111111-1111-4111-8111-111111111103", "revoked");
+  });
+
+  it("should reject a second non-retired agent_wallet_binding for the same (principal_id, purpose) but allow a retired one", async () => {
+    const wallet = (
+      id: string,
+      externalId: string,
+      provisioningState: "pending" | "retired",
+    ) =>
+      db.insert(schema.agentWalletBinding).values({
+        id,
+        principalId: "did:privy:wallet-uniq-test",
+        chainType: "ethereum",
+        chainId: 296,
+        delegationShape: "additional-signer",
+        externalId,
+        provisioningKey: `provisioning-key-${externalId}`,
+        provisioningState,
+      });
+    await wallet(
+      "22222222-2222-4222-8222-222222222201",
+      "wallet-uniq-test-1",
+      "pending",
+    );
+    const dup = await failure(() =>
+      wallet(
+        "22222222-2222-4222-8222-222222222202",
+        "wallet-uniq-test-2",
+        "pending",
+      ),
+    );
+    expect(isUniqueViolation(dup)).toBe(true);
+    // a retired row for the same (principal, purpose) is outside the predicate: allowed
+    await wallet(
+      "22222222-2222-4222-8222-222222222203",
+      "wallet-uniq-test-3",
+      "retired",
+    );
+  });
 });
 
 describe("row level security", () => {

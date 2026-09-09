@@ -629,8 +629,18 @@ export const agentSpendReservation = pgTable(
       "agent_spend_reservation_amount_check",
       sql`${t.amountTinybar} > 0 AND ${t.amountTinybar} < 1e30 AND ${t.amountTinybar} = trunc(${t.amountTinybar})`,
     ),
-    // a terminal state carries its timestamp and nothing else does: a double-commit or
-    // double-release becomes representable only as a constraint violation, not silently
+    // a terminal state carries its timestamp and nothing else does: a row that IS
+    // committed/released is always internally consistent. This does NOT by itself stop a
+    // row from being moved a second time (e.g. committed -> released, or released twice
+    // with settled_at cleared) - a single-row CHECK cannot express "this column may only
+    // transition away from 'reserved' once" across successive UPDATEs. That exactly-once
+    // guarantee is enforced at the application layer instead: every settlement/release
+    // statement is `UPDATE ... WHERE state = 'reserved'` (mcp/spend.ts, Phase 4) - a row
+    // that already left 'reserved' matches zero rows and the caller no-ops. This mirrors
+    // the no-trigger convention already used by every other table in this file (e.g.
+    // payment_binding's claim/lease fields have the same "CHECK for shape, CAS for
+    // exactly-once" split); a real one-way state-machine trigger was considered and
+    // rejected as disproportionate complexity for this codebase.
     check(
       "agent_spend_reservation_settled_consistency_check",
       sql`(${t.state} = 'committed') = (${t.settledAt} IS NOT NULL)`,
