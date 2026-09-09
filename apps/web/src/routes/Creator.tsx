@@ -224,6 +224,9 @@ export default function Creator() {
         <p className="creator-upload-intro">
           Your file is encrypted locally before anything leaves this device.
         </p>
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop is a visual
+            enhancement layer only - the actual keyboard/screen-reader-accessible control is
+            the <label htmlFor="creator-dataset">/<input type="file"> pair rendered inside it. */}
         <div
           className={`creator-upload${dragActive ? " is-dragging" : ""}${
             prepared !== undefined ? " is-ready" : ""
@@ -249,7 +252,7 @@ export default function Creator() {
           }}
         >
           <div className="creator-upload-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
               <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" />
               <path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
             </svg>
@@ -258,7 +261,7 @@ export default function Creator() {
             <strong>
               {dragActive
                 ? "Drop your dataset here"
-                : selectedFile?.name ?? "Choose a dataset to encrypt"}
+                : (selectedFile?.name ?? "Choose a dataset to encrypt")}
             </strong>
             <span>
               {selectedFile === undefined
@@ -294,7 +297,9 @@ export default function Creator() {
               ✓
             </span>
             <div>
-              <strong>{prepared.blob.length.toLocaleString()} bytes encrypted</strong>
+              <strong>
+                {prepared.blob.length.toLocaleString()} bytes encrypted
+              </strong>
               <code>{prepared.contentHash}</code>
             </div>
           </div>

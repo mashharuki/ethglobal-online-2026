@@ -28,7 +28,8 @@ function evmAddressOf(priv: Uint8Array): string {
 // signs the given 32-byte digest raw and returns 0x + 64-byte r||s.
 const fakeSignRawHash = async (hashHex: string): Promise<string> => {
   const digest = Uint8Array.from(
-    (hashHex.startsWith("0x") ? hashHex.slice(2) : hashHex).match(/.{2}/g)!,
+    (hashHex.startsWith("0x") ? hashHex.slice(2) : hashHex).match(/.{2}/g) ??
+      [],
     (b) => Number.parseInt(b, 16),
   );
   return `0x${bytesToHex(secp256k1.sign(digest, PRIV).toCompactRawBytes())}`;

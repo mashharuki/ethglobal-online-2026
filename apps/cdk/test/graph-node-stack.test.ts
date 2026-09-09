@@ -181,6 +181,7 @@ describe("GraphNodeStack compute", () => {
     expect(script).toContain("docker compose up -d");
     expect(script).toContain("HEDERA_RPC_URL=%s");
     expect(script).toContain("https://testnet.hashio.io/api");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: asserts compose-native env-var substitution, not a baked-in value
     expect(script).toContain("testnet:${HEDERA_RPC_URL}");
   });
 
