@@ -15,7 +15,7 @@ import { generateOpaqueValue, hashOpaqueValue } from "./tokenHash";
  * (RFC 6749 §4.1.2.1), never as a direct HTTP error - `AuthorizeOutcome`'s two variants are
  * this split made explicit in the type.
  */
-export const AUTHORIZATION_REQUEST_TTL_SEC = 10 * 60;
+const AUTHORIZATION_REQUEST_TTL_SEC = 10 * 60;
 
 export type AuthorizeInput = {
   clientId: string;

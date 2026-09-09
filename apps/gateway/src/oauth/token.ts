@@ -31,18 +31,18 @@ import {
  * revoke-the-family call runs, the winner's tokens are guaranteed to already exist.
  */
 export const ACCESS_TOKEN_TTL_SEC = 60 * 60; // 1 hour
-export const REFRESH_TOKEN_TTL_SEC = 30 * 24 * 60 * 60; // 30 days, capped by the grant's own expiry
+const REFRESH_TOKEN_TTL_SEC = 30 * 24 * 60 * 60; // 30 days, capped by the grant's own expiry
 const GENERIC_INVALID_GRANT =
   "the provided authorization grant is invalid, expired, or revoked";
 
-export type TokenSuccess = {
+type TokenSuccess = {
   ok: true;
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
   scope: string;
 };
-export type TokenFailure = {
+type TokenFailure = {
   ok: false;
   status: 400 | 401;
   error: string;
