@@ -14,11 +14,10 @@
 
 | props キー | 既定ファイル | 元 | 内容 | シーン |
 |---|---|---|---|---|
-| `coupleClip` | `footage/market.png` | `docs/img/4.jpg` | Market：素材カード / 0.1 ħ / Buy access (x402, HBAR) / survives・invalidated on transfer | 5–9秒 |
-| `contrastDenyClip` | `footage/audit-deny.png` | `docs/img/3.jpg` | Gateway audit log：`owner_keygate` は `deny NOT_CURRENT_OWNER`、`consume`・`x402_settle` は `allow` | 9–15秒 |
-| `contrastOkClip` | `footage/viewer-licensee.png` | `docs/img/0.jpg` | Viewer licensee path：`use #1 of 5`、`decrypted in the browser`、license は `SURVIVE_TRANSFER` | 9–15秒 |
-| `revenueClip` | `footage/dashboard-revenue.png` | `docs/img/2.jpg` | Dashboard：Receipts (SURVIVE) ＋ Revenue allocations（`owner 0.07 ħ · creator 0.03 ħ`, block単位の実記録） | 15–20秒 |
-| `nextDemoClip` | （空） | — | 後続デモの1カット目。締めから butt-join。空なら「素材待ち」枠 | 28–30秒 |
+| `coupleClip` | `footage/market.png` | `docs/img/4.jpg` | Market：素材カード / 0.1 ħ / Buy access (x402, HBAR) / survives・invalidated on transfer | 10–15秒 |
+| `contrastDenyClip` | `footage/audit-deny.png` | `docs/img/3.jpg` | Gateway audit log：`owner_keygate` は `deny NOT_CURRENT_OWNER`、`consume`・`x402_settle` は `allow` | 15–21秒 |
+| `contrastOkClip` | `footage/viewer-licensee.png` | `docs/img/0.jpg` | Viewer licensee path：`use #1 of 5`、`decrypted in the browser`、license は `SURVIVE_TRANSFER` | 15–21秒 |
+| `revenueClip` | `footage/dashboard-revenue.png` | `docs/img/2.jpg` | Dashboard：Receipts (SURVIVE) ＋ Revenue allocations（`owner 0.07 ħ · creator 0.03 ħ`, block単位の実記録） | 21–27秒 |
 | `hasNarrationAudio` | `false` | — | `public/audio/narration.m4a` を置いて `true`。本人録音のみ（AI音声・速度変更は禁止） | 全編 |
 | `hasBgm` | `false` | — | `public/audio/bgm.m4a` を置いて `true`（`volume=0.16`） | 全編 |
 
@@ -43,17 +42,17 @@
 
 | フレーム | 時間 | シーン | メインテロップ |
 |---|---|---|---|
-| 0–150 | 0–5秒 | `S1Hook` | 管理者が変わる。／利用は、どうなる？ |
-| 150–270 | 5–9秒 | `S2Couple` | NFTの移転に、権限が連動。 |
-| 270–450 | 9–15秒 | `S3Contrast` | 旧管理者：無料アクセス終了／購入企業：利用を継続 |
-| 450–600 | 15–20秒 | `S4Revenue` | 次の利用料 → Creator ＋ 新管理者 |
-| 600–720 | 20–24秒 | `S5Handover` | 利用をつなぐ。／権限と収益を引き継ぐ。 |
-| 720–900 | 24–30秒 | `S6Close` | TrueCollective／NFTの、その先へ。 |
+| 0–300 | 0–10秒 | `S1Hook`（問題提起） | 管理会社が変わるたびに／権限と収益を手作業で整理 |
+| 300–450 | 10–15秒 | `S2Couple` | 所有権と利用権を、／ひとつのNFTで。 |
+| 450–630 | 15–21秒 | `S3Contrast` | 旧管理者：無料アクセス終了／購入企業：利用を継続 |
+| 630–810 | 21–27秒 | `S4Revenue` | 次の利用料 → Creator ＋ 新管理者 |
+| 810–900 | 27–30秒 | `S6Close` | TrueCollective／NFTの、その先へ。 |
 
-シーン間は 10フレームのクロスフェード。締め（S6）は 28秒（フレーム 840）から次の実演画面へワイプを開始し、暗転を挟まない。
+5段構成（v3）。問題提起を 7→10秒に拡張、締めは 6→3秒（プレゼンへの「つなぎ／butt-join ワイプ」は削除）。旧 `S5Handover` は不使用（ファイルは残置）。
+字幕は `src/narration.ts` の `SUBTITLE_CUES`（本人の5文を逐語で分割、最大2行）。シーン間は 10フレームのクロスフェード。締めは暗転せずブランドを保持したまま終わる。**5文目の字幕窓は約3秒しかない**ので、本人収録で語尾を詰めるか、`SUBTITLE_CUES` の l5a/l5b を調整する。
 
-**30秒に収まるかは本人収録で最終確認する。** `src/narration.ts` の `from` / `durationInFrames` は台本タイムラインに沿った字幕の初期値。
-実収録の発話の切れ目に合わせて字幕タイミングを調整し、**音声・実演映像の速度は変えない**。読み切れない場合は台本どおり「そのとき」「これからの」等を削る。
+**30秒に収まるかは本人収録で最終確認する。** `src/narration.ts` の `SUBTITLE_CUES`（`from` / `durationInFrames`）は台本タイムラインに沿った初期値。
+実収録の発話の切れ目に合わせて字幕タイミングを調整し、**音声・実演映像の速度は変えない**。読み切れない場合は語尾・副詞を削る。`FULL_SCRIPT` が本人の読む5文。
 
 ## コマンド
 

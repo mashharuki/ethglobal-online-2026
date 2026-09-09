@@ -7,7 +7,7 @@ import {
   useCurrentFrame,
 } from "remotion";
 import { FONT_FAMILY } from "../font";
-import { NARRATION } from "../narration";
+import { SUBTITLE_CUES } from "../narration";
 import { COLORS, SAFE, SUBTITLE_BAND, TYPE } from "../theme";
 
 /**
@@ -70,15 +70,15 @@ const Line: React.FC<{ text: string; durationInFrames: number }> = ({
 export const SubtitleTrack: React.FC = () => {
   return (
     <>
-      {NARRATION.map((line) => (
+      {SUBTITLE_CUES.map((cue) => (
         <Sequence
-          key={line.id}
-          name={`字幕 ${line.id}`}
-          from={line.from}
-          durationInFrames={line.durationInFrames}
+          key={cue.id}
+          name={`字幕 ${cue.id}`}
+          from={cue.from}
+          durationInFrames={cue.durationInFrames}
           layout="none"
         >
-          <Line text={line.text} durationInFrames={line.durationInFrames} />
+          <Line text={cue.text} durationInFrames={cue.durationInFrames} />
         </Sequence>
       ))}
     </>

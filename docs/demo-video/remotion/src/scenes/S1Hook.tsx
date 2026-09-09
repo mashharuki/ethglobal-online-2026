@@ -7,8 +7,9 @@ import { FONT_FAMILY } from "../font";
 import { COLORS, TYPE } from "../theme";
 
 /**
- * 0–5秒 フック。少し緊張感のある間。注目対象は「購入企業の利用権」。
- * 台本テロップ: 管理者が変わる。／利用は、どうなる？
+ * 0–7秒 問題提起。少し緊張感のある間。注目対象は「購入企業の利用権」。
+ * ナレーション: 企業に貸し出した、ブランドの商材。管理する会社が変わるたびに、
+ * "誰が使えて、料金は誰に入るのか"を毎回手作業で整理し直しています。
  */
 export const S1Hook: React.FC = () => {
   const frame = useCurrentFrame();
@@ -44,10 +45,10 @@ export const S1Hook: React.FC = () => {
 
         <MainTelop
           appearAt={8}
-          size={84}
+          size={78}
           lines={[
-            { text: "管理者が変わる。" },
-            { text: "利用は、どうなる？", accent: true },
+            { text: "管理会社が変わるたびに" },
+            { text: "権限と収益を手作業で整理", accent: true },
           ]}
         />
 

@@ -5,9 +5,10 @@ import { MainTelop } from "../components/MainTelop";
 import { SafeArea } from "../components/SafeArea";
 
 /**
- * 5–9秒。落ち着いて解決を提示。注目対象は「実アプリのマーケット（素材カード）」。
- * 台本テロップ: NFTの移転に、権限が連動。
- * 実素材: docs/img/4.jpg → public/footage/market.png（survives transfer / invalidated on transfer が見える）。
+ * 7–12秒。落ち着いて解決を提示。注目対象は「実アプリのマーケット（素材カード）」。
+ * ナレーション: TrueCollectiveでは NFTをリビルドしこの課題を簡単に終わらせます。
+ * （映像側は S2 のキャプションで「署名・確定待ちを含む」を残し、即時完了に見せない）
+ * 実素材: docs/img/4.jpg → public/footage/market.png（survives / invalidated on transfer が見える）。
  */
 export const S2Couple: React.FC<{ clip: string }> = ({ clip }) => {
   return (
@@ -24,8 +25,11 @@ export const S2Couple: React.FC<{ clip: string }> = ({ clip }) => {
       >
         <MainTelop
           appearAt={6}
-          size={84}
-          lines={[{ text: "NFTの移転に、権限が連動。", accent: true }]}
+          size={80}
+          lines={[
+            { text: "所有権と利用権を、" },
+            { text: "ひとつのNFTで。", accent: true },
+          ]}
         />
 
         <div

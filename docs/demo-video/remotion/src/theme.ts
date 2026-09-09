@@ -44,7 +44,7 @@ export const SUBTITLE_BAND = 150;
 export const TYPE = {
   telop: 108, // メインテロップ（96–120pxを起点）
   telopSmall: 84,
-  subtitle: 48, // 字幕（48–56pxを起点、最大2行）
+  subtitle: 44, // 字幕（最大2行・1行は短く分割）
   label: 30, // 区別ラベル（説明図 / 配分イメージ / 実アプリ収録）
   eyebrow: 30,
   body: 40,
