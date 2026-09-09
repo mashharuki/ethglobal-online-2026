@@ -52,11 +52,24 @@ beforeAll(async () => {
   if (pg === undefined) return;
   db = pg.db;
   probe = postgres(process.env.DATABASE_URL_PG as string, { max: 1 });
+  // Warms the probe's connection/auth handshake here, outside the timed test body - so its
+  // first real sample inside observeMaxConcurrentActive isn't delayed by connection setup,
+  // which would shrink the window it has to observe a fast-finishing burst (Codex review).
+  await probe`SELECT 1`;
 });
 
 afterAll(async () => {
-  await probe?.end({ timeout: 5 });
-  await pg?.close();
+  // Independent cleanup (Codex review, round 2): a failed probe shutdown must not skip
+  // pg?.close(), and vice versa - each is attempted regardless of the other's outcome.
+  const results = await Promise.allSettled([
+    probe?.end({ timeout: 5 }),
+    pg?.close(),
+  ]);
+  const errors = results
+    .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+    .map((r) => r.reason);
+  if (errors.length > 0)
+    throw new AggregateError(errors, "afterAll cleanup failed");
 });
 
 async function seedGrant(): Promise<{ grantId: string; walletId: string }> {
@@ -99,42 +112,63 @@ describe.skipIf(!ready)(
     it(`should let exactly ${CAPACITY} of ${CONCURRENCY} concurrent reservations succeed, never over-reserving the grant budget`, async () => {
       const { grantId, walletId } = await seedGrant();
 
-      const attempts = Array.from({ length: CONCURRENCY }, (_, i) =>
-        reserveAgentSpend(db, {
-          principalId: PRINCIPAL_ID,
-          grantId,
-          walletId,
-          // a distinct session per attempt: the per-session cap (mcp/session.ts) is a
-          // separate, narrower brake this test isn't exercising - only the grant budget
-          // should be the binding constraint here.
-          sessionKey:
-            `0x${i.toString(16).padStart(2, "0")}${"00".repeat(31)}` as Hex,
-          assetId: ASSET_ID,
-          amountTinybar: AMOUNT_TINYBAR,
-          dailyCapTinybar: AMOUNT_TINYBAR * BigInt(CONCURRENCY * 10),
-          sessionCapTinybar: AMOUNT_TINYBAR * BigInt(CONCURRENCY * 10),
-          now: NOW,
-        }),
-      );
-
       // Proves the 20 reservations actually raced INSIDE Postgres, not merely that 20 JS
       // promises were issued (Codex review): sample pg_stat_activity for this pool's own
-      // backends while the burst is in flight.
+      // backends while the burst is in flight. Started BEFORE any reservation call - if the
+      // watcher started after `attempts` was built below, the burst (which begins executing
+      // synchronously as each array element is constructed) could already be finishing before
+      // the first sample ever runs, especially on a fast connection (Codex review, round 2).
+      // The `.then` split gives this promise a rejection handler synchronously, right where
+      // it's created - `await watcherOutcome` happens much later (after the burst), and an
+      // unattended, still-pending rejection in that gap would otherwise be an unhandled
+      // rejection the moment the watcher's polling loop hit any error.
       const stop = { done: false };
-      const watcher = observeMaxConcurrentActive(
+      const watcherOutcome = observeMaxConcurrentActive(
         probe as postgres.Sql,
         (pg as PgTestDb).applicationName,
         stop,
+      ).then(
+        (max) => ({ ok: true as const, max }),
+        (error: unknown) => ({ ok: false as const, error }),
       );
 
-      const results = await Promise.allSettled(attempts);
-      stop.done = true;
-      const maxConcurrentBackends = await watcher;
+      let results: PromiseSettledResult<
+        Awaited<ReturnType<typeof reserveAgentSpend>>
+      >[];
+      try {
+        const attempts = Array.from({ length: CONCURRENCY }, (_, i) =>
+          reserveAgentSpend(db, {
+            principalId: PRINCIPAL_ID,
+            grantId,
+            walletId,
+            // a distinct session per attempt: the per-session cap (mcp/session.ts) is a
+            // separate, narrower brake this test isn't exercising - only the grant budget
+            // should be the binding constraint here.
+            sessionKey:
+              `0x${i.toString(16).padStart(2, "0")}${"00".repeat(31)}` as Hex,
+            assetId: ASSET_ID,
+            amountTinybar: AMOUNT_TINYBAR,
+            dailyCapTinybar: AMOUNT_TINYBAR * BigInt(CONCURRENCY * 10),
+            sessionCapTinybar: AMOUNT_TINYBAR * BigInt(CONCURRENCY * 10),
+            now: NOW,
+          }),
+        );
+        results = await Promise.allSettled(attempts);
+      } finally {
+        // Guaranteed even if the burst itself throws unexpectedly (it shouldn't - every call
+        // is wrapped by allSettled - but a bug in test setup must not leave the watcher's
+        // while loop polling forever and hanging the test on its 30s timeout instead of
+        // reporting the real failure).
+        stop.done = true;
+      }
+      const watched = await watcherOutcome;
+      if (!watched.ok) throw watched.error;
       // >=2, not >=CONCURRENCY: sampling every 2ms cannot guarantee catching the single widest
       // instant of overlap, but observing even 2 simultaneously-active backends running this
-      // pool's own queries is direct evidence of genuine concurrent transactions, which is the
-      // one thing this whole suite exists to exercise that PGlite structurally cannot.
-      expect(maxConcurrentBackends).toBeGreaterThanOrEqual(2);
+      // pool's own reservation UPDATE is direct evidence of genuine concurrent transactions,
+      // which is the one thing this whole suite exists to exercise that PGlite structurally
+      // cannot.
+      expect(watched.max).toBeGreaterThanOrEqual(2);
 
       const succeeded = results.filter((r) => r.status === "fulfilled");
       const failed = results.filter(

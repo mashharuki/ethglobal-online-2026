@@ -41,6 +41,25 @@ async function dropSchema(url: string, schemaName: string): Promise<void> {
 }
 
 /**
+ * Runs every step regardless of whether an earlier one failed, then throws if any did
+ * (Codex review, round 2: `close()`/`connectPgTestDb`'s failure path used to run cleanup steps
+ * sequentially with a bare `await`, so the first one to reject skipped every step after it -
+ * e.g. a pool that fails to close would leave the schema undropped even though dropping it has
+ * nothing to do with the pool). Each step here is independent and always attempted.
+ */
+async function runAllSettling<T>(
+  steps: ReadonlyArray<() => Promise<T>>,
+): Promise<void> {
+  const results = await Promise.allSettled(steps.map((step) => step()));
+  const errors = results
+    .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+    .map((r) => r.reason);
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "pg test cleanup step(s) failed");
+  }
+}
+
+/**
  * Connects to a real Postgres (`DATABASE_URL_PG`) and runs migrations into a fresh, isolated
  * schema, so concurrent test files/runs against the same server never collide with each
  * other's tables or migration-tracking rows.
@@ -52,10 +71,9 @@ async function dropSchema(url: string, schemaName: string): Promise<void> {
  * throws, REQUIRE_PG or not - only a genuinely unset `DATABASE_URL_PG` is a "not configured,
  * skip" signal; a configured-but-broken connection is a real failure either way.
  *
- * Codex review: a failure partway through setup (schema created but migration fails, or the
- * pool fails to open) used to leak both the schema and any open connections, since the
- * function threw before returning anything for a caller to clean up. Every failure path below
- * now tears down whatever it already created before rethrowing.
+ * Codex review (round 2): tracks `schemaCreated` explicitly, independent of whether the admin
+ * connection's own `.end()` succeeds, so a schema that was actually created is always a
+ * candidate for cleanup - not just when the code path that created it also closed cleanly.
  */
 export async function connectPgTestDb(): Promise<PgTestDb | undefined> {
   const url = process.env.DATABASE_URL_PG ?? "";
@@ -68,16 +86,33 @@ export async function connectPgTestDb(): Promise<PgTestDb | undefined> {
 
   // "pg_" is a reserved schema-name prefix in Postgres (CREATE SCHEMA rejects it outright).
   const schemaName = `test_pg_${randomUUID().replaceAll("-", "_")}`;
-  const admin = postgres(url, { max: 1 });
-  try {
-    await admin.unsafe(`CREATE SCHEMA "${schemaName}"`);
-  } finally {
-    await admin.end({ timeout: 5 });
-  }
-
   const applicationName = `gateway-pg-test-${schemaName}`;
+  let schemaCreated = false;
   let sql: postgres.Sql | undefined;
+
+  const teardown = (): Promise<void> =>
+    runAllSettling([
+      async () => {
+        if (sql !== undefined) await sql.end({ timeout: 5 });
+      },
+      async () => {
+        if (schemaCreated) await dropSchema(url, schemaName);
+      },
+    ]);
+
   try {
+    const admin = postgres(url, { max: 1 });
+    try {
+      await admin.unsafe(`CREATE SCHEMA "${schemaName}"`);
+      schemaCreated = true;
+    } finally {
+      // Swallowed deliberately: this is a throwaway helper connection, and `schemaCreated`
+      // (set above, before this runs) is what teardown actually keys off - a failure here
+      // closing it must never mask the real error from the try block, nor skip the schema
+      // drop that `schemaCreated` already correctly tracks as needed.
+      await admin.end({ timeout: 5 }).catch(() => {});
+    }
+
     sql = postgres(url, {
       max: 20, // >= the highest concurrency any test here fires, so no test queues on the pool itself
       connection: {
@@ -92,34 +127,33 @@ export async function connectPgTestDb(): Promise<PgTestDb | undefined> {
       db: db as unknown as Db,
       sql,
       applicationName,
-      close: async () => {
-        await sql?.end({ timeout: 5 });
-        await dropSchema(url, schemaName);
-      },
+      close: teardown,
     };
   } catch (error) {
-    await sql?.end({ timeout: 5 }).catch(() => {});
-    await dropSchema(url, schemaName).catch(() => {});
+    await teardown().catch(() => {});
     throw error;
   }
 }
 
 /**
  * Polls `pg_stat_activity` while `stop.done` is false and returns the highest number of
- * distinct backends it ever observed simultaneously `active` under `applicationName` - i.e.
- * genuinely overlapping transactions FROM THIS TEST'S OWN CONNECTION POOL specifically, not
- * incidental activity from anything else that might be running against the same shared
- * Postgres server.
+ * distinct backends it ever observed simultaneously executing the reservation UPDATE, under
+ * `applicationName` - i.e. genuinely overlapping `reserveAgentSpend` transactions FROM THIS
+ * TEST'S OWN CONNECTION POOL specifically, not incidental activity from anything else that
+ * might be running against the same shared Postgres server.
  *
  * This exists because "fire N promises with Promise.allSettled" only proves N requests were
- * ISSUED concurrently at the JS level (Codex review) - it does not, by itself, prove the
- * database ever actually ran overlapping transactions. Without this, a test asserting only the
- * final outcome could pass identically whether the 20 calls truly raced inside Postgres or
- * were serialized by some incidental bottleneck (a starved pool, an accidental global lock) -
- * exactly the distinction this whole suite exists to exercise that PGlite cannot. Sampling at
- * a fixed interval cannot GUARANTEE catching every overlap, but observing >=2 is direct,
- * positive evidence of real concurrent execution, not an assumption about how promises are
- * scheduled.
+ * ISSUED concurrently at the JS level (Codex review, round 1) - it does not, by itself, prove
+ * the database ever actually ran overlapping transactions. Round 2 sharpened this further:
+ * `state = 'active'` alone can't distinguish "mid-transaction-control/connection-setup" from
+ * "actually executing the contended UPDATE", so this filters on `query` text matching the
+ * reservation UPDATE statement (mcp/spend.ts) as well - not proof of row-level lock waiting
+ * (that would need `pg_locks.granted = false`, which only fires once a lock is actually
+ * contended, not merely "issued concurrently"), but direct, positive evidence that more than
+ * one backend was mid-execution of the specific statement whose WHERE-clause correctness this
+ * suite exists to exercise, which PGlite's single connection cannot produce at all. Sampling
+ * at a fixed interval cannot GUARANTEE catching every overlap, but observing >=2 is real,
+ * measured evidence - not an assumption about how promises happen to get scheduled.
  */
 export async function observeMaxConcurrentActive(
   probe: postgres.Sql,
@@ -128,11 +162,24 @@ export async function observeMaxConcurrentActive(
 ): Promise<number> {
   let max = 0;
   while (!stop.done) {
+    // Any of the four tables reserveAgentSpend's transaction actually touches (mcp/spend.ts
+    // Steps 1-4) - narrow enough to exclude connection setup / bare BEGIN-COMMIT / SET
+    // search_path (Codex review, round 2: those would also show `state = 'active'` with no
+    // table-name filter at all), but wide enough to cover the full width of time each
+    // transaction spends doing real work, not just its single narrowest statement (which was
+    // too small a window to reliably sample - the earlier `agent_grant`-only filter observed
+    // fewer overlaps than this).
     const rows = await probe<{ n: number }[]>`
       SELECT count(DISTINCT pid)::int AS n
       FROM pg_stat_activity
       WHERE state = 'active'
         AND application_name = ${applicationName}
+        AND (
+          query ILIKE '%agent_spend_reservation%'
+          OR query ILIKE '%agent_principal_spend%'
+          OR query ILIKE '%agent_grant%'
+          OR query ILIKE '%mcp_session_spend%'
+        )
     `;
     const n = rows[0]?.n ?? 0;
     if (n > max) max = n;
