@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { agentGrant, agentWalletBinding } from "../../src/db/schema";
-import type { Db } from "../../src/db/types";
+import type { AuthzDb } from "../../src/db/types";
 import { AppError } from "../../src/errors";
 import {
   assertGrantUsable,
@@ -22,7 +22,10 @@ const GRANT_ENV = {
   MCP_GRANT_DEFAULT_TTL_SEC: "3600",
 };
 
-let db: Db;
+// createTestDb() returns plain Db (it doesn't know about the Hyperdrive-vs-authz binding
+// distinction - that's a Worker-request-time concept) - grant.ts's functions require AuthzDb,
+// so this test's single `db` variable is cast once here rather than at every call site.
+let db: AuthzDb;
 let client: PGlite;
 
 let nextWalletAddressSeed = 1;
@@ -50,7 +53,9 @@ async function seedWallet(principalId: string): Promise<string> {
 }
 
 beforeEach(async () => {
-  ({ db, client } = await createTestDb());
+  const handle = await createTestDb();
+  db = handle.db as unknown as AuthzDb;
+  client = handle.client;
 });
 
 afterEach(async () => {

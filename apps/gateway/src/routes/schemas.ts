@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import type { Db } from "../db/types";
+import type { AuthzDb, Db } from "../db/types";
 import type { Env } from "../env";
 import type { Services } from "../services";
 
@@ -16,7 +16,7 @@ export type AppEnv = {
   // authzDb is the cache-disabled handle (db/client.ts createAuthzDb) - authorization-critical
   // reads (agent_grant, agent_wallet_binding, oauth_token, mcp_authenticated_session) must use
   // it instead of `db`, enforced by test/node/authzHandle.test.ts.
-  Variables: { db: Db; authzDb: Db; services: Services };
+  Variables: { db: Db; authzDb: AuthzDb; services: Services };
 };
 
 export const hex32 = z
