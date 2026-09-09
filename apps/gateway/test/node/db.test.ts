@@ -53,20 +53,112 @@ afterAll(async () => {
 });
 
 describe("migrations", () => {
-  it("should create the eight gateway tables from data-model.md 2.3", async () => {
+  it("should create the eight gateway tables from data-model.md 2.3 plus the nine MCP OAuth remediation tables", async () => {
     const rows = await client.query<{ table_name: string }>(
       "select table_name from information_schema.tables where table_schema = 'public' and table_name not like '__drizzle%' order by table_name",
     );
     expect(rows.rows.map((r) => r.table_name)).toEqual([
+      "agent_grant",
+      "agent_principal_spend",
+      "agent_spend_reservation",
+      "agent_wallet_binding",
       "audit_log",
       "auth_nonce",
+      "mcp_authenticated_session",
       "mcp_session_binding",
       "mcp_session_spend",
+      "oauth_authorization_code",
+      "oauth_authorization_request",
+      "oauth_client",
+      "oauth_token",
       "payment_binding",
       "receipt_consumption",
       "subgraph_cache",
       "wallet_blinded_shares",
     ]);
+  });
+
+  it("should define agent_grant_live_principal_client_unique as a partial unique index (WHERE state = 'active')", async () => {
+    const rows = await client.query<{ indexdef: string }>(
+      "select indexdef from pg_indexes where schemaname = 'public' and indexname = 'agent_grant_live_principal_client_unique'",
+    );
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0]?.indexdef).toContain("WHERE (state = 'active'::text)");
+  });
+
+  it("should define agent_wallet_binding_principal_live_unique as a partial unique index (WHERE provisioning_state <> 'retired')", async () => {
+    const rows = await client.query<{ indexdef: string }>(
+      "select indexdef from pg_indexes where schemaname = 'public' and indexname = 'agent_wallet_binding_principal_live_unique'",
+    );
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0]?.indexdef).toContain(
+      "WHERE (provisioning_state <> 'retired'::text)",
+    );
+  });
+
+  // The two tests above only assert the index DEFINITION - they would still pass for a
+  // non-unique index with the same name/predicate. Prove the constraint is actually
+  // enforced: a duplicate is rejected inside the predicate and allowed outside it.
+  it("should reject a second active agent_grant for the same (principal_id, client_id) but allow a non-active one", async () => {
+    const grant = (id: string, state: "active" | "revoked" | "expired") =>
+      db.insert(schema.agentGrant).values({
+        id,
+        principalId: "did:privy:grant-uniq-test",
+        walletId: "00000000-0000-4000-8000-000000000001",
+        clientId: "client-grant-uniq-test",
+        scope: "assets:read",
+        chainId: 296,
+        expiresAt: new Date(Date.now() + 3_600_000),
+        totalBudgetTinybar: 10_000_000n,
+        maxPerPurchaseTinybar: 1_000_000n,
+        state,
+        // agent_grant_revoked_consistency_check requires revokedAt whenever state='revoked'
+        revokedAt: state === "revoked" ? new Date() : undefined,
+      });
+    await grant("11111111-1111-4111-8111-111111111101", "active");
+    const dup = await failure(() =>
+      grant("11111111-1111-4111-8111-111111111102", "active"),
+    );
+    expect(isUniqueViolation(dup)).toBe(true);
+    // a revoked row for the same (principal, client) is outside the predicate: allowed
+    await grant("11111111-1111-4111-8111-111111111103", "revoked");
+  });
+
+  it("should reject a second non-retired agent_wallet_binding for the same (principal_id, purpose) but allow a retired one", async () => {
+    const wallet = (
+      id: string,
+      externalId: string,
+      provisioningState: "pending" | "retired",
+    ) =>
+      db.insert(schema.agentWalletBinding).values({
+        id,
+        principalId: "did:privy:wallet-uniq-test",
+        chainType: "ethereum",
+        chainId: 296,
+        delegationShape: "additional-signer",
+        externalId,
+        provisioningKey: `provisioning-key-${externalId}`,
+        provisioningState,
+      });
+    await wallet(
+      "22222222-2222-4222-8222-222222222201",
+      "wallet-uniq-test-1",
+      "pending",
+    );
+    const dup = await failure(() =>
+      wallet(
+        "22222222-2222-4222-8222-222222222202",
+        "wallet-uniq-test-2",
+        "pending",
+      ),
+    );
+    expect(isUniqueViolation(dup)).toBe(true);
+    // a retired row for the same (principal, purpose) is outside the predicate: allowed
+    await wallet(
+      "22222222-2222-4222-8222-222222222203",
+      "wallet-uniq-test-3",
+      "retired",
+    );
   });
 });
 
@@ -81,10 +173,19 @@ describe("row level security", () => {
   // owners and superusers always bypass RLS), so that regression would not show up in any
   // other test here.
   const TABLES = [
+    "agent_grant",
+    "agent_principal_spend",
+    "agent_spend_reservation",
+    "agent_wallet_binding",
     "audit_log",
     "auth_nonce",
+    "mcp_authenticated_session",
     "mcp_session_binding",
     "mcp_session_spend",
+    "oauth_authorization_code",
+    "oauth_authorization_request",
+    "oauth_client",
+    "oauth_token",
     "payment_binding",
     "receipt_consumption",
     "subgraph_cache",

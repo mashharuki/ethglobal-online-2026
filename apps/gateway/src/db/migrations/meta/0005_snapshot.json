@@ -1,0 +1,1953 @@
+{
+  "id": "a2e7b01f-95a8-4e4f-a2d5-8b0bbe23ea5b",
+  "prevId": "d115b57a-f514-443c-b5f8-674fbf74dd8b",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.agent_grant": {
+      "name": "agent_grant",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wallet_id": {
+          "name": "wallet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "client_id": {
+          "name": "client_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chain_id": {
+          "name": "chain_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_budget_tinybar": {
+          "name": "total_budget_tinybar",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_per_purchase_tinybar": {
+          "name": "max_per_purchase_tinybar",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserved_tinybar": {
+          "name": "reserved_tinybar",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
+        "spent_tinybar": {
+          "name": "spent_tinybar",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_reason": {
+          "name": "revoked_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "agent_grant_live_principal_client_unique": {
+          "name": "agent_grant_live_principal_client_unique",
+          "columns": [
+            {
+              "expression": "principal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "client_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"agent_grant\".\"state\" = 'active'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_grant_principal_state_idx": {
+          "name": "agent_grant_principal_state_idx",
+          "columns": [
+            {
+              "expression": "principal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_grant_wallet_idx": {
+          "name": "agent_grant_wallet_idx",
+          "columns": [
+            {
+              "expression": "wallet_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {
+        "agent_grant_state_check": {
+          "name": "agent_grant_state_check",
+          "value": "\"agent_grant\".\"state\" IN ('active', 'revoked', 'expired')"
+        },
+        "agent_grant_scope_check": {
+          "name": "agent_grant_scope_check",
+          "value": "\"agent_grant\".\"scope\" ~ '^[a-z]+:[a-z]+( [a-z]+:[a-z]+)*$'"
+        },
+        "agent_grant_total_budget_check": {
+          "name": "agent_grant_total_budget_check",
+          "value": "\"agent_grant\".\"total_budget_tinybar\" >= 0 AND \"agent_grant\".\"total_budget_tinybar\" < 1e30 AND \"agent_grant\".\"total_budget_tinybar\" = trunc(\"agent_grant\".\"total_budget_tinybar\")"
+        },
+        "agent_grant_max_per_purchase_check": {
+          "name": "agent_grant_max_per_purchase_check",
+          "value": "\"agent_grant\".\"max_per_purchase_tinybar\" > 0 AND \"agent_grant\".\"max_per_purchase_tinybar\" < 1e30 AND \"agent_grant\".\"max_per_purchase_tinybar\" = trunc(\"agent_grant\".\"max_per_purchase_tinybar\") AND \"agent_grant\".\"max_per_purchase_tinybar\" <= \"agent_grant\".\"total_budget_tinybar\""
+        },
+        "agent_grant_reserved_check": {
+          "name": "agent_grant_reserved_check",
+          "value": "\"agent_grant\".\"reserved_tinybar\" >= 0 AND \"agent_grant\".\"reserved_tinybar\" < 1e30 AND \"agent_grant\".\"reserved_tinybar\" = trunc(\"agent_grant\".\"reserved_tinybar\")"
+        },
+        "agent_grant_spent_check": {
+          "name": "agent_grant_spent_check",
+          "value": "\"agent_grant\".\"spent_tinybar\" >= 0 AND \"agent_grant\".\"spent_tinybar\" < 1e30 AND \"agent_grant\".\"spent_tinybar\" = trunc(\"agent_grant\".\"spent_tinybar\")"
+        },
+        "agent_grant_budget_envelope_check": {
+          "name": "agent_grant_budget_envelope_check",
+          "value": "\"agent_grant\".\"reserved_tinybar\" + \"agent_grant\".\"spent_tinybar\" <= \"agent_grant\".\"total_budget_tinybar\""
+        },
+        "agent_grant_revoked_consistency_check": {
+          "name": "agent_grant_revoked_consistency_check",
+          "value": "(\"agent_grant\".\"state\" <> 'revoked') OR \"agent_grant\".\"revoked_at\" IS NOT NULL"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.agent_principal_spend": {
+      "name": "agent_principal_spend",
+      "schema": "",
+      "columns": {
+        "principal_id": {
+          "name": "principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "utc_day": {
+          "name": "utc_day",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "daily_cap_tinybar": {
+          "name": "daily_cap_tinybar",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserved_tinybar": {
+          "name": "reserved_tinybar",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
+        "spent_tinybar": {
+          "name": "spent_tinybar",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "agent_principal_spend_principal_id_utc_day_pk": {
+          "name": "agent_principal_spend_principal_id_utc_day_pk",
+          "columns": ["principal_id", "utc_day"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {
+        "agent_principal_spend_cap_check": {
+          "name": "agent_principal_spend_cap_check",
+          "value": "\"agent_principal_spend\".\"daily_cap_tinybar\" >= 0 AND \"agent_principal_spend\".\"daily_cap_tinybar\" < 1e30 AND \"agent_principal_spend\".\"daily_cap_tinybar\" = trunc(\"agent_principal_spend\".\"daily_cap_tinybar\")"
+        },
+        "agent_principal_spend_reserved_check": {
+          "name": "agent_principal_spend_reserved_check",
+          "value": "\"agent_principal_spend\".\"reserved_tinybar\" >= 0 AND \"agent_principal_spend\".\"reserved_tinybar\" < 1e30 AND \"agent_principal_spend\".\"reserved_tinybar\" = trunc(\"agent_principal_spend\".\"reserved_tinybar\")"
+        },
+        "agent_principal_spend_spent_check": {
+          "name": "agent_principal_spend_spent_check",
+          "value": "\"agent_principal_spend\".\"spent_tinybar\" >= 0 AND \"agent_principal_spend\".\"spent_tinybar\" < 1e30 AND \"agent_principal_spend\".\"spent_tinybar\" = trunc(\"agent_principal_spend\".\"spent_tinybar\")"
+        },
+        "agent_principal_spend_envelope_check": {
+          "name": "agent_principal_spend_envelope_check",
+          "value": "\"agent_principal_spend\".\"reserved_tinybar\" + \"agent_principal_spend\".\"spent_tinybar\" <= \"agent_principal_spend\".\"daily_cap_tinybar\""
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.agent_spend_reservation": {
+      "name": "agent_spend_reservation",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grant_id": {
+          "name": "grant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wallet_id": {
+          "name": "wallet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "utc_day": {
+          "name": "utc_day",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mcp_session_key": {
+          "name": "mcp_session_key",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_tinybar": {
+          "name": "amount_tinybar",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'reserved'"
+        },
+        "payment_id": {
+          "name": "payment_id",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "receipt_hash": {
+          "name": "receipt_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_binding_status": {
+          "name": "last_binding_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_binding_stage": {
+          "name": "last_binding_stage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "settled_at": {
+          "name": "settled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "released_at": {
+          "name": "released_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "agent_spend_reservation_payment_id_unique": {
+          "name": "agent_spend_reservation_payment_id_unique",
+          "columns": [
+            {
+              "expression": "payment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_spend_reservation_grant_state_idx": {
+          "name": "agent_spend_reservation_grant_state_idx",
+          "columns": [
+            {
+              "expression": "grant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_spend_reservation_sweep_idx": {
+          "name": "agent_spend_reservation_sweep_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_spend_reservation_principal_day_idx": {
+          "name": "agent_spend_reservation_principal_day_idx",
+          "columns": [
+            {
+              "expression": "principal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "utc_day",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {
+        "agent_spend_reservation_state_check": {
+          "name": "agent_spend_reservation_state_check",
+          "value": "\"agent_spend_reservation\".\"state\" IN ('reserved', 'committed', 'released')"
+        },
+        "agent_spend_reservation_amount_check": {
+          "name": "agent_spend_reservation_amount_check",
+          "value": "\"agent_spend_reservation\".\"amount_tinybar\" > 0 AND \"agent_spend_reservation\".\"amount_tinybar\" < 1e30 AND \"agent_spend_reservation\".\"amount_tinybar\" = trunc(\"agent_spend_reservation\".\"amount_tinybar\")"
+        },
+        "agent_spend_reservation_settled_consistency_check": {
+          "name": "agent_spend_reservation_settled_consistency_check",
+          "value": "(\"agent_spend_reservation\".\"state\" = 'committed') = (\"agent_spend_reservation\".\"settled_at\" IS NOT NULL)"
+        },
+        "agent_spend_reservation_released_consistency_check": {
+          "name": "agent_spend_reservation_released_consistency_check",
+          "value": "(\"agent_spend_reservation\".\"state\" = 'released') = (\"agent_spend_reservation\".\"released_at\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.agent_wallet_binding": {
+      "name": "agent_wallet_binding",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'mcp-agent'"
+        },
+        "chain_type": {
+          "name": "chain_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chain_id": {
+          "name": "chain_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "delegation_shape": {
+          "name": "delegation_shape",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "external_id": {
+          "name": "external_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provisioning_key": {
+          "name": "provisioning_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wallet_epoch": {
+          "name": "wallet_epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "provisioning_state": {
+          "name": "provisioning_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "privy_wallet_id": {
+          "name": "privy_wallet_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address": {
+          "name": "address",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "public_key": {
+          "name": "public_key",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hedera_account_id": {
+          "name": "hedera_account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "signer_quorum_id": {
+          "name": "signer_quorum_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "signer_state": {
+          "name": "signer_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "owner_verified_at": {
+          "name": "owner_verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_error_code": {
+          "name": "last_error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "agent_wallet_binding_principal_live_unique": {
+          "name": "agent_wallet_binding_principal_live_unique",
+          "columns": [
+            {
+              "expression": "principal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "purpose",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"agent_wallet_binding\".\"provisioning_state\" <> 'retired'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_wallet_binding_privy_wallet_unique": {
+          "name": "agent_wallet_binding_privy_wallet_unique",
+          "columns": [
+            {
+              "expression": "privy_wallet_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_wallet_binding_address_unique": {
+          "name": "agent_wallet_binding_address_unique",
+          "columns": [
+            {
+              "expression": "address",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_wallet_binding_external_id_unique": {
+          "name": "agent_wallet_binding_external_id_unique",
+          "columns": [
+            {
+              "expression": "external_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_wallet_binding_principal_idx": {
+          "name": "agent_wallet_binding_principal_idx",
+          "columns": [
+            {
+              "expression": "principal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {
+        "agent_wallet_binding_purpose_check": {
+          "name": "agent_wallet_binding_purpose_check",
+          "value": "\"agent_wallet_binding\".\"purpose\" IN ('mcp-agent')"
+        },
+        "agent_wallet_binding_chain_type_check": {
+          "name": "agent_wallet_binding_chain_type_check",
+          "value": "\"agent_wallet_binding\".\"chain_type\" IN ('ethereum')"
+        },
+        "agent_wallet_binding_state_check": {
+          "name": "agent_wallet_binding_state_check",
+          "value": "\"agent_wallet_binding\".\"provisioning_state\" IN ('pending', 'active', 'failed', 'retired')"
+        },
+        "agent_wallet_binding_signer_state_check": {
+          "name": "agent_wallet_binding_signer_state_check",
+          "value": "\"agent_wallet_binding\".\"signer_state\" IN ('none', 'attach_pending', 'attached', 'removal_pending', 'removed')"
+        },
+        "agent_wallet_binding_shape_check": {
+          "name": "agent_wallet_binding_shape_check",
+          "value": "\"agent_wallet_binding\".\"delegation_shape\" IN ('additional-signer', 'owner-quorum')"
+        },
+        "agent_wallet_binding_active_complete_check": {
+          "name": "agent_wallet_binding_active_complete_check",
+          "value": "\"agent_wallet_binding\".\"provisioning_state\" <> 'active' OR (\"agent_wallet_binding\".\"privy_wallet_id\" IS NOT NULL AND \"agent_wallet_binding\".\"address\" IS NOT NULL AND \"agent_wallet_binding\".\"owner_verified_at\" IS NOT NULL AND \"agent_wallet_binding\".\"signer_quorum_id\" IS NOT NULL)"
+        },
+        "agent_wallet_binding_address_len_check": {
+          "name": "agent_wallet_binding_address_len_check",
+          "value": "\"agent_wallet_binding\".\"address\" IS NULL OR octet_length(\"agent_wallet_binding\".\"address\") = 20"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.audit_log": {
+      "name": "audit_log",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "ts": {
+          "name": "ts",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "actor": {
+          "name": "actor",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject": {
+          "name": "subject",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "onchain_ref": {
+          "name": "onchain_ref",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.auth_nonce": {
+      "name": "auth_nonce",
+      "schema": "",
+      "columns": {
+        "nonce": {
+          "name": "nonce",
+          "type": "bytea",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "wallet": {
+          "name": "wallet",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chain_id": {
+          "name": "chain_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "used_at": {
+          "name": "used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {
+        "auth_nonce_purpose_check": {
+          "name": "auth_nonce_purpose_check",
+          "value": "\"auth_nonce\".\"purpose\" IN ('owner-access', 'keygate-challenge')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.mcp_authenticated_session": {
+      "name": "mcp_authenticated_session",
+      "schema": "",
+      "columns": {
+        "session_key": {
+          "name": "session_key",
+          "type": "bytea",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grant_id": {
+          "name": "grant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wallet_id": {
+          "name": "wallet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "client_id": {
+          "name": "client_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "mcp_authenticated_session_principal_idx": {
+          "name": "mcp_authenticated_session_principal_idx",
+          "columns": [
+            {
+              "expression": "principal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "mcp_authenticated_session_grant_idx": {
+          "name": "mcp_authenticated_session_grant_idx",
+          "columns": [
+            {
+              "expression": "grant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.mcp_session_binding": {
+      "name": "mcp_session_binding",
+      "schema": "",
+      "columns": {
+        "receipt_hash": {
+          "name": "receipt_hash",
+          "type": "bytea",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "mcp_session_id": {
+          "name": "mcp_session_id",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "grant_id": {
+          "name": "grant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "wallet_id": {
+          "name": "wallet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "licensee": {
+          "name": "licensee",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "mcp_session_binding_principal_idx": {
+          "name": "mcp_session_binding_principal_idx",
+          "columns": [
+            {
+              "expression": "principal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.mcp_session_spend": {
+      "name": "mcp_session_spend",
+      "schema": "",
+      "columns": {
+        "session_key": {
+          "name": "session_key",
+          "type": "bytea",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "spent_tinybar": {
+          "name": "spent_tinybar",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {
+        "mcp_session_spend_amount_check": {
+          "name": "mcp_session_spend_amount_check",
+          "value": "\"mcp_session_spend\".\"spent_tinybar\" >= 0 AND \"mcp_session_spend\".\"spent_tinybar\" < 1e30 AND \"mcp_session_spend\".\"spent_tinybar\" = trunc(\"mcp_session_spend\".\"spent_tinybar\")"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.oauth_authorization_code": {
+      "name": "oauth_authorization_code",
+      "schema": "",
+      "columns": {
+        "code_hash": {
+          "name": "code_hash",
+          "type": "bytea",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "request_id_hash": {
+          "name": "request_id_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "client_id": {
+          "name": "client_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grant_id": {
+          "name": "grant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "redirect_uri": {
+          "name": "redirect_uri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code_challenge": {
+          "name": "code_challenge",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource": {
+          "name": "resource",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "used_at": {
+          "name": "used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "oauth_authorization_code_request_unique": {
+          "name": "oauth_authorization_code_request_unique",
+          "columns": [
+            {
+              "expression": "request_id_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "oauth_authorization_code_grant_idx": {
+          "name": "oauth_authorization_code_grant_idx",
+          "columns": [
+            {
+              "expression": "grant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.oauth_authorization_request": {
+      "name": "oauth_authorization_request",
+      "schema": "",
+      "columns": {
+        "request_id_hash": {
+          "name": "request_id_hash",
+          "type": "bytea",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "client_id": {
+          "name": "client_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "redirect_uri": {
+          "name": "redirect_uri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code_challenge": {
+          "name": "code_challenge",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code_challenge_method": {
+          "name": "code_challenge_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource": {
+          "name": "resource",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumed_at": {
+          "name": "consumed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "oauth_authorization_request_expires_idx": {
+          "name": "oauth_authorization_request_expires_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {
+        "oauth_authorization_request_challenge_method_check": {
+          "name": "oauth_authorization_request_challenge_method_check",
+          "value": "\"oauth_authorization_request\".\"code_challenge_method\" = 'S256'"
+        },
+        "oauth_authorization_request_status_check": {
+          "name": "oauth_authorization_request_status_check",
+          "value": "\"oauth_authorization_request\".\"status\" IN ('pending', 'consented', 'denied', 'exchanged')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.oauth_client": {
+      "name": "oauth_client",
+      "schema": "",
+      "columns": {
+        "client_id": {
+          "name": "client_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "client_name": {
+          "name": "client_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "redirect_uris": {
+          "name": "redirect_uris",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_endpoint_auth_method": {
+          "name": "token_endpoint_auth_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refresh_rotation_disabled": {
+          "name": "refresh_rotation_disabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "disabled_at": {
+          "name": "disabled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {
+        "oauth_client_source_check": {
+          "name": "oauth_client_source_check",
+          "value": "\"oauth_client\".\"source\" IN ('dcr', 'preregistered')"
+        },
+        "oauth_client_auth_method_check": {
+          "name": "oauth_client_auth_method_check",
+          "value": "\"oauth_client\".\"token_endpoint_auth_method\" = 'none'"
+        },
+        "oauth_client_redirect_uris_check": {
+          "name": "oauth_client_redirect_uris_check",
+          "value": "jsonb_array_length(\"oauth_client\".\"redirect_uris\") > 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.oauth_token": {
+      "name": "oauth_token",
+      "schema": "",
+      "columns": {
+        "token_hash": {
+          "name": "token_hash",
+          "type": "bytea",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grant_id": {
+          "name": "grant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "client_id": {
+          "name": "client_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource": {
+          "name": "resource",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "replaced_by": {
+          "name": "replaced_by",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "oauth_token_grant_idx": {
+          "name": "oauth_token_grant_idx",
+          "columns": [
+            {
+              "expression": "grant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "oauth_token_expires_idx": {
+          "name": "oauth_token_expires_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {
+        "oauth_token_kind_check": {
+          "name": "oauth_token_kind_check",
+          "value": "\"oauth_token\".\"kind\" IN ('access', 'refresh')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.payment_binding": {
+      "name": "payment_binding",
+      "schema": "",
+      "columns": {
+        "payment_id": {
+          "name": "payment_id",
+          "type": "bytea",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "purchase_request_hash": {
+          "name": "purchase_request_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "receipt_hash": {
+          "name": "receipt_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "amount": {
+          "name": "amount",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "stage": {
+          "name": "stage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'verify'"
+        },
+        "paid_at": {
+          "name": "paid_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claim_token": {
+          "name": "claim_token",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {
+        "payment_binding_status_check": {
+          "name": "payment_binding_status_check",
+          "value": "\"payment_binding\".\"status\" IN ('pending', 'settled', 'failed')"
+        },
+        "payment_binding_stage_check": {
+          "name": "payment_binding_stage_check",
+          "value": "\"payment_binding\".\"stage\" IN ('verify', 'settle', 'anchor', 'done')"
+        },
+        "payment_binding_amount_check": {
+          "name": "payment_binding_amount_check",
+          "value": "\"payment_binding\".\"amount\" >= 0 AND \"payment_binding\".\"amount\" < 1e30 AND \"payment_binding\".\"amount\" = trunc(\"payment_binding\".\"amount\")"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.receipt_consumption": {
+      "name": "receipt_consumption",
+      "schema": "",
+      "columns": {
+        "receipt_hash": {
+          "name": "receipt_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "use_index": {
+          "name": "use_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wallet": {
+          "name": "wallet",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "onchain_tx": {
+          "name": "onchain_tx",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "settled_at": {
+          "name": "settled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "receipt_consumption_receipt_hash_use_index_unique": {
+          "name": "receipt_consumption_receipt_hash_use_index_unique",
+          "nullsNotDistinct": false,
+          "columns": ["receipt_hash", "use_index"]
+        }
+      },
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {
+        "receipt_consumption_status_check": {
+          "name": "receipt_consumption_status_check",
+          "value": "\"receipt_consumption\".\"status\" IN ('locked', 'settled', 'failed')"
+        },
+        "receipt_consumption_use_index_check": {
+          "name": "receipt_consumption_use_index_check",
+          "value": "\"receipt_consumption\".\"use_index\" >= 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.subgraph_cache": {
+      "name": "subgraph_cache",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refreshed_at": {
+          "name": "refreshed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.wallet_blinded_shares": {
+      "name": "wallet_blinded_shares",
+      "schema": "",
+      "columns": {
+        "asset_id": {
+          "name": "asset_id",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wallet": {
+          "name": "wallet",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "path": {
+          "name": "path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blinded_u": {
+          "name": "blinded_u",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "access_epoch_at_grant": {
+          "name": "access_epoch_at_grant",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "receipt_hash": {
+          "name": "receipt_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "wallet_blinded_shares_asset_id_wallet_path_pk": {
+          "name": "wallet_blinded_shares_asset_id_wallet_path_pk",
+          "columns": ["asset_id", "wallet", "path"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {
+        "gateway_service_access": {
+          "name": "gateway_service_access",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["public"],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {
+        "wallet_blinded_shares_path_check": {
+          "name": "wallet_blinded_shares_path_check",
+          "value": "\"wallet_blinded_shares\".\"path\" IN ('owner', 'licensee')"
+        },
+        "wallet_blinded_shares_epoch_check": {
+          "name": "wallet_blinded_shares_epoch_check",
+          "value": "\"wallet_blinded_shares\".\"access_epoch_at_grant\" IS NULL OR (\"wallet_blinded_shares\".\"access_epoch_at_grant\" >= 0 AND \"wallet_blinded_shares\".\"access_epoch_at_grant\" < 1e30 AND \"wallet_blinded_shares\".\"access_epoch_at_grant\" = trunc(\"wallet_blinded_shares\".\"access_epoch_at_grant\"))"
+        }
+      },
+      "isRLSEnabled": true
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

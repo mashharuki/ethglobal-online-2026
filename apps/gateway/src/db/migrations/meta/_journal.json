@@ -36,6 +36,13 @@
       "when": 1788711451456,
       "tag": "0004_gateway_rls_service_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788928907539,
+      "tag": "0005_daffy_kingpin",
+      "breakpoints": true
     }
   ]
 }
