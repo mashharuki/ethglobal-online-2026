@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { keccak256, stringToHex } from "viem";
 import { agentWalletBinding } from "../db/schema";
-import type { Db } from "../db/types";
+import type { AuthzDb } from "../db/types";
 import {
   createDelegatedWallet,
   createPrivyDelegationClient,
@@ -29,6 +29,9 @@ import { McpToolError } from "./toolError";
  *   5. The transition to `active` is a conditional UPDATE (`WHERE provisioning_state =
  *      'pending'`) so two resumers racing to finish both succeed harmlessly - only one
  *      write actually lands, the other's 0-row update is a no-op.
+ *
+ * Takes `AuthzDb` (db/types.ts), not plain `Db` - `agent_wallet_binding` reads must never be
+ * served from Hyperdrive's query-result cache (Phase 5).
  */
 export type ProvisionedAgentWallet = {
   id: string;
@@ -55,7 +58,7 @@ function provisioningKeyFor(principalId: string, walletEpoch: number): string {
 }
 
 export async function provisionAgentWallet(
-  db: Db,
+  db: AuthzDb,
   delegationEnv: PrivyDelegationEnv,
   input: { principalId: string; chainId: number },
   /** test-only: stub Privy at the HTTP boundary instead of mocking this module. */

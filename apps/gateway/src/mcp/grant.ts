@@ -1,6 +1,6 @@
 import { and, count, eq, sql } from "drizzle-orm";
 import { agentGrant } from "../db/schema";
-import type { Db } from "../db/types";
+import type { AuthzDb } from "../db/types";
 import type { Env } from "../env";
 import { AppError } from "../errors";
 
@@ -13,11 +13,15 @@ import { AppError } from "../errors";
  * reserved/spent counters spend.ts owns) specifically so a long-running operation like
  * decrypt_content can re-check it after the slow part to detect a revoke that landed
  * mid-flight (the "two-checkpoint" pattern, not yet wired up - tracked as a later phase).
+ *
+ * Every function here takes `AuthzDb` (db/types.ts), not plain `Db` - `agent_grant` reads must
+ * never be served from Hyperdrive's query-result cache (Phase 5), so a caller must fetch
+ * `c.get("authzDb")`, not `c.get("db")`, to even typecheck a call into this module.
  */
 export type AgentGrant = typeof agentGrant.$inferSelect;
 
 export async function resolveDelegation(
-  db: Db,
+  db: AuthzDb,
   grantId: string,
 ): Promise<AgentGrant | undefined> {
   const [row] = await db
@@ -37,7 +41,7 @@ export async function resolveDelegation(
  * now-stale copy) - every call does its own DB read at the instant it runs.
  */
 export async function assertGrantUsable(
-  db: Db,
+  db: AuthzDb,
   grantId: string,
   now: Date,
 ): Promise<AgentGrant> {
@@ -58,7 +62,7 @@ export async function assertGrantUsable(
  * on behalf of a delegation should use, so "read fresh, check usable, then act" can never be
  * split across call sites and drift apart. */
 export async function withGrantHeld<T>(
-  db: Db,
+  db: AuthzDb,
   grantId: string,
   now: Date,
   fn: (grant: AgentGrant) => Promise<T>,
@@ -89,7 +93,7 @@ export type CreateGrantInput = {
  * existing budget/spend history.
  */
 export async function createGrant(
-  db: Db,
+  db: AuthzDb,
   env: Pick<
     Env,
     | "MCP_GRANT_DEFAULT_TOTAL_BUDGET_TINYBAR"
@@ -128,7 +132,7 @@ export async function createGrant(
 /** Idempotent: revoking an already-non-active grant is a no-op (returns false), never a second
  * revocation or an error - a duplicate revoke request (retry, double-click) must not fail. */
 export async function revokeGrant(
-  db: Db,
+  db: AuthzDb,
   grantId: string,
   reason: string,
   now: Date,
@@ -151,7 +155,7 @@ export async function revokeGrant(
  * action) and returns the ids actually revoked - a principal with zero active grants returns
  * an empty array, not an error. */
 export async function revokeAllDelegations(
-  db: Db,
+  db: AuthzDb,
   principalId: string,
   reason: string,
   now: Date,
@@ -178,7 +182,7 @@ export async function revokeAllDelegations(
 /** Count of currently-active grants for a principal - used by admin/consent UI to show "N
  * connected apps" without loading full rows. */
 export async function countActiveDelegations(
-  db: Db,
+  db: AuthzDb,
   principalId: string,
 ): Promise<number> {
   const [row] = await db

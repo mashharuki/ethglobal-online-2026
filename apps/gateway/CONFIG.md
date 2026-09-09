@@ -145,6 +145,17 @@ Bindings that are ids rather than secrets (`SHARE_G` KV namespace id, `HYPERDRIV
 filled into `wrangler.toml` after `wrangler kv namespace create SHARE_G` and
 `wrangler hyperdrive create truecollective --connection-string=<postgres url>`.
 
+`HYPERDRIVE_AUTHZ` is a second binding to the same Postgres, with caching disabled
+(specs/mcp-auth-remediation-plan.md §5) - filled in the same way, after
+`wrangler hyperdrive create truecollective-authz --caching-disabled
+--connection-string=<same postgres url as HYPERDRIVE>`. Authorization-critical reads
+(`agent_grant`, `agent_wallet_binding`, `oauth_token`, `mcp_authenticated_session`) must go
+through this handle (`db/client.ts`'s `createAuthzDb`, exposed as `c.get("authzDb")`) instead
+of the regular cached one - `HYPERDRIVE`'s query-result cache is safe everywhere else in this
+codebase, but a revoked grant or retired wallet binding read back from a stale cache entry
+would silently let a request through that should have been denied.
+`test/node/authzHandle.test.ts` greps `src/` to enforce this at the call-site level.
+
 ## Postgres schema (drizzle)
 
 - `src/db/schema.ts` is the schema (data-model.md 2.3); `src/db/migrations/` holds the generated

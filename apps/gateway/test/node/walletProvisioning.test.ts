@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { keccak256, stringToHex } from "viem";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { agentWalletBinding } from "../../src/db/schema";
-import type { Db } from "../../src/db/types";
+import type { AuthzDb } from "../../src/db/types";
 import { McpToolError } from "../../src/mcp/toolError";
 import { provisionAgentWallet } from "../../src/mcp/walletProvisioning";
 import { createTestDb } from "./helpers";
@@ -108,11 +108,15 @@ function fakePrivyBackend() {
   return { fetchImpl, createCalls: () => createCalls, seedWallet };
 }
 
-let db: Db;
+// createTestDb() returns plain Db - provisionAgentWallet requires AuthzDb, so this test's
+// single `db` variable is cast once here rather than at every call site.
+let db: AuthzDb;
 let client: PGlite;
 
 beforeEach(async () => {
-  ({ db, client } = await createTestDb());
+  const handle = await createTestDb();
+  db = handle.db as unknown as AuthzDb;
+  client = handle.client;
 });
 
 afterEach(async () => {
