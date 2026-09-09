@@ -32,15 +32,41 @@ export type Env = {
   CORS_ALLOWED_ORIGINS: string;
   /** MCP spend policy (R-9): hard cap per Mcp-Session-Id, tinybar */
   MCP_SESSION_SPEND_CAP_TINYBAR: string;
+  /**
+   * MCP OAuth remediation (specs/mcp-auth-remediation-plan.md). Per-principal daily spend
+   * cap, enforced across every grant a principal holds (agent_principal_spend), tinybar.
+   */
+  MCP_PRINCIPAL_DAILY_CAP_TINYBAR: string;
+  /** Default per-purchase / total budget / TTL a new agent_grant is created with, tinybar/seconds. */
+  MCP_GRANT_DEFAULT_MAX_PER_PURCHASE_TINYBAR: string;
+  MCP_GRANT_DEFAULT_TOTAL_BUDGET_TINYBAR: string;
+  MCP_GRANT_DEFAULT_TTL_SEC: string;
+  /** Balance pre-check margin above the quoted price (buyAccess), tinybar. */
+  MCP_BALANCE_HEADROOM_TINYBAR: string;
+  /** Privy `external_id` prefix for per-principal AI-delegated wallets. */
+  PRIVY_AI_WALLET_EXTERNAL_ID_PREFIX: string;
   // secrets (wrangler secret put / .dev.vars)
   HEDERA_OPERATOR_KEY?: string;
   RECEIPT_SIGNER_KEY?: string;
   KV_KEK?: string;
   PRIVY_APP_ID?: string;
   PRIVY_APP_SECRET?: string;
-  /** Privy server wallet used by the MCP tools (id + EVM address; the key stays in Privy) */
+  /**
+   * @deprecated single shared Privy server wallet (pre-remediation). Kept defined (not
+   * referenced by the MCP path once MCP_AUTH_REQUIRED=true) so existing wrangler secrets
+   * are not invalidated; the wallet itself is never deleted or drained.
+   */
   PRIVY_WALLET_ID?: string;
+  /** @deprecated see PRIVY_WALLET_ID */
   PRIVY_WALLET_ADDRESS?: string;
+  /**
+   * P-256 authorization key (DER-encoded PKCS8 private key, base64) registered as a Privy
+   * key quorum member (PRIVY_SIGNER_QUORUM_ID below) so the gateway can sign for a
+   * per-principal delegated wallet without holding a user JWT (specs/mcp-auth-remediation-plan.md).
+   */
+  PRIVY_AUTHORIZATION_PRIVATE_KEY?: string;
+  /** Privy key quorum id the gateway's authorization key belongs to (not secret - an id). */
+  PRIVY_SIGNER_QUORUM_ID?: string;
   /** Per-asset share_U (owner path), loaded by scripts/load-shares.ts. */
   [shareU: `SHARE_U_${string}`]: string | undefined;
   // bindings
