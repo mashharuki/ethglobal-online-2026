@@ -54,7 +54,7 @@ Rights Graph（subgraph）経由の発見であり、**この結果を `buy_acce
   "onchainTx": "0x…", "maxUses": 5, "expiresAt": 1780000300 }
 ```
 
-**エラー**: `UNDERPAYMENT` / `PAYMENT_ID_PAYLOAD_CONFLICT` / `RESOURCE_HASH_MISMATCH` / `POLICY_HASH_MISMATCH`（[error-codes.md](./error-codes.md) #3・#4・#9・#10）。資金付き EOA の残高不足はツール実行エラー `INSUFFICIENT_AGENT_BALANCE`（補助コード、デモ運用上の制約）として返す。
+**エラー**: `UNDERPAYMENT` / `PAYMENT_ID_PAYLOAD_CONFLICT` / `RESOURCE_HASH_MISMATCH` / `POLICY_HASH_MISMATCH`（[error-codes.md](./error-codes.md) #3・#4・#9・#10）。資金付き EOA の残高不足はツール実行エラー `INSUFFICIENT_AGENT_BALANCE`（補助コード、デモ運用上の制約）として返す。ミラーノードへの到達不能・応答不正など「実残高を読めなかった」場合は、残高ゼロと区別するため `AGENT_BALANCE_UNAVAILABLE`（補助コード、2026-09-09 追加）を返す。
 
 ---
 

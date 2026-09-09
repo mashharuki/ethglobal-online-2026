@@ -45,6 +45,16 @@
 | `COMMITTED_PARAMS_MISMATCH` | 409 | **2026-09-05 追加（R-2a、Codex #2 Critical）**：R-2 フォールバックの `finalize` で、渡された `receiptParams` が `payFor` 時に固定した `committedParamsHash` と不一致（誰でも呼べる `finalize` による収益転用の防止） |
 | `MCP_SESSION_MISMATCH` | 403 | **2026-09-05 追加（R-9a、Fable H-1 発見）**：MCP `decrypt_content` に渡された `receiptHash` が、呼び出し元と異なる `Mcp-Session-Id` で購入されたもの（`receiptHash` は subgraph 等で公開されるため、この確認が無いと第三者が他人の購入済みコンテンツを読める） |
 | `SETTLEMENT_IN_PROGRESS` | 409 | **2026-09-06 追加（R-10、Codex bounded exec レビュー指摘）**：同一 `payment_id` の別リクエストが `status='pending'` のまま処理中。新規 settle は起動せず、短時間ポーリング後もこの状態なら返す（同時 settle の二重実行防止） |
+| `AUTH_TOKEN_INVALID` | 401 | **2026-09-09 追加（MCP認証リメディエーション）**：`/mcp` への Bearer トークンが欠落/不正/期限切れ/失効/audience 不一致。原因を区別せず単一コードで返す（oracle化防止） |
+| `INSUFFICIENT_SCOPE` | 403 | **2026-09-09 追加**：有効なトークンだが、呼び出したツール/エンドポイントが要求する scope を持たない |
+| `DELEGATION_REVOKED` | 403 | **2026-09-09 追加**：会話継続中に `agent_grant` が取り消された（ツール呼び出し時点の再確認で検出） |
+| `DELEGATION_EXPIRED` | 403 | **2026-09-09 追加**：`agent_grant.expires_at` を超過 |
+| `DELEGATION_NOT_FOUND` | 404 | **2026-09-09 追加**：管理API (`/agent/grants/:id`) で存在しない grant を指定 |
+| `AI_WALLET_NOT_PROVISIONED` | 409 | **2026-09-09 追加**：AI 委任ウォレットの consent 未完了のまま `buy_access` 等を呼んだ |
+| `AI_WALLET_OWNER_MISMATCH` | 403 | **2026-09-09 追加**：Privy 側のウォレット owner が検証済み principal と一致しない |
+| `AI_WALLET_ALREADY_BOUND` | 409 | **2026-09-09 追加**：同一 principal に対する二重 provisioning 試行 |
+| `AI_SIGNER_NOT_GRANTED` | 409 | **2026-09-09 追加**：Gateway の signer が AI ウォレットにまだアタッチされていない |
+| `CONSENT_REQUEST_INVALID` | 400 | **2026-09-09 追加**：`/oauth/consent` への不明・期限切れ・使用済みの `request_id` |
 
 ## JSON エラー body（Gateway）
 
