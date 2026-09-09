@@ -102,16 +102,26 @@ export async function connectPgTestDb(): Promise<PgTestDb | undefined> {
 
   try {
     const admin = postgres(url, { max: 1 });
+    // Codex review, round 3: unconditionally swallowing admin.end()'s own failure hid a
+    // leaked connection whenever CREATE SCHEMA itself succeeded (nothing else would ever
+    // catch/report it). This now surfaces that failure UNLESS the try block already threw its
+    // own, more informative error - in which case the original error is what should surface,
+    // and admin.end() failing on top of that is expected collateral, not new information.
+    // (Not thrown directly inside `finally` - biome's `noUnsafeFinally` correctly flags that
+    // as overriding the try/catch's own control flow; deferred to right after instead, where
+    // it only runs at all if the try block succeeded.)
+    let adminEndError: unknown;
     try {
       await admin.unsafe(`CREATE SCHEMA "${schemaName}"`);
       schemaCreated = true;
     } finally {
-      // Swallowed deliberately: this is a throwaway helper connection, and `schemaCreated`
-      // (set above, before this runs) is what teardown actually keys off - a failure here
-      // closing it must never mask the real error from the try block, nor skip the schema
-      // drop that `schemaCreated` already correctly tracks as needed.
-      await admin.end({ timeout: 5 }).catch(() => {});
+      try {
+        await admin.end({ timeout: 5 });
+      } catch (error) {
+        adminEndError = error;
+      }
     }
+    if (adminEndError !== undefined) throw adminEndError;
 
     sql = postgres(url, {
       max: 20, // >= the highest concurrency any test here fires, so no test queues on the pool itself
@@ -130,30 +140,43 @@ export async function connectPgTestDb(): Promise<PgTestDb | undefined> {
       close: teardown,
     };
   } catch (error) {
-    await teardown().catch(() => {});
+    // Codex review, round 3: previously `.catch(() => {})` discarded any teardown failure and
+    // always threw only the original setup error - if teardown ALSO failed (e.g. the schema
+    // couldn't be dropped), that failure vanished entirely, leaving a leaked resource with no
+    // trace of why cleanup didn't happen. Both are now surfaced together when both occur.
+    try {
+      await teardown();
+    } catch (teardownError) {
+      throw new AggregateError(
+        [error, teardownError],
+        "pg test setup failed, and cleanup afterward also failed",
+      );
+    }
     throw error;
   }
 }
 
 /**
  * Polls `pg_stat_activity` while `stop.done` is false and returns the highest number of
- * distinct backends it ever observed simultaneously executing the reservation UPDATE, under
- * `applicationName` - i.e. genuinely overlapping `reserveAgentSpend` transactions FROM THIS
- * TEST'S OWN CONNECTION POOL specifically, not incidental activity from anything else that
- * might be running against the same shared Postgres server.
+ * distinct backends it ever observed simultaneously executing one of the reservation
+ * transaction's own statements, under `applicationName` - i.e. genuinely overlapping
+ * `reserveAgentSpend` transactions FROM THIS TEST'S OWN CONNECTION POOL specifically, not
+ * incidental activity from anything else that might be running against the same shared
+ * Postgres server.
  *
  * This exists because "fire N promises with Promise.allSettled" only proves N requests were
  * ISSUED concurrently at the JS level (Codex review, round 1) - it does not, by itself, prove
  * the database ever actually ran overlapping transactions. Round 2 sharpened this further:
  * `state = 'active'` alone can't distinguish "mid-transaction-control/connection-setup" from
- * "actually executing the contended UPDATE", so this filters on `query` text matching the
- * reservation UPDATE statement (mcp/spend.ts) as well - not proof of row-level lock waiting
- * (that would need `pg_locks.granted = false`, which only fires once a lock is actually
- * contended, not merely "issued concurrently"), but direct, positive evidence that more than
- * one backend was mid-execution of the specific statement whose WHERE-clause correctness this
- * suite exists to exercise, which PGlite's single connection cannot produce at all. Sampling
- * at a fixed interval cannot GUARANTEE catching every overlap, but observing >=2 is real,
- * measured evidence - not an assumption about how promises happen to get scheduled.
+ * "actually executing reserveAgentSpend's own work", so this filters on `query` text matching
+ * any of the four tables that transaction touches (mcp/spend.ts Steps 1-4) - not proof of
+ * row-level lock waiting on any one specific statement (that would need
+ * `pg_locks.granted = false`, which only fires once a lock is actually contended, not merely
+ * "issued concurrently"), but direct, positive evidence that more than one backend was
+ * mid-execution of this transaction's own work, which PGlite's single connection cannot
+ * produce at all. Sampling at a fixed interval cannot GUARANTEE catching every overlap, but
+ * observing >=2 is real, measured evidence - not an assumption about how promises happen to
+ * get scheduled.
  */
 export async function observeMaxConcurrentActive(
   probe: postgres.Sql,
