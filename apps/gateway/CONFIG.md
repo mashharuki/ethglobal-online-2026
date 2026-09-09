@@ -167,6 +167,14 @@ would silently let a request through that should have been denied.
   set +a`).
   The Worker never runs DDL.
 - `pnpm --filter gateway test:node` runs the schema tests against PGlite (no server needed).
+- `DATABASE_URL_PG=<postgres url> pnpm --filter gateway test:pg` (tasks.md Phase 11) runs
+  genuinely concurrent-transaction tests (`test/pg/*.pg.test.ts`) against a REAL Postgres -
+  PGlite is single-connection and cannot exercise true lock contention between separate
+  transactions, which is exactly what the spend ledger's conditional-UPDATE design
+  (`mcp/spend.ts`) exists to survive. Each test file gets a fresh, isolated schema (dropped on
+  completion) so concurrent runs against the same server never collide. Without
+  `DATABASE_URL_PG` this SKIPS with a printed notice; CI's dedicated `postgres-concurrency` job
+  sets `REQUIRE_PG=1`, which turns a missing/broken connection into a failure instead.
 - Every table has Row Level Security enabled (`.enableRLS()`, satisfying the hosting
   provider's "unrestricted table" advisory) plus one `gateway_service_access` policy
   granting `FOR ALL TO public USING (true) WITH CHECK (true)` - these tables are internal

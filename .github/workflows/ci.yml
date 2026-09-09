@@ -82,6 +82,42 @@ jobs:
       - name: no-mocks audit on the core path (SC-009; strict = a core path without sources is a failure)
         run: AUDIT_STRICT=1 bash scripts/audit-no-mocks.sh
 
+  postgres-concurrency:
+    name: real-Postgres concurrency tests (Phase 11)
+    needs: [quality]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # A real server, not a live external dependency behind a secret - this always runs, and
+    # REQUIRE_PG=1 (test/pg/helpers.ts) turns "couldn't connect" into a failure rather than a
+    # silent skip, since a service container being unavailable here is this job's own fault,
+    # never a legitimately-absent live credential.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gateway_pg_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: real-Postgres concurrency suite - REQUIRE_PG=1 so a skip is a failure here
+        run: pnpm --filter gateway test:pg
+        env:
+          REQUIRE_PG: "1"
+          DATABASE_URL_PG: postgres://postgres:postgres@localhost:5432/gateway_pg_test
+
   subgraph:
     name: subgraph build + matchstick
     runs-on: ubuntu-24.04 # matchstick ships a native binary per distro; do not float to -latest

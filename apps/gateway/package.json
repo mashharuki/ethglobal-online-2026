@@ -12,6 +12,7 @@
     "test": "vitest run && vitest run --config vitest.node.config.ts",
     "test:workerd": "vitest run",
     "test:node": "vitest run --config vitest.node.config.ts",
+    "test:pg": "vitest run --config vitest.pg.config.ts",
     "cf-typegen": "wrangler types",
     "sync-abis": "tsx scripts/sync-abis.ts",
     "db:generate": "drizzle-kit generate",
