@@ -53,20 +53,47 @@ afterAll(async () => {
 });
 
 describe("migrations", () => {
-  it("should create the eight gateway tables from data-model.md 2.3", async () => {
+  it("should create the eight gateway tables from data-model.md 2.3 plus the nine MCP OAuth remediation tables", async () => {
     const rows = await client.query<{ table_name: string }>(
       "select table_name from information_schema.tables where table_schema = 'public' and table_name not like '__drizzle%' order by table_name",
     );
     expect(rows.rows.map((r) => r.table_name)).toEqual([
+      "agent_grant",
+      "agent_principal_spend",
+      "agent_spend_reservation",
+      "agent_wallet_binding",
       "audit_log",
       "auth_nonce",
+      "mcp_authenticated_session",
       "mcp_session_binding",
       "mcp_session_spend",
+      "oauth_authorization_code",
+      "oauth_authorization_request",
+      "oauth_client",
+      "oauth_token",
       "payment_binding",
       "receipt_consumption",
       "subgraph_cache",
       "wallet_blinded_shares",
     ]);
+  });
+
+  it("should define agent_grant_live_principal_client_unique as a partial unique index (WHERE state = 'active')", async () => {
+    const rows = await client.query<{ indexdef: string }>(
+      "select indexdef from pg_indexes where schemaname = 'public' and indexname = 'agent_grant_live_principal_client_unique'",
+    );
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0]?.indexdef).toContain("WHERE (state = 'active'::text)");
+  });
+
+  it("should define agent_wallet_binding_principal_live_unique as a partial unique index (WHERE provisioning_state <> 'retired')", async () => {
+    const rows = await client.query<{ indexdef: string }>(
+      "select indexdef from pg_indexes where schemaname = 'public' and indexname = 'agent_wallet_binding_principal_live_unique'",
+    );
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0]?.indexdef).toContain(
+      "WHERE (provisioning_state <> 'retired'::text)",
+    );
   });
 });
 
@@ -81,10 +108,19 @@ describe("row level security", () => {
   // owners and superusers always bypass RLS), so that regression would not show up in any
   // other test here.
   const TABLES = [
+    "agent_grant",
+    "agent_principal_spend",
+    "agent_spend_reservation",
+    "agent_wallet_binding",
     "audit_log",
     "auth_nonce",
+    "mcp_authenticated_session",
     "mcp_session_binding",
     "mcp_session_spend",
+    "oauth_authorization_code",
+    "oauth_authorization_request",
+    "oauth_client",
+    "oauth_token",
     "payment_binding",
     "receipt_consumption",
     "subgraph_cache",
