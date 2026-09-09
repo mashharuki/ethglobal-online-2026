@@ -1,0 +1,11 @@
+/* TrueCollective 30秒オープニング。ダークテーマ下地（apps/web と同じ #101014）。 */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: #101014;
+  color: #f7f6fb;
+  -webkit-font-smoothing: antialiased;
+}
