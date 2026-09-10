@@ -127,9 +127,11 @@ plain Bearer token is not enough, the token's scope must cover the tool (`access
   caller's OWN delegated wallet through `ctx.auth.principal.walletId`
   (`mcp/context.ts`'s `resolveAgentWallet`, `mcp/walletProvisioning.ts`'s
   `resolveDelegatedAgentWallet`) and signs through Privy's authorization-key-based delegated
-  signing (no user JWT, no raw private key on the gateway) - this is what makes two different
-  authenticated principals show up as two different `licensee` addresses on their purchased
-  Rights Receipts, instead of all sharing the one demo wallet described below.
+  signing (no user JWT, no wallet-signing private key on the gateway - the gateway DOES hold the
+  P-256 `PRIVY_AUTHORIZATION_PRIVATE_KEY` used to authorize each signing request, and spend
+  limits stay gateway-enforced regardless, see "Persistent spend budget" below) - this is what
+  makes two different authenticated principals show up as two different `licensee` addresses on
+  their purchased Rights Receipts, instead of all sharing the one demo wallet described below.
 - **Persistent spend budget.** Every authenticated purchase reserves against a fixed order of
   budgets (`mcp/spend.ts`) - `agent_principal_spend`'s per-principal daily cap
   (`dailyCapTinybar`, keyed by `(principal_id, utc_day)`), the grant's own `maxPerPurchaseTinybar`
