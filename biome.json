@@ -30,7 +30,8 @@
       "!**/test-results",
       "!**/playwright-report",
       "!apps/subgraph/generated",
-      "!apps/subgraph"
+      "!apps/subgraph",
+      "!docs/demo-video"
     ]
   },
   "formatter": {

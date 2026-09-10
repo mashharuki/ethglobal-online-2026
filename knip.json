@@ -1,7 +1,11 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "tags": ["-lintignore"],
-  "ignore": ["packages/openapi/src/types.ts"],
+  "ignore": [
+    "packages/openapi/src/types.ts",
+    ".claude/skills/**",
+    "docs/demo-video/remotion/**"
+  ],
   "workspaces": {
     "apps/cdk": {
       "entry": ["bin/*.ts", "test/**/*.test.ts"],
