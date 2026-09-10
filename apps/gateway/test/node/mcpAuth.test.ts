@@ -108,6 +108,12 @@ const MIRROR_ACCOUNT_ENV: Partial<Env> = {
   MCP_BALANCE_HEADROOM_TINYBAR: "1000000",
 };
 
+/** Plaintext behind this suite's fixture asset - asserted verbatim on decrypt_content's
+ * response (Codex review: isError===false alone wouldn't catch decryption being silently
+ * skipped and a placeholder returned; a comma-free, non-JSON string round-trips as
+ * dataset.format "text" per decryptContent.ts's `describe()`). */
+const DECRYPT_FIXTURE_PLAINTEXT = "mcpAuth.test.ts fixture content";
+
 /** Same shape as mcp.test.ts's own helper: AES-GCM-encrypt with an asset's contentKey so
  * decrypt_content's manifest contentHash check (keccak256 of this blob) and the actual
  * decryption both succeed. */
@@ -562,10 +568,13 @@ describe("/mcp scope gating (Phase 7, withScope + MCP_ENABLED/MCP_AUTH_REQUIRED)
     db = handle.db;
     authzDb = handle.db as unknown as AuthzDb;
     client = handle.client;
+    // buildAsset's contentKey is a fixed literal independent of its `byte`/options arguments
+    // (helpers.ts), so this call and the one below that sets contentHash return the same key -
+    // asset.contentKey is never read directly because contentHash must be known up front.
     const contentKey = buildAsset("b7").contentKey;
     const contentBlob = await encryptWithKey(
       contentKey,
-      new TextEncoder().encode("mcpAuth.test.ts fixture content"),
+      new TextEncoder().encode(DECRYPT_FIXTURE_PLAINTEXT),
     );
     asset = buildAsset("b7", { contentHash: keccak256(contentBlob) });
     env = await makeEnv(new MemoryKv(), [asset], {
@@ -714,6 +723,11 @@ describe("/mcp scope gating (Phase 7, withScope + MCP_ENABLED/MCP_AUTH_REQUIRED)
       receiptHash: (result.body as { receiptHash: string }).receiptHash,
     });
     expect(decrypted.isError).toBe(false);
+    // Codex review: isError===false alone wouldn't catch decryption being silently skipped
+    // and a placeholder returned - assert the actual round-tripped plaintext.
+    expect(
+      (decrypted.body as { dataset: { content: string } }).dataset.content,
+    ).toBe(DECRYPT_FIXTURE_PLAINTEXT);
     await mcp.close();
   });
 
@@ -744,6 +758,9 @@ describe("/mcp scope gating (Phase 7, withScope + MCP_ENABLED/MCP_AUTH_REQUIRED)
       receiptHash: (resultA.body as { receiptHash: string }).receiptHash,
     });
     expect(decryptedA.isError).toBe(false);
+    expect(
+      (decryptedA.body as { dataset: { content: string } }).dataset.content,
+    ).toBe(DECRYPT_FIXTURE_PLAINTEXT);
     await mcpA.close();
 
     fake.payerAccount = userB.mirrorAccountId;
@@ -759,6 +776,9 @@ describe("/mcp scope gating (Phase 7, withScope + MCP_ENABLED/MCP_AUTH_REQUIRED)
       receiptHash: (resultB.body as { receiptHash: string }).receiptHash,
     });
     expect(decryptedB.isError).toBe(false);
+    expect(
+      (decryptedB.body as { dataset: { content: string } }).dataset.content,
+    ).toBe(DECRYPT_FIXTURE_PLAINTEXT);
     await mcpB.close();
 
     const licenseeA = (resultA.body.receipt as { licensee: string }).licensee;
