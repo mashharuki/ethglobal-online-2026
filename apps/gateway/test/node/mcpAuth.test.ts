@@ -4,7 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import type { Address, Hex } from "viem";
+import { type Address, type Hex, keccak256 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -66,6 +66,18 @@ const delegatedAccountsByPrivyWalletId = new Map<
   ReturnType<typeof privateKeyToAccount>
 >();
 
+/** address (lowercased) -> a distinct fake mirror-node account id (Codex review: a single
+ * shared "0.0.777" for every address would mask account-resolution confusion - two different
+ * principals' wallets resolving to the same mirror account by mistake would go unnoticed). */
+const mirrorAccountIdsByAddress = new Map<string, string>();
+let nextMirrorAccountSeed = 700;
+
+/** Every privyWalletId the fake Privy RPC endpoint actually signed for, in call order (Codex
+ * review: the licensee/address assertions alone don't prove the delegated RPC ran with the
+ * EXPECTED wallet id - a test must check this list directly, not just infer it from the
+ * settlement fake echoing back whatever address a test configured). Cleared in setup(). */
+const privySignedWalletIds: string[] = [];
+
 // A P-256 PKCS8 private key, generated fresh per test run (privyClient.test.ts's own pattern -
 // a static literal here would be a real, valid private key checked into git history).
 const PRIVY_AUTHORIZATION_PRIVATE_KEY = generateKeyPairSync("ec", {
@@ -96,6 +108,34 @@ const MIRROR_ACCOUNT_ENV: Partial<Env> = {
   MCP_BALANCE_HEADROOM_TINYBAR: "1000000",
 };
 
+/** Same shape as mcp.test.ts's own helper: AES-GCM-encrypt with an asset's contentKey so
+ * decrypt_content's manifest contentHash check (keccak256 of this blob) and the actual
+ * decryption both succeed. */
+async function encryptWithKey(
+  key: Uint8Array,
+  plaintext: Uint8Array,
+): Promise<Uint8Array> {
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    key.slice(),
+    { name: "AES-GCM" },
+    false,
+    ["encrypt"],
+  );
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      cryptoKey,
+      plaintext.slice(),
+    ),
+  );
+  const blob = new Uint8Array(12 + ciphertext.length);
+  blob.set(iv, 0);
+  blob.set(ciphertext, 12);
+  return blob;
+}
+
 type PrivyRpcBody = { method: string; params: Record<string, unknown> };
 type PrivyTypedDataParams = {
   domain: Record<string, unknown>;
@@ -108,17 +148,27 @@ type PrivyTypedDataParams = {
  * Stubbed at the HTTP boundary (privyClient.test.ts's own pattern), not by mocking
  * mcp/privyClient.ts - these route-level tests exercise the real @privy-io/node request
  * wiring through mcp/context.ts's `resolveAgentWallet`. Serves POST /v1/wallets/{id}/rpc
- * (Privy signing) for whichever privyWalletId is in delegatedAccountsByPrivyWalletId, and GET
+ * (Privy signing, recording every privyWalletId signed for in privySignedWalletIds) for
+ * whichever privyWalletId is in delegatedAccountsByPrivyWalletId, and GET
  * {FAKE_MIRROR_URL}/api/v1/accounts/{address} (resolveAgentAccountId's own dependency,
- * mcp/hedera.ts) with a fixed funded/keyed account for any address queried.
+ * mcp/hedera.ts) - 404 for any address not in mirrorAccountIdsByAddress, a distinct
+ * funded/keyed account for one that is.
  */
 function fakeDelegatedWalletFetch(): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
-    if (url.startsWith(`${FAKE_MIRROR_URL}/api/v1/accounts/`)) {
+    const mirrorPrefix = `${FAKE_MIRROR_URL}/api/v1/accounts/`;
+    if (url.startsWith(mirrorPrefix)) {
+      const queried = decodeURIComponent(
+        url.slice(mirrorPrefix.length),
+      ).toLowerCase();
+      const accountId = mirrorAccountIdsByAddress.get(queried);
+      if (accountId === undefined) {
+        return new Response(null, { status: 404 });
+      }
       return new Response(
         JSON.stringify({
-          account: "0.0.777",
+          account: accountId,
           key: { key: "aa".repeat(32) },
           balance: { balance: 100_000_000_000 },
         }),
@@ -129,9 +179,12 @@ function fakeDelegatedWalletFetch(): typeof fetch {
     if (match?.[1] === undefined) {
       throw new Error(`unexpected fetch in test: ${url}`);
     }
-    const account = delegatedAccountsByPrivyWalletId.get(match[1]);
+    const privyWalletId = match[1];
+    const account = delegatedAccountsByPrivyWalletId.get(privyWalletId);
     if (account === undefined) {
-      throw new Error(`no fake delegated account registered for ${match[1]}`);
+      throw new Error(
+        `no fake delegated account registered for ${privyWalletId}`,
+      );
     }
     const body = JSON.parse(String(init?.body ?? "{}")) as PrivyRpcBody;
     let signature: Hex;
@@ -148,6 +201,7 @@ function fakeDelegatedWalletFetch(): typeof fetch {
     } else {
       throw new Error(`unexpected Privy rpc method in test: ${body.method}`);
     }
+    privySignedWalletIds.push(privyWalletId);
     return new Response(
       JSON.stringify({
         method: body.method,
@@ -176,6 +230,8 @@ async function seedGrantWithAccessToken(
   clientId: string;
   scope: string;
   walletAddress: Address;
+  privyWalletId: string;
+  mirrorAccountId: string;
 }> {
   const scope = overrides.scope ?? "assets:read access:buy";
   const principalId = `did:privy:mcp-auth-test-${crypto.randomUUID()}`;
@@ -187,6 +243,8 @@ async function seedGrantWithAccessToken(
     `0x${addressSeed.toString(16).padStart(2, "0").repeat(32)}` as Hex,
   );
   delegatedAccountsByPrivyWalletId.set(privyWalletId, account);
+  const mirrorAccountId = `0.0.${nextMirrorAccountSeed++}`;
+  mirrorAccountIdsByAddress.set(account.address.toLowerCase(), mirrorAccountId);
   await db.insert(agentWalletBinding).values({
     id: walletId,
     principalId,
@@ -238,6 +296,8 @@ async function seedGrantWithAccessToken(
     clientId,
     scope,
     walletAddress: account.address,
+    privyWalletId,
+    mirrorAccountId,
   };
 }
 
@@ -492,6 +552,8 @@ describe("/mcp scope gating (Phase 7, withScope + MCP_ENABLED/MCP_AUTH_REQUIRED)
 
   async function setup(envOverrides: Partial<Env>): Promise<void> {
     delegatedAccountsByPrivyWalletId.clear();
+    mirrorAccountIdsByAddress.clear();
+    privySignedWalletIds.length = 0;
     // Always present: harmless for a test that never authenticates (resolveAgentWallet,
     // mcp/context.ts, only ever reaches createPrivyDelegationClient when
     // ctx.auth.kind === "authenticated"), and needed by every test in this block that DOES.
@@ -500,13 +562,19 @@ describe("/mcp scope gating (Phase 7, withScope + MCP_ENABLED/MCP_AUTH_REQUIRED)
     db = handle.db;
     authzDb = handle.db as unknown as AuthzDb;
     client = handle.client;
-    asset = buildAsset("b7");
+    const contentKey = buildAsset("b7").contentKey;
+    const contentBlob = await encryptWithKey(
+      contentKey,
+      new TextEncoder().encode("mcpAuth.test.ts fixture content"),
+    );
+    asset = buildAsset("b7", { contentHash: keccak256(contentBlob) });
     env = await makeEnv(new MemoryKv(), [asset], {
       ...PRIVY_DELEGATION_ENV,
       ...MIRROR_ACCOUNT_ENV,
       ...envOverrides,
     });
     fake = createFake();
+    fake.contentBlob = contentBlob;
     services = buildServices({ db, env, asset, fake });
     app = new Hono<AppEnv>();
     app.onError(handleError);
@@ -611,12 +679,11 @@ describe("/mcp scope gating (Phase 7, withScope + MCP_ENABLED/MCP_AUTH_REQUIRED)
 
   it("allows buy_access with a valid token carrying access:buy, and signs as the principal's OWN delegated wallet - not the shared one", async () => {
     await setup({ MCP_AUTH_REQUIRED: "true" });
-    const { token, walletAddress } = await seedGrantWithAccessToken(
-      authzDb,
-      {},
-    );
-    fake.payerAccount = "0.0.777"; // matches fakeDelegatedWalletFetch's mirror-account response
+    const { token, walletAddress, privyWalletId, mirrorAccountId } =
+      await seedGrantWithAccessToken(authzDb, {});
+    fake.payerAccount = mirrorAccountId;
     fake.payerEvm = walletAddress;
+    fake.receiptLicensee = walletAddress;
     const mcp = await connectWithAuth(token);
     const result = await call(mcp, "buy_access", { assetId: asset.assetId });
     expect(result.isError).toBe(false);
@@ -632,6 +699,21 @@ describe("/mcp scope gating (Phase 7, withScope + MCP_ENABLED/MCP_AUTH_REQUIRED)
     expect(
       (result.body.receipt as { licensee: string }).licensee.toLowerCase(),
     ).not.toBe(buyer.address.toLowerCase());
+    // Codex review: the licensee-address assertions above could in principle pass for the
+    // wrong reason if some other code path echoed the configured payerEvm rather than
+    // deriving the receipt from the wallet that actually signed - this checks the delegated
+    // Privy RPC itself ran under the EXPECTED wallet id directly, not just the outcome.
+    expect(privySignedWalletIds).toContain(privyWalletId);
+
+    // Suggestion (Codex review): also exercise decrypt_content in the same session, so a
+    // regression reverting IT to the shared wallet (unlike buy_access) would be caught here -
+    // the licenseeAuth signature recovery (keygate/release.ts) only succeeds if the same
+    // wallet that bought is the one that signs the decrypt challenge.
+    const decrypted = await call(mcp, "decrypt_content", {
+      assetId: asset.assetId,
+      receiptHash: (result.body as { receiptHash: string }).receiptHash,
+    });
+    expect(decrypted.isError).toBe(false);
     await mcp.close();
   });
 
@@ -649,21 +731,34 @@ describe("/mcp scope gating (Phase 7, withScope + MCP_ENABLED/MCP_AUTH_REQUIRED)
       userB.walletAddress.toLowerCase(),
     );
 
-    fake.payerAccount = "0.0.777";
+    fake.payerAccount = userA.mirrorAccountId;
     fake.payerEvm = userA.walletAddress;
+    fake.receiptLicensee = userA.walletAddress;
     const mcpA = await connectWithAuth(userA.token);
     const resultA = await call(mcpA, "buy_access", {
       assetId: asset.assetId,
     });
     expect(resultA.isError).toBe(false);
+    const decryptedA = await call(mcpA, "decrypt_content", {
+      assetId: asset.assetId,
+      receiptHash: (resultA.body as { receiptHash: string }).receiptHash,
+    });
+    expect(decryptedA.isError).toBe(false);
     await mcpA.close();
 
+    fake.payerAccount = userB.mirrorAccountId;
     fake.payerEvm = userB.walletAddress;
+    fake.receiptLicensee = userB.walletAddress;
     const mcpB = await connectWithAuth(userB.token);
     const resultB = await call(mcpB, "buy_access", {
       assetId: asset.assetId,
     });
     expect(resultB.isError).toBe(false);
+    const decryptedB = await call(mcpB, "decrypt_content", {
+      assetId: asset.assetId,
+      receiptHash: (resultB.body as { receiptHash: string }).receiptHash,
+    });
+    expect(decryptedB.isError).toBe(false);
     await mcpB.close();
 
     const licenseeA = (resultA.body.receipt as { licensee: string }).licensee;
@@ -671,6 +766,10 @@ describe("/mcp scope gating (Phase 7, withScope + MCP_ENABLED/MCP_AUTH_REQUIRED)
     expect(licenseeA.toLowerCase()).toBe(userA.walletAddress.toLowerCase());
     expect(licenseeB.toLowerCase()).toBe(userB.walletAddress.toLowerCase());
     expect(licenseeA.toLowerCase()).not.toBe(licenseeB.toLowerCase());
+    // Direct proof the delegated Privy RPC ran under each principal's OWN wallet id, not
+    // just that the outcome happened to match (Codex review).
+    expect(privySignedWalletIds).toContain(userA.privyWalletId);
+    expect(privySignedWalletIds).toContain(userB.privyWalletId);
   });
 
   it("still lets buy_access through with no token while MCP_AUTH_REQUIRED=false (pre-Phase-10 default)", async () => {

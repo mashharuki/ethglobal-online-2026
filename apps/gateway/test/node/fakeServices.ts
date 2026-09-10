@@ -84,6 +84,10 @@ export type Fake = {
   signCalls: number;
   /** when set, the next facilitator /verify signals entry, then awaits `wait` before answering */
   verifyGate?: { entered: () => void; wait: Promise<void> };
+  /** RightsRegistry.receiptStatus(hash).licensee - buyer.address by default (the shared
+   * wallet's own address), overridable per test so an authenticated purchase's delegated
+   * wallet can pass decrypt_content's licenseeAuth recovery check (keygate/release.ts). */
+  receiptLicensee: Address;
 };
 
 export function paymentHeader(
@@ -170,7 +174,7 @@ export function buildServices(w: World): Services {
       receiptStatus: async () => ({
         issued: true,
         tokenId: asset.tokenId,
-        licensee: buyer.address,
+        licensee: fake.receiptLicensee,
         maxUses: 5,
         usedCount: 0,
         expiresAt: BigInt(Math.floor(NOW.getTime() / 1000) + 300),
@@ -361,5 +365,6 @@ export function createFake(): Fake {
     agentAccountId: PAYER_ACCOUNT,
     spendCap: 100_000_000_000n,
     signCalls: 0,
+    receiptLicensee: buyer.address,
   };
 }

@@ -126,7 +126,13 @@ export function createServices(env: Env, db: Db): Services {
     },
     agent: {
       wallet: () => createPrivyAgentWallet(env),
-      accountId: () =>
+      // Codex review: this must stay `async` even though its body is one expression - a
+      // non-async arrow whose FIRST argument (createPrivyAgentWallet(env)) throws
+      // synchronously (AgentWalletUnavailableError, missing env vars) would throw out of
+      // accountId() itself instead of returning the rejected Promise its `Promise<string>`
+      // return type promises, breaking any caller that does `.catch(...)` on the call
+      // directly rather than wrapping it in try/await.
+      accountId: async () =>
         resolveAgentAccountId(
           env.HEDERA_MIRROR_URL,
           createPrivyAgentWallet(env).address,

@@ -49,7 +49,11 @@ export async function resolveAgentWallet(
   );
   return {
     wallet,
-    accountId: () =>
+    // async even though every argument here is already-resolved/non-throwing (Codex review
+    // on the sibling shared-wallet path in services.ts): a non-async arrow that ever gained a
+    // throwing argument expression would throw out of accountId() itself instead of
+    // returning the rejected Promise its `Promise<string>` return type promises.
+    accountId: async () =>
       resolveAgentAccountId(
         ctx.services.env.HEDERA_MIRROR_URL,
         wallet.address,
