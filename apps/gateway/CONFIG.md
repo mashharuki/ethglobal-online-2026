@@ -97,15 +97,75 @@ or in `mcp.json`:
 { "mcpServers": { "rights-runtime": { "type": "http", "url": "https://<gateway-host>/mcp" } } }
 ```
 
+### OAuth 2.1 authentication (specs/mcp-auth-remediation-plan.md, tasks.md Phase 6-10)
+
+`/mcp` never hard-401s by itself - `discover_assets` stays reachable with no `Authorization`
+header at all, matching the pre-remediation, unauthenticated shape below. `buy_access` and
+`decrypt_content` are the tools an authenticated caller unlocks per-principal control over: a
+plain Bearer token is not enough, the token's scope must cover the tool (`access:buy` /
+`assets:read`).
+
+- **Discovery.** `GET /.well-known/oauth-protected-resource` and
+  `GET /.well-known/oauth-authorization-server` (RFC 9728 / RFC 8414) point an MCP client at the
+  authorization endpoints below without hardcoding them.
+- **Client registration.** `POST /oauth/register` is Dynamic Client Registration (RFC 7591,
+  `oauth_client` table) - no pre-shared client secret; every registered client is public
+  (`token_endpoint_auth_method: "none"`) and must use PKCE.
+- **Authorization.** `GET /oauth/authorize` requires `code_challenge_method=S256` (plain PKCE is
+  rejected) and a `scope` that is a non-empty subset of the supported scopes. A first-time
+  principal is redirected to `GET/POST /oauth/consent` - the web app's `/ai-consent` screen -
+  where the human approves the delegation and (on approval) the gateway provisions that
+  principal's own Privy-delegated AI wallet (`agent_wallet_binding`) before minting the
+  authorization code, so a grant is never created ahead of consent.
+- **Token exchange.** `POST /oauth/token` supports the `authorization_code` and `refresh_token`
+  grants; access/refresh tokens are opaque and stored as `sha256(token)`, never in plaintext.
+  A client flagged `refresh_rotation_disabled` (used only for the pre-registered CI client,
+  provisioned by `scripts/bootstrap-ci-oauth-client.ts`) gets a non-rotating refresh token
+  instead of the usual rotate-on-refresh, so `apps/agent`'s CI harness can hold one long-lived
+  credential rather than racing a GitHub Secret rewrite on every run.
+- **Per-principal wallet.** An authenticated `buy_access`/`decrypt_content` call resolves the
+  caller's OWN delegated wallet through `ctx.auth.principal.walletId`
+  (`mcp/context.ts`'s `resolveAgentWallet`, `mcp/walletProvisioning.ts`'s
+  `resolveDelegatedAgentWallet`) and signs through Privy's authorization-key-based delegated
+  signing (no user JWT, no raw private key on the gateway) - this is what makes two different
+  authenticated principals show up as two different `licensee` addresses on their purchased
+  Rights Receipts, instead of all sharing the one demo wallet described below.
+- **Persistent spend budget.** Every authenticated purchase reserves against a fixed order of
+  budgets (`mcp/spend.ts`) - `agent_principal_spend`'s per-principal daily cap
+  (`dailyCapTinybar`, keyed by `(principal_id, utc_day)`), the grant's own `maxPerPurchaseTinybar`
+  / `totalBudgetTinybar` envelope (`agent_grant`), and finally the existing per-session
+  `MCP_SESSION_SPEND_CAP_TINYBAR` below - each enforced with a conditional UPDATE before any
+  signature is requested, with DB-level CHECK constraints as the last-resort backstop. Unlike the
+  per-session cap, this budget survives across MCP sessions and is revocable independently of
+  them.
+- **Revocation.** `POST /oauth/revoke`, and the owner-signed admin routes
+  `POST /agent/grants/:grantId/revoke` / `POST /agent/grants/revoke-all`
+  (`routes/agentGrants.ts`), immediately invalidate a delegation; `requireMcpAuth` re-checks
+  grant liveness on every single request (not just token expiry), so a revoke takes effect on
+  the very next tool call in an already-open MCP session.
+- **Cutover flags.** `MCP_ENABLED` is the hard kill switch for the whole `/mcp` endpoint.
+  `MCP_AUTH_REQUIRED` controls what happens to a request with NO `Authorization` header at all:
+  while `false` it falls through to the pre-remediation unauthenticated path (all of the "Session
+  identity" / "Spend policy" bullets below, shared demo wallet included) exactly as before this
+  work; once flipped to `true` a missing token is a hard `AUTH_TOKEN_INVALID` for any scoped
+  tool. A PRESENTED-but-invalid token (unknown/expired/revoked) always fails closed regardless of
+  either flag. As of this writing the flag stays `false` in the deployed environment pending the
+  live-deploy-gated cutover steps tracked on
+  [issue #64](https://github.com/mashharuki/ethglobal-online-2026/issues/64) (real secrets, running
+  `bootstrap-ci-oauth-client.ts` against staging, then flipping the flag) - see the README's
+  "AI agent through MCP" section for the currently-live demo shape.
+
 Trust model (R-9 / R-9a, disclosed in the README):
 
-- **Session identity.** The transport is stateless on Workers, so the gateway mints
-  `Mcp-Session-Id` on `initialize` and the client echoes it (MCP spec). The id is an
+- **Session identity (unauthenticated / MCP_AUTH_REQUIRED=false path).** The transport is
+  stateless on Workers, so the gateway mints `Mcp-Session-Id` on `initialize` and the client
+  echoes it (MCP spec). The id is an
   HMAC-signed, 24 h token (MAC root = `RECEIPT_SIGNER_KEY`, purpose `mcp-session`): a client
   cannot invent one - and with it a fresh spend budget - by skipping `initialize`; a missing,
   forged or expired id is `MCP_SESSION_MISMATCH`. `buy_access` binds each receiptHash to the
   session (`mcp_session_binding`); `decrypt_content` refuses a receipt bought from another
-  session even though the hash is public on chain.
+  session even though the hash is public on chain. This mechanism is unchanged by the OAuth work
+  above and keeps running for any caller that never authenticates.
 - **Spend policy.** `MCP_SESSION_SPEND_CAP_TINYBAR` is a hard cap per session enforced through
   the `mcp_session_spend` ledger: the price is RESERVED with one conditional UPDATE before any
   signature is requested (`SPEND_LIMIT_EXCEEDED` when it would exceed the cap; two concurrent

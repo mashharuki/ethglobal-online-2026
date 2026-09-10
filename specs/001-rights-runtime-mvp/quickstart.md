@@ -51,7 +51,12 @@ pnpm --filter gateway db:migrate           # Hyperdrive接続元のPostgresへ�
 # ⚠ 2026-09-05 追加（Codex #21 対応）：デプロイ済み Worker が無いと `wrangler secret put` は投入先が無く失敗する。
 #   このため secret put / load-shares は必ず「初回 deploy の後」に行う（順序厳守）：
 pnpm --filter gateway deploy              # 初回デプロイ（空実装でよい。Worker を Cloudflare 上に存在させる）
-pnpm --filter gateway exec wrangler secret put RECEIPT_SIGNER_KEY   # KV_KEK / HEDERA_OPERATOR_KEY / PRIVY_APP_ID / PRIVY_APP_SECRET / PRIVY_WALLET_ID / PRIVY_WALLET_ADDRESS も同様に1つずつ（apps/gateway/CONFIG.md の表参照。MCP 決済の生鍵は置かない＝Privy server wallet 管理。share_U は下記 load-shares で asset ごとに投入）
+pnpm --filter gateway exec wrangler secret put RECEIPT_SIGNER_KEY   # KV_KEK / HEDERA_OPERATOR_KEY / PRIVY_APP_ID / PRIVY_APP_SECRET / PRIVY_WALLET_ID / PRIVY_WALLET_ADDRESS（非推奨・MCP_AUTH_REQUIRED=false の共有ウォレット用フォールバック） も同様に1つずつ（apps/gateway/CONFIG.md の表参照。MCP 決済の生鍵は置かない＝Privy server wallet 管理。share_U は下記 load-shares で asset ごとに投入）。
+#   MCP_AUTH_REQUIRED=true への切替（specs/mcp-auth-remediation-plan.md）には、per-principal 委任ウォレットの署名に使う
+#   PRIVY_AUTHORIZATION_PRIVATE_KEY（Privy 認可鍵ペアの秘密鍵） / PRIVY_SIGNER_QUORUM_ID（key quorum member ID）/
+#   PRIVY_AI_WALLET_EXTERNAL_ID_PREFIX（委任ウォレットの external_id 接頭辞）も追加投入が必要（同じく apps/gateway/CONFIG.md 参照）。
+#   本 quickstart のデプロイ手順自体は MCP_AUTH_REQUIRED=false（共有ウォレット・pre-remediation の挙動）を前提にしており、
+#   切替そのものはライブ実行がまだ済んでいない（issue #64 参照）。
 pnpm --filter gateway load-shares         # apps/contracts/out/seed-artifacts.json（T048 の seed 出力）を読み、
                                            # share_G を KEK 暗号化して wrangler kv key put、share_U を wrangler secret put（asset ごと）
 pnpm --filter gateway deploy              # 投入したシークレット/KVを反映するため再デプロイ
@@ -218,7 +223,7 @@ Agent が自律で：`discover`（subgraph）→ `purchase`（x402、実ネイ�
 | 3. 既存作との差が明確 | KeyGate（再暗号化不要）＋ 二層 epoch の並置デモ（1:10） | 🟡 KeyGate と二層 epoch は gateway suite で検証済み。並置デモ（`splitScreen.e2e.ts`）はデプロイ先が無く skip |
 | 4. 実装が本物 | SC-009（モック不在監査 + CI 実 Testnet ジョブ） | 🟡 `AUDIT_STRICT=1 bash scripts/audit-no-mocks.sh` が 5 core path 全 pass（PR #25）。実 Testnet ジョブは CI 配置と `HEDERA_OPERATOR_KEY` 待ち＝**ライブ未** |
 | 5. 攻撃に耐える | SC-004（14 行 ＝ 拒否 13 + 正常系 1）、SC-005 | 🟡 contract 層の `AdversarialMatrix.t.sol` と gateway 層の adversarial / 20 並列 replay suite は green。実デプロイに対する `attacks.e2e.ts`（T116）は skip |
-| 6. Sponsor 統合が深い | **submit 3 枠：Hedera「AI & Agentic Payments」（x402 ゲートを Hedera で実ホスト・Blocky402）／ Privy「Best Financial Flow」（決済フローの中核）／ Privy「Best B2B Financial Product」（MCP 決済ウォレットの Privy server wallet + per-session spend cap）**。Rights Graph（自前 Graph Node）は Agent 発見・監査で load-bearing だが Graph の賞には submit しない（Hedera が Subgraph Studio 非対応、R-5） | 🟡 統合はコードとして存在しローカル検証済み。Hedera 実ホスト・HashScan verify・Privy 実ログインは**ライブ未**。B2B 枠の「Privy control」は要判断（`docs/submission/prize-requirements.md` §3） |
+| 6. Sponsor 統合が深い | **submit 3 枠：Hedera「AI & Agentic Payments」（x402 ゲートを Hedera で実ホスト・Blocky402）／ Privy「Best Financial Flow」（決済フローの中核）／ Privy「Best B2B Financial Product」（MCP 決済ウォレットの Privy server wallet + per-session spend cap ＋ per-principal 委任ウォレットの signer quorum / authorization key）**。Rights Graph（自前 Graph Node）は Agent 発見・監査で load-bearing だが Graph の賞には submit しない（Hedera が Subgraph Studio 非対応、R-5） | 🟡 統合はコードとして存在しローカル検証済み。Hedera 実ホスト・HashScan verify・Privy 実ログインは**ライブ未**。B2B 枠の「Privy control」の設計判断は解消済み（signer quorum + authorization key を採用・実装済み、`docs/submission/prize-requirements.md` §3）。残るのは authorization signature 欠如時に Privy が実際に拒否することのライブ実測のみ |
 | 7. 提出が透明 | README に信頼モデル段落（`docs/idea.md` §9.1）・**事前作業の明示的開示（`hedra-sample` 含む）**・AI 使用・Git 履歴（実装コミットは 09-04 以降）・提出動画は規定準拠（T127） | 🟡 README の信頼モデル / 事前作業開示 / AI 使用は記載済み。From Scratch 自己監査は 09-04 より前の初回コミット 0 件を実測（`docs/submission/prize-requirements.md` §4）。**動画（T127）は未**。ライブ未検証項目を README で skip 明示している限り「透明」は保てるが、✅ は動画と最終監査の後 |
 
 ---

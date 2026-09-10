@@ -148,6 +148,14 @@ gateway's unit suite (real MCP SDK transport, in-process). A live Claude Code ru
 2026-09-08 completed discovery, a 0.1 testnet HBAR purchase, decryption and analysis of token #1.
 The separate `apps/agent` CI acceptance run remains independently verifiable.
 
+OAuth 2.1 authentication (dynamic client registration, PKCE S256, per-principal delegated
+wallets with revocation) is implemented behind the `MCP_AUTH_REQUIRED` cutover flag - see
+`apps/gateway/CONFIG.md`'s "OAuth 2.1 authentication" section for the full flow. It is not yet
+flipped on in the deployed environment (real secrets and a staging run of
+`scripts/bootstrap-ci-oauth-client.ts` are still pending), so the connection instructions and
+live run below are the pre-remediation, unauthenticated shape: every caller shares the one demo
+wallet described in "Trust model" above.
+
 `mcp.json` for a generic client:
 
 ```json
@@ -216,9 +224,16 @@ Stated as precisely as we can (constitution VII):
   contract. The `payFor` + permissionless `finalize` rail keeps the deposit in `RightsRegistry`
   (non-atomic, non-custodial), and `settleAndIssue{value}` is the single-transaction rail; all
   three are implemented and selectable, and none is live-verified yet (`apps/gateway/CONFIG.md`).
-- **MCP wallet:** the MCP tools are unauthenticated (demo). Purchases are signed by a Privy
-  server wallet under a per-session spend cap; the raw key is never held by the gateway, but
-  anyone who can reach the URL can spend up to the cap.
+- **MCP wallet:** OAuth 2.1 (DCR + PKCE S256, `/oauth/*`) is implemented and covered by the
+  gateway's unit suite: an authenticated caller signs purchases through their OWN
+  Privy-delegated wallet (provisioned at consent, revocable per-principal or all at once,
+  budgeted per principal/day in addition to the per-session cap below) - the raw key is never
+  held by the gateway either way. In the currently **deployed** environment `MCP_AUTH_REQUIRED`
+  is still `false` pending the live cutover steps (real secrets, `bootstrap-ci-oauth-client.ts`
+  against staging, then flipping the flag - `apps/gateway/CONFIG.md`), so the demo below still
+  runs the pre-remediation, unauthenticated shape: purchases are signed by a single shared Privy
+  server wallet under a per-session spend cap, and anyone who can reach the URL can spend up to
+  that cap.
 - **Rights Graph:** self-hosted Graph Node on AWS EC2 (`apps/cdk`), **runs only for the hackathon
   and is destroyed afterwards** with `pnpm --filter cdk destroy`. It is discovery / audit only.
 - **Not supported:** contract wallets (Safe / ERC-4337, no ERC-1271), refunds of completed

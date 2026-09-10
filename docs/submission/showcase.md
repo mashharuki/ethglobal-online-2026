@@ -123,9 +123,16 @@ success (see README → Verification status). <update this paragraph after deplo
   gateway never holds the key and every signature is a Privy RPC; each MCP session is bound to the
   receipts it bought and capped by a hard per-session spend limit enforced in the gateway. The B2B
   use case is a data provider selling licensed datasets to autonomous agents with auditable,
-  capped spending. **Pending / to decide:** whether to add a Privy authorization key on the server
-  wallet so a Privy-side control is demonstrably in the loop (see
-  `docs/submission/prize-requirements.md` §3).
+  capped spending. OAuth 2.1 authentication (dynamic client registration, PKCE, a consent screen)
+  now provisions a separate Privy-delegated wallet per authenticated buyer — its own persistent
+  per-principal/day spend budget and independent revocation, on top of the per-session cap above
+  — behind a cutover flag (`MCP_AUTH_REQUIRED`) that is not yet flipped on in the deployed
+  environment (the live run above still uses the single shared wallet). Every signing/update RPC
+  on a delegated wallet requires a Privy authorization key registered on that wallet's signer
+  quorum, resolving the earlier open design question of which Privy control (policies / signers /
+  key quorums / intents) to demonstrate — see `docs/submission/prize-requirements.md` §3.
+  **Pending:** a live demonstration, against the deployed gateway, that Privy actually rejects a
+  signing request lacking the correct authorization context.
 
 ## Links
 
