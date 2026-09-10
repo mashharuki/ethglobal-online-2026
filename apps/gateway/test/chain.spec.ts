@@ -131,7 +131,7 @@ const liveConfigured = isChainConfigured(liveCtx);
 const liveRequired = env.REQUIRE_LIVE_CHAIN === "1";
 if (!liveRequired) {
   console.warn(
-    "[gateway] live chain reads SKIPPED: REQUIRE_LIVE_CHAIN not set (BLOCKED, not verified). Set REQUIRE_LIVE_CHAIN=1 to turn this into a failure.",
+    "[gateway] live chain reads SKIPPED: REQUIRE_LIVE_CHAIN not set (BLOCKED, not verified). Set REQUIRE_LIVE_CHAIN=1 to run live verification (fails instead of skipping if RIGHTS_NFT_ADDRESS / RIGHTS_REGISTRY_ADDRESS also aren't configured).",
   );
 }
 
