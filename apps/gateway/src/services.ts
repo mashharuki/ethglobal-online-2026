@@ -20,8 +20,7 @@ import {
   type ResolvedAsset,
   resolveAsset,
 } from "./manifest/resolver";
-import { resolveHederaAccount } from "./mcp/hedera";
-import { McpToolError } from "./mcp/toolError";
+import { resolveAgentAccountId } from "./mcp/hedera";
 import { type AgentWallet, createPrivyAgentWallet } from "./mcp/wallet";
 import {
   createFacilitatorClient,
@@ -127,48 +126,18 @@ export function createServices(env: Env, db: Db): Services {
     },
     agent: {
       wallet: () => createPrivyAgentWallet(env),
-      accountId: async () => {
-        const wallet = createPrivyAgentWallet(env);
-        const account = await resolveHederaAccount(
+      // Codex review: this must stay `async` even though its body is one expression - a
+      // non-async arrow whose FIRST argument (createPrivyAgentWallet(env)) throws
+      // synchronously (AgentWalletUnavailableError, missing env vars) would throw out of
+      // accountId() itself instead of returning the rejected Promise its `Promise<string>`
+      // return type promises, breaking any caller that does `.catch(...)` on the call
+      // directly rather than wrapping it in try/await.
+      accountId: async () =>
+        resolveAgentAccountId(
           env.HEDERA_MIRROR_URL,
-          wallet.address,
-        );
-        switch (account.kind) {
-          case "absent":
-            throw new McpToolError(
-              "INSUFFICIENT_AGENT_BALANCE",
-              "the agent wallet has no Hedera account yet: fund its EVM address first",
-            );
-          case "unreadable":
-            // distinct from a real zero balance (MCP OAuth remediation): a mirror-node
-            // outage must never be reported as "fund the account" - it may already be funded
-            throw new McpToolError(
-              "AGENT_BALANCE_UNAVAILABLE",
-              "could not read the agent balance from the mirror node",
-            );
-          case "ok":
-            if (!account.hasKey) {
-              throw new McpToolError(
-                "INSUFFICIENT_AGENT_BALANCE",
-                "the agent account is hollow (no key): activate it by signing one transaction",
-              );
-            }
-            // MCP OAuth remediation: this used to never read the actual balance field at
-            // all - existence + key presence were mistaken for solvency. This is a floor
-            // check only (no price context here yet); buyAccess.ts's own pre-signature
-            // check against the real quote is the load-bearing one.
-            if (
-              account.balanceTinybar <
-              parseSpendCap(env.MCP_BALANCE_HEADROOM_TINYBAR)
-            ) {
-              throw new McpToolError(
-                "INSUFFICIENT_AGENT_BALANCE",
-                `agent balance is ${account.balanceTinybar} tinybar, below the ${env.MCP_BALANCE_HEADROOM_TINYBAR} tinybar floor`,
-              );
-            }
-            return account.accountId;
-        }
-      },
+          createPrivyAgentWallet(env).address,
+          parseSpendCap(env.MCP_BALANCE_HEADROOM_TINYBAR),
+        ),
     },
     mcpSpendCapTinybar: parseSpendCap(env.MCP_SESSION_SPEND_CAP_TINYBAR),
     creatorOf: (tokenId) => readCreatorOf(ctx, tokenId),

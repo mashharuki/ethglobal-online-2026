@@ -7,9 +7,12 @@ import {
   createPrivyDelegationClient,
   findDelegatedWalletByExternalId,
   type PrivyDelegationEnv,
+  signSecp256k1Delegated,
+  signTypedDataDelegated,
   verifyDelegatedWalletOwnership,
 } from "./privyClient";
 import { McpToolError } from "./toolError";
+import type { AgentWallet } from "./wallet";
 
 /**
  * Per-principal AI wallet provisioning state machine (specs/mcp-auth-remediation-plan.md
@@ -56,6 +59,48 @@ export async function resolveWalletBinding(
     .where(eq(agentWalletBinding.id, walletId))
     .limit(1);
   return row;
+}
+
+/**
+ * Resolves an authenticated principal's OWN delegated wallet as an `AgentWallet` (mcp/wallet.ts's
+ * shape) - the piece that actually makes "different principals get different licensee
+ * addresses" (specs/mcp-auth-remediation-plan.md's completion condition) true. Every OAuth/
+ * consent/spend-ledger phase before this one gated WHETHER a call is allowed; nothing wired
+ * WHICH wallet ends up as the licensee once it is - `mcp/tools/buyAccess.ts` and
+ * `decryptContent.ts` called `services.agent.wallet()` (the single shared wallet,
+ * mcp/wallet.ts) unconditionally, authenticated or not, until this function existed.
+ *
+ * Throws `AGENT_WALLET_UNAVAILABLE` (not silently falling back to the shared wallet) if the
+ * bound wallet isn't `active` yet, or is missing the fields that state should guarantee are
+ * set - a caller must never end up signing with a wallet the state machine hasn't finished
+ * provisioning.
+ */
+export async function resolveDelegatedAgentWallet(
+  db: AuthzDb,
+  delegationEnv: PrivyDelegationEnv,
+  walletId: string,
+): Promise<AgentWallet> {
+  const binding = await resolveWalletBinding(db, walletId);
+  if (
+    binding === undefined ||
+    binding.provisioningState !== "active" ||
+    binding.privyWalletId === null ||
+    binding.address === null
+  ) {
+    throw new McpToolError(
+      "AGENT_WALLET_UNAVAILABLE",
+      `agent_wallet_binding ${walletId} is not an active, fully-provisioned delegated wallet`,
+    );
+  }
+  const delegation = createPrivyDelegationClient(delegationEnv);
+  const privyWalletId = binding.privyWalletId;
+  return {
+    address: binding.address,
+    signTypedData: (typedData) =>
+      signTypedDataDelegated(delegation, { privyWalletId, typedData }),
+    signRawHash: (hash) =>
+      signSecp256k1Delegated(delegation, { privyWalletId, hash }),
+  };
 }
 
 function shortHash(value: string): string {

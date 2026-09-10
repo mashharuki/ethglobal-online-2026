@@ -11,7 +11,7 @@ import {
   readBindingStatus,
   settlePayment,
 } from "../../x402/settle";
-import type { McpContext } from "../context";
+import { type McpContext, resolveAgentWallet } from "../context";
 import { buildSignedTransfer } from "../hedera";
 import {
   bindReceiptToSession,
@@ -73,8 +73,12 @@ export async function buyAccess(
         "facilitator did not advertise a fee payer for hedera:testnet",
       );
     }
-    const wallet = services.agent.wallet();
-    const payerAccountId = await services.agent.accountId();
+    // An authenticated caller signs with (and becomes the licensee on) their OWN delegated
+    // wallet, not the single shared one - this is what actually makes "different principals
+    // get different licensees" true; MCP_AUTH_REQUIRED=false callers keep using the shared
+    // wallet exactly as before this existed.
+    const { wallet, accountId } = await resolveAgentWallet(ctx);
+    const payerAccountId = await accountId();
     const transaction = await buildSignedTransfer(wallet, {
       payerAccountId,
       payTo: accept.payTo,

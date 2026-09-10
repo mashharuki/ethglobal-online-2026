@@ -75,7 +75,7 @@ export function registerMcpRoutes(app: Hono<AppEnv>): void {
       }
     }
 
-    const server = createMcpServer({ services, sessionId, auth });
+    const server = createMcpServer({ services, sessionId, auth, authzDb });
     // Transport objects are request-local. Purchase ownership and budgets survive requests
     // through the verified session identity and database, not an in-memory MCP connection.
     const transport = new WebStandardStreamableHTTPServerTransport({

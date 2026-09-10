@@ -11,6 +11,7 @@ import {
   recoverCompressedPublicKey,
   toCompactLowSSignature,
 } from "@truenft/shared";
+import { McpToolError } from "./toolError";
 import type { AgentWallet } from "./wallet";
 
 /**
@@ -162,4 +163,49 @@ export async function resolveHederaAccount(
     hasKey: typeof parsed.key?.key === "string" && parsed.key.key.length > 0,
     balanceTinybar,
   };
+}
+
+/**
+ * `resolveHederaAccount` + the readiness checks every caller needs before signing a transfer
+ * (hollow account, mirror-node outage, below-floor balance) - factored out of `services.ts`'s
+ * `agent.accountId()` (the single shared wallet) so the per-principal delegated wallet path
+ * (mcp/walletProvisioning.ts's `resolveDelegatedAgentWallet`) gets the identical checks
+ * instead of a second, potentially-drifting copy of this logic.
+ */
+export async function resolveAgentAccountId(
+  mirrorUrl: string,
+  evmAddress: string,
+  balanceHeadroomTinybar: bigint,
+): Promise<string> {
+  const account = await resolveHederaAccount(mirrorUrl, evmAddress);
+  switch (account.kind) {
+    case "absent":
+      throw new McpToolError(
+        "INSUFFICIENT_AGENT_BALANCE",
+        "the agent wallet has no Hedera account yet: fund its EVM address first",
+      );
+    case "unreadable":
+      // distinct from a real zero balance: a mirror-node outage must never be reported as
+      // "fund the account" - it may already be funded
+      throw new McpToolError(
+        "AGENT_BALANCE_UNAVAILABLE",
+        "could not read the agent balance from the mirror node",
+      );
+    case "ok":
+      if (!account.hasKey) {
+        throw new McpToolError(
+          "INSUFFICIENT_AGENT_BALANCE",
+          "the agent account is hollow (no key): activate it by signing one transaction",
+        );
+      }
+      // This is a floor check only (no price context here); buyAccess.ts's own
+      // pre-signature check against the real quote is the load-bearing one.
+      if (account.balanceTinybar < balanceHeadroomTinybar) {
+        throw new McpToolError(
+          "INSUFFICIENT_AGENT_BALANCE",
+          `agent balance is ${account.balanceTinybar} tinybar, below the ${balanceHeadroomTinybar} tinybar floor`,
+        );
+      }
+      return account.accountId;
+  }
 }

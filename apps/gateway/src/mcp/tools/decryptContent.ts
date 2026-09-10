@@ -10,7 +10,7 @@ import { issueNonce, toUnixSeconds } from "../../auth/nonce";
 import { decryptWithKey } from "../../keygate/fallback";
 import { releaseToLicensee } from "../../keygate/release";
 import { wipe } from "../../keygate/vault";
-import type { McpContext } from "../context";
+import { type McpContext, resolveAgentWallet } from "../context";
 import { assertReceiptBoundToSession, requireSession } from "../session";
 import { McpToolError } from "../toolError";
 
@@ -61,7 +61,10 @@ export async function decryptContent(
   const { services } = ctx;
   await assertReceiptBoundToSession(services.db, input.receiptHash, sessionId);
 
-  const wallet = services.agent.wallet();
+  // Must resolve to the SAME wallet buyAccess.ts used for this session's purchase (the
+  // licensee check below fails otherwise) - an authenticated caller's own delegated wallet,
+  // or the shared wallet while MCP_AUTH_REQUIRED=false, exactly as buyAccess.ts decides it.
+  const { wallet } = await resolveAgentWallet(ctx);
   const { deployment } = services.release;
   const domain = buildDomain(deployment.rightsRegistry, deployment.chainId);
   const issued = await issueNonce(services.db, {
