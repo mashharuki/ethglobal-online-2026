@@ -120,12 +120,21 @@ success (see README → Verification status). <update this paragraph after deplo
   implemented with Privy at the centre of the transfer, not as a decorative login. **Pending:** one
   live run of that flow against the deployed gateway.
 - **Privy — Best B2B Financial Product.** The MCP payment wallet is a Privy server wallet: the
-  gateway never holds the key and every signature is a Privy RPC; each MCP session is bound to the
-  receipts it bought and capped by a hard per-session spend limit enforced in the gateway. The B2B
-  use case is a data provider selling licensed datasets to autonomous agents with auditable,
-  capped spending. **Pending / to decide:** whether to add a Privy authorization key on the server
-  wallet so a Privy-side control is demonstrably in the loop (see
-  `docs/submission/prize-requirements.md` §3).
+  gateway never holds a wallet-signing key and every signature is a Privy RPC; each MCP session
+  is bound to the receipts it bought and capped by a hard per-session spend limit enforced in the
+  gateway. The B2B use case is a data provider selling licensed datasets to autonomous agents
+  with auditable, capped spending. OAuth 2.1 authentication (dynamic client registration, PKCE, a
+  consent screen) is implemented and provisions a separate Privy-delegated wallet per
+  authenticated buyer, with its own persistent per-principal/day spend budget and independent
+  revocation on top of the per-session cap above; what is still pending is the
+  mandatory-authentication cutover (`MCP_AUTH_REQUIRED`), so the live run above still uses the
+  single shared wallet. Every signing/update RPC on a delegated wallet must carry a Privy
+  authorization key registered on that wallet's signer quorum - the gateway holds this
+  authorization key (spend limits stay gateway-enforced regardless), and it resolves the earlier
+  open design question of which Privy control (policies / signers / key quorums / intents) to
+  demonstrate — see `docs/submission/prize-requirements.md` §3. **Pending:** real Privy App
+  credentials, a staging deploy, and a live demonstration that Privy actually rejects a signing
+  request lacking the correct authorization context.
 
 ## Links
 
