@@ -189,6 +189,14 @@ jobs:
         env:
           HEDERA_RPC_URL: ${{ secrets.HEDERA_RPC_URL }}
           HEDERA_OPERATOR_KEY: ${{ secrets.HEDERA_OPERATOR_KEY }}
+      # issue #47: chain.spec.ts's "live reads (T072)" block is opt-in only (REQUIRE_LIVE_CHAIN=1),
+      # so it never runs in the ordinary `quality` job. Exercise it here instead, in the one job
+      # already gated on live Hedera secrets being present - a read against the public
+      # HEDERA_RPC_URL in wrangler.toml, no operator key needed.
+      - name: gateway live chain reads (chain.spec.ts, T072)
+        run: pnpm --filter gateway exec vitest run chain.spec.ts
+        env:
+          REQUIRE_LIVE_CHAIN: "1"
 
   live-e2e:
     name: newman + Playwright against the deployed gateway / web

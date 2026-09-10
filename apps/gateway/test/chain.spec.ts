@@ -116,16 +116,26 @@ describe("chain clients (T071)", () => {
   });
 });
 
+/**
+ * Explicit opt-in only (issue #47): RIGHTS_NFT_ADDRESS / RIGHTS_REGISTRY_ADDRESS are real,
+ * permanently-committed values in wrangler.toml (since #32), so `isChainConfigured()` alone is
+ * now always true - gating on it as well as `liveRequired` made this block run unconditionally
+ * in the ordinary `typecheck / lint / test / audits` CI job, a real (if unauthenticated) network
+ * call to Hedera Testnet with no `REQUIRE_LIVE_CHAIN` gate and no HEDERA_RPC_URL secret check,
+ * unlike every other live/gated split in this repo (ci.yml's own header comment). Gating on
+ * `liveRequired` alone matches that split: this block now runs only when explicitly requested
+ * (the `hedera-testnet` CI job sets it).
+ */
 const liveCtx = createChainContext(env);
 const liveConfigured = isChainConfigured(liveCtx);
 const liveRequired = env.REQUIRE_LIVE_CHAIN === "1";
-if (!liveConfigured && !liveRequired) {
+if (!liveRequired) {
   console.warn(
-    "[gateway] live chain reads SKIPPED: RIGHTS_NFT_ADDRESS / RIGHTS_REGISTRY_ADDRESS not configured (BLOCKED, not verified). Set REQUIRE_LIVE_CHAIN=1 to turn this into a failure.",
+    "[gateway] live chain reads SKIPPED: REQUIRE_LIVE_CHAIN not set (BLOCKED, not verified). Set REQUIRE_LIVE_CHAIN=1 to run live verification (fails instead of skipping if RIGHTS_NFT_ADDRESS / RIGHTS_REGISTRY_ADDRESS also aren't configured).",
   );
 }
 
-describe.skipIf(!liveConfigured && !liveRequired)("live reads (T072)", () => {
+describe.skipIf(!liveRequired)("live reads (T072)", () => {
   it("should read licenseEpoch(1) from the configured RightsRegistry", async () => {
     if (!liveConfigured) {
       throw new Error(
