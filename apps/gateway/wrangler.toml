@@ -44,6 +44,9 @@ MCP_GRANT_DEFAULT_TTL_SEC = "1800"
 MCP_BALANCE_HEADROOM_TINYBAR = "1000000"
 # Privy external_id prefix for per-principal AI-delegated wallets (agent_wallet_binding).
 PRIVY_AI_WALLET_EXTERNAL_ID_PREFIX = "truecollective-ai-wallet"
+# Privy key quorum PRIVY_AUTHORIZATION_PRIVATE_KEY's public key was registered under
+# (scripts/setup-privy-authz-key.ts, CONFIG.md) - not secret, an id not a credential.
+PRIVY_SIGNER_QUORUM_ID = "xyxo2dia3ejpm45teggw8198"
 # Cutover kill switches (specs/mcp-auth-remediation-plan.md §12, "false -> verify -> true").
 # MCP_AUTH_REQUIRED stays "false" until Phase 10 (apps/agent CI harness) sends a Bearer token -
 # flipping it early would 401 the harness's own buy_access/decrypt_content calls.
@@ -65,13 +68,10 @@ localConnectionString = "postgres://postgres:postgres@127.0.0.1:5432/truecollect
 # Second binding to the SAME Postgres, caching disabled (specs/mcp-auth-remediation-plan.md
 # §5) - authorization-critical reads (agent_grant, agent_wallet_binding, oauth_token,
 # mcp_authenticated_session) must go through this one, never the cached HYPERDRIVE binding
-# above (test/node/authzHandle.test.ts enforces this). Replace `id` with the output of
-# `wrangler hyperdrive create truecollective-authz --caching-disabled
-# --connection-string=<same postgres url as HYPERDRIVE>` (needs Cloudflare account access to
-# this project - see issue #64).
+# above (test/node/authzHandle.test.ts enforces this).
 [[hyperdrive]]
 binding = "HYPERDRIVE_AUTHZ"
-id = "REPLACE_WITH_WRANGLER_HYPERDRIVE_CREATE_OUTPUT"
+id = "c9a30e8f9b334f55a1d5a15f65290572"
 localConnectionString = "postgres://postgres:postgres@127.0.0.1:5432/truecollective"
 
 # Durable Objects: ReceiptLock serializes consume per receiptHash (R-3),
