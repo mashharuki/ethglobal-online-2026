@@ -1,7 +1,9 @@
 ## Before considering a change done
 
-1. `pnpm check` (Biome lint+format+organize-imports, writes fixes) — this is the only configured quality gate at root right now.
-2. `pnpm build` if any workspace now has a `build` script (turbo will no-op for workspaces without one).
-3. `pnpm knip` if you added/removed files or deps, to catch unused exports — note its config currently only scopes `apps/cdk`, so update `knip.json` workspaces when new apps/packages are added.
-
-No test suite exists yet at the root level — if you add one to a workspace, also add a corresponding `test` task to `turbo.json` and update this memory.
+1. Scope to the touched workspace(s) rather than always running the full root pipeline: `pnpm --filter <workspace> typecheck && pnpm --filter <workspace> test` (add `lint` too; `web` uses `oxlint`, everything else uses `biome check .`).
+2. If the touched workspace is `apps/gateway` and you changed anything in the spend ledger / `ReceiptLock` / payment concurrency path, also run `pnpm gateway test:pg` (real Postgres, not covered by plain `pnpm gateway test`).
+3. If you touched `packages/shared/src/errors.ts` or `packages/openapi/openapi.yaml`'s `ErrorCode` schema, run `pnpm openapi check-errors` to confirm they haven't drifted.
+4. If you touched contract interfaces, EIP-712 types, or anything `packages/shared/src/eip712.ts` depends on, check whether the Solidity-side golden hash test (`apps/contracts` test suite) still matches the TS golden test (`packages/shared/test/eip712.golden.test.ts`) — these must stay pairwise identical (constitution principle V).
+5. Root-level gate before a PR: `pnpm check` (Biome fix) → `pnpm ci` (`biome ci . && knip && jscpd`) → `pnpm build` → `pnpm typecheck` → `pnpm test`. `pnpm build`/`typecheck`/`test` are turbo-orchestrated so unaffected workspaces are cached/skipped automatically.
+6. If the change touches a core demo path (ownership/epoch reads, x402 settlement, Rights Receipt issuance/verification, KeyGate release, agent analysis), run `pnpm audit:no-mocks` — the constitution forbids mocks/stubs there (NON-NEGOTIABLE).
+7. Check `specs/001-rights-runtime-mvp/tasks.md` for the task you're implementing and tick it `[x]` if this change completes it — it's the authoritative build-order tracker (see `mem:project_status`).

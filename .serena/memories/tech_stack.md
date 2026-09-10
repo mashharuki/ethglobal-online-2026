@@ -1,9 +1,13 @@
 ## Tech stack
 
-- Package manager: pnpm, pinned via `devEngines.packageManager` and `packageManager` field to `pnpm@11.24.0` (root `package.json`) — do not use npm/yarn.
-- Monorepo/build orchestration: Turborepo (`turbo` ^2.10.12), single `build` task defined in `turbo.json` (depends on `^build`, outputs `dist/**`). No `dev`/`test`/`lint` turbo tasks defined yet — add them to `turbo.json` when apps/packages exist.
-- Workspaces: `apps/*` and `packages/*` (`pnpm-workspace.yaml`).
-- Linter/formatter: Biome 2.5.9 (`@biomejs/biome`), config in `biome.json` — recommended preset, double quotes for JS, organizeImports on, VCS integration disabled (`vcs.enabled: false`).
-- Unused-code detection: `knip` ^6.32.2, config in `knip.json` — already declares an `apps/cdk` workspace entry (AWS CDK app) that doesn't exist on disk yet.
-- Duplication detection: `jscpd` (run via root script, not in devDependencies list — likely invoked via `pnpm dlx` or expected to be installed later).
-- Root `package.json` has `"type": "module"`.
+Root: pnpm (`pnpm@11.24.0`, pinned via `devEngines`/`packageManager`) + Turborepo (`turbo` ^2.10.12, real task graph now: `compile`/`generate`/`build`/`lint`/`typecheck`/`test`/`dev`, see `turbo.json`). Biome 2.5.9 at root for format/lint (`biome.json`, recommended preset, double quotes, organizeImports on). `knip` for unused code, `jscpd` (`.jscpd.json`, threshold 2%, minTokens 60) for duplication — both scoped per-workspace, update their configs when a workspace's entry points change.
+
+## Non-obvious per-workspace details (not in AGENTS.md)
+
+- **`apps/contracts` scripts shell out via `bunx hardhat ...`**, not `pnpm exec` — Bun must be installed even though the repo's package manager is pnpm. Hardhat 3 + `@nomicfoundation/hardhat-toolbox-mocha-ethers`, OpenZeppelin 5.x, Solidity 0.8.34.
+- **`apps/web` lints with `oxlint`**, not Biome (`"lint": "oxlint"`) — the only workspace that deviates from Biome for lint. Vite + React 18 + Tailwind + Privy embedded wallet.
+- **`apps/gateway` has three separate Vitest configs**: `vitest.config.ts` (workerd pool, `test:workerd`), `vitest.node.config.ts` (`test:node`), `vitest.pg.config.ts` (`test:pg`, real-Postgres concurrency tests for the spend ledger). Plain `pnpm test` in gateway runs workerd + node configs only, not pg — run `test:pg` explicitly when touching the spend ledger/`ReceiptLock`. Hono on Cloudflare Workers, Drizzle ORM (`drizzle.config.ts`), MCP server under `src/mcp/`.
+- **`apps/subgraph`** generates `subgraph.yaml` from a template (`pnpm run manifest` → mustache over `config/testnet.json` + `subgraph.template.yaml`) before `graph codegen`/`graph build` — don't hand-edit `subgraph.yaml` directly, edit the template/config instead.
+- **`apps/e2e`** mixes three test runners: Playwright (`test`, browser flows), Vitest (`test:unit`), Newman/Postman (`test:api`, API contract tests against `packages/openapi`).
+- **`packages/openapi`** has a `check-errors`/`sync-errors` script pair (`scripts/sync-error-codes.ts`) that keeps `openapi.yaml`'s `ErrorCode` enum in sync with `packages/shared/src/errors.ts` — the stable `ErrorCode` enum is defined once in `packages/shared` and must not drift from the OpenAPI schema; run `check-errors` after editing either.
+- Root `scripts/audit-no-mocks.sh` (invoked via `pnpm audit:no-mocks`, `AUDIT_STRICT=1`) greps the core demo path for mock/stub/hardcoded-response patterns — this enforces the constitution's "no mocks on core paths" rule mechanically.
