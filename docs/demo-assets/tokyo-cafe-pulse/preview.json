@@ -1,0 +1,47 @@
+{
+  "title": "Tokyo Cafe Pulse",
+  "description": "30 days of synthetic cafe visits, average spend and peak hours across Shibuya, Shinjuku and Nakameguro. Unlock the dataset to compare districts and explore weekend demand with an AI agent.",
+  "synthetic": true,
+  "rowCount": 90,
+  "districtCount": 3,
+  "period": {
+    "start": "2026-08-01",
+    "end": "2026-08-30",
+    "timezone": "Asia/Tokyo"
+  },
+  "columns": [
+    "date",
+    "district",
+    "visitors",
+    "avgSpendJpy",
+    "peakHour",
+    "isWeekend"
+  ],
+  "sampleRows": [
+    {
+      "date": "2026-08-01",
+      "district": "Shibuya",
+      "visitors": 2296,
+      "avgSpendJpy": 1190,
+      "peakHour": 15,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-01",
+      "district": "Shinjuku",
+      "visitors": 2641,
+      "avgSpendJpy": 1090,
+      "peakHour": 13,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-01",
+      "district": "Nakameguro",
+      "visitors": 826,
+      "avgSpendJpy": 1530,
+      "peakHour": 16,
+      "isWeekend": true
+    }
+  ],
+  "disclaimer": "Fictional demo data. This public preview contains only three sample records."
+}

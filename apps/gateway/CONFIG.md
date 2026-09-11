@@ -14,6 +14,7 @@ Values below are **never** placed in `wrangler.toml` or committed. For local `wr
 | `PRIVY_WALLET_ID` / `PRIVY_WALLET_ADDRESS` | **Deprecated** (MCP OAuth remediation, specs/mcp-auth-remediation-plan.md): the single shared Privy server wallet every MCP caller used to settle through, unauthenticated. Kept defined so the wrangler secret is not invalidated, but unreachable once `MCP_AUTH_REQUIRED=true` - superseded by one per-principal `agent_wallet_binding` row provisioned at consent time. | `wrangler secret put ...` |
 | `PRIVY_AUTHORIZATION_PRIVATE_KEY` | MCP OAuth remediation: base64 PKCS8-DER P-256 private key registered as a member of `PRIVY_SIGNER_QUORUM_ID`, so the gateway can sign for a per-principal delegated wallet (`additional_signers`) via `authorization_context` alone - no user JWT in the loop. Wallet-controlling credential; handle it through `keygate/vault.ts`'s read/use/wipe pattern, never at module scope. | `wrangler secret put PRIVY_AUTHORIZATION_PRIVATE_KEY` |
 | `PRIVY_SIGNER_QUORUM_ID` | The Privy key quorum id `PRIVY_AUTHORIZATION_PRIVATE_KEY`'s public key was registered under (`client.keyQuorums().create(...)`, done once out-of-band). Not secret (an id, not a credential) but only meaningful alongside the key above. | `wrangler secret put PRIVY_SIGNER_QUORUM_ID` (or `[vars]`, since it isn't sensitive) |
+| `PINATA_JWT` | Pinata JWT used only by `POST /creator/uploads` to issue 60-second signed Public IPFS upload URLs. Create a restricted key with `org:files:write`; never expose it as a `VITE_*` variable. | `wrangler secret put PINATA_JWT` |
 
 `ANTHROPIC_API_KEY` is not needed by the gateway; only `apps/agent` (CI harness) uses it.
 
@@ -81,6 +82,14 @@ before it demands current issuance terms.
 reads via viem, Durable Objects, the facilitator client. Non-domain failures (malformed body
 400, unknown asset 404, subgraph down 502, internal 500) answer `{ error, message? }`; every
 domain rejection is the openapi `Error` body from `AppError`.
+
+`POST /creator/uploads` verifies a Privy access token and issues a narrowly scoped Pinata upload
+URL for a public preview, encrypted content, or a manifest. The browser uploads directly to
+Pinata, so the Worker never receives the file bytes or the Pinata JWT. Signed URLs expire after
+60 seconds and are treated as reusable bearer capabilities until expiry; MIME restrictions are
+not content inspection. The UI sends only ciphertext for the protected-content purpose and never
+sends `shares.json`. Responses use `Cache-Control: no-store`; URL issuance is rate-limited per IP
+and verified Privy principal. The in-isolate limiter is an abuse brake, not a durable storage quota.
 
 ## MCP server (tasks.md T092-T096, contracts/mcp-tools.md)
 

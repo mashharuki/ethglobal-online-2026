@@ -30,12 +30,16 @@ needs a funded Hedera Testnet account; a hollow account is activated from the Ma
 | `/market` | `GET /assets` listing, preview link, **Buy access** (402 -> Privy-signed HBAR transfer -> `POST /assets/{id}/paid`), **Access as owner** |
 | `/viewer/:assetId?path=owner` | owner path: challenge -> EIP-712 signature -> `/owner/keygate` -> `share_G` + `blindedU` -> unblind + AES-GCM in the browser |
 | `/viewer/:assetId?path=licensee&receipt=0x…` | licensee path: `/keygate/challenge` -> `/keygate/share` (one `consume`) -> decrypt; shows the use index |
-| `/creator` | encrypt a dataset locally, split K, predict the tokenId (simulated mint), build + validate the Rights Manifest, download `content.enc` / `manifest.json` / `shares.json`, mint |
+| `/creator` | encrypt a dataset locally, upload the public preview / ciphertext / manifest directly to Pinata through short-lived Gateway capabilities, split K, predict the tokenId (simulated mint), optionally download `content.enc` / `manifest.json` / private `shares.json`, mint |
 | `/dashboard` | Rights Graph timeline (two epoch lanes), receipts / allocations, the 20-parallel replay counter, `GET /audit` |
 
 The `RightsBadge` on the viewer is computed from a fresh `ownerOf` / `accessEpoch` /
 `licenseEpoch` read pinned to one block (constitution II); the `EpochTimeline` is indexed data
 and is labelled as such.
+
+Creator uploads require `PINATA_JWT` on the Gateway; the JWT is never configured in the browser.
+Without it, creators can still download artifacts, upload them with another IPFS tool, and paste
+the resulting `ipfs://` URIs. `shares.json` must remain private and is never uploaded by the UI.
 
 ## Scripts
 

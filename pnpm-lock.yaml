@@ -387,6 +387,9 @@ importers:
       hono:
         specifier: ^4.13.7
         version: 4.13.7
+      pinata:
+        specifier: 2.5.6
+        version: 2.5.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
@@ -476,6 +479,9 @@ importers:
       openapi-fetch:
         specifier: 0.17.0
         version: 0.17.0
+      pinata:
+        specifier: 2.5.6
+        version: 2.5.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -7719,6 +7725,18 @@ packages:
   pify@5.0.0:
     resolution: {integrity: sha512-eW/gHNMlxdSP6dmG6uJip6FXN0EQBwm2clYYd8Wul42Cwu/DK8HEftzsapcNdYe2MfLiIwZqsDk2RDEsTE79hA==}
     engines: {node: '>=10'}
+
+  pinata@2.5.6:
+    resolution: {integrity: sha512-bsM+0nvbE9Wk5SUpR6RKg2IBeJpe6yMrKrytbEF7CMQ3bjowWDC5DxzIL0fHQSOZCgb3rDnDt0gVJqz3COI5vQ==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
 
   pinkie-promise@2.0.1:
     resolution: {integrity: sha512-0Gni6D4UcLTbv9c57DfxDGdr41XfgUjqWZu492f0cIGr16zDU06BWP/RAEvOuo7CQ0CNjHaLlM59YJJFm3NWlw==}
@@ -18366,6 +18384,11 @@ snapshots:
   pify@3.0.0: {}
 
   pify@5.0.0: {}
+
+  pinata@2.5.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+    optionalDependencies:
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
 
   pinkie-promise@2.0.1:
     dependencies:
