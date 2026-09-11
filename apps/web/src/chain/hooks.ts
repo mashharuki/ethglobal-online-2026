@@ -1,6 +1,6 @@
 import { useWallets } from "@privy-io/react-auth";
 import type { Deployment } from "@truenft/shared";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type Address,
   createPublicClient,
@@ -13,7 +13,9 @@ import {
   parseEventLogs,
 } from "viem";
 import { hederaTestnet } from "viem/chains";
+import { formatHbar } from "../components/formatHbar";
 import { getConfig } from "../config";
+import { resolveHederaAccount } from "../hedera/resolveAccount";
 import { rightsNftAbi, rightsRegistryAbi } from "./abi";
 
 /**
@@ -85,6 +87,72 @@ export function useEmbeddedWallet(): EmbeddedWallet {
     address: embedded?.address as Address | undefined,
     getProvider,
   };
+}
+
+const BALANCE_POLL_INTERVAL_MS = 15_000;
+
+export type WalletBalanceStatus = "loading" | "ready" | "error";
+
+/**
+ * Pure formatting split out of `useWalletBalance` (same pattern as `selectPrimaryWallet`) so it
+ * can be unit tested without rendering the hook. `balanceTinybars === undefined` while
+ * `status === "ready"` means the Mirror Node has no account for this address yet (not funded /
+ * lazy-created) - resolveHederaAccount's own `null` return, not an error.
+ */
+export function formatBalanceLabel(
+  status: WalletBalanceStatus,
+  balanceTinybars: bigint | undefined,
+): string {
+  if (status === "loading") return "…";
+  if (status === "error") return "balance unavailable";
+  return balanceTinybars === undefined ? "0 ℏ" : formatHbar(balanceTinybars);
+}
+
+/**
+ * The connected wallet's own HBAR balance, read straight from the Hedera Mirror Node (same
+ * source Market.tsx's purchase flow already uses via `resolveHederaAccount`, just displayed
+ * here instead of only being read internally). Polls every 15s so a purchase's effect on the
+ * balance shows up without a page reload.
+ */
+export function useWalletBalance(address: Address | undefined): {
+  status: WalletBalanceStatus;
+  label: string;
+} {
+  const [status, setStatus] = useState<WalletBalanceStatus>("loading");
+  const [balanceTinybars, setBalanceTinybars] = useState<bigint | undefined>(
+    undefined,
+  );
+
+  useEffect(() => {
+    if (address === undefined) {
+      setStatus("loading");
+      setBalanceTinybars(undefined);
+      return;
+    }
+    let cancelled = false;
+    const fetchBalance = async () => {
+      try {
+        const account = await resolveHederaAccount(
+          address,
+          getConfig().mirrorNodeUrl,
+        );
+        if (cancelled) return;
+        setBalanceTinybars(account?.balanceTinybars);
+        setStatus("ready");
+      } catch {
+        if (!cancelled) setStatus("error");
+      }
+    };
+    setStatus("loading");
+    fetchBalance();
+    const interval = setInterval(fetchBalance, BALANCE_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [address]);
+
+  return { status, label: formatBalanceLabel(status, balanceTinybars) };
 }
 
 /** EIP-712 (auth challenges) and raw-hash (Hedera transaction) signatures from the wallet. */
