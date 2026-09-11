@@ -109,6 +109,12 @@ export function formatBalanceLabel(
 }
 
 type BalanceResult = {
+  /** the address this result was fetched for. Belt-and-suspenders with the render-time reset
+   * below (Codex review round 3): a request started for address A can still resolve in the
+   * narrow window after a re-render already committed address B's reset (React's passive-effect
+   * cleanup for A, which sets `cancelled`, has not run yet) - filtering by address at READ time
+   * catches that window even though the render-time reset alone cannot. */
+  address: Address;
   status: WalletBalanceStatus;
   balanceTinybars: bigint | undefined;
 };
@@ -127,10 +133,11 @@ export function useWalletBalance(address: Address | undefined): {
   // need-an-effect#adjusting-some-state-when-a-prop-changes), not an extra effect: the instant
   // `address` differs from the last-seen value, reset `result` in the SAME render (React
   // discards this render and re-renders immediately, before paint) rather than one render later
-  // via an effect. Codex review, 2 rounds: without this, switching wallets briefly shows the
+  // via an effect. Codex review, 3 rounds: without this, switching wallets briefly shows the
   // PREVIOUS wallet's balance next to the NEW address (render-before-effect timing), and
   // returning to a PREVIOUSLY-SEEN address (A -> B -> A) would resurrect A's stale old result
-  // instead of showing "loading" while it re-fetches.
+  // instead of showing "loading" while it re-fetches. This alone doesn't close every window
+  // (see `BalanceResult.address` above), so it's combined with address-tagging at read time.
   const [session, setSession] = useState(address);
   const [result, setResult] = useState<BalanceResult | undefined>(undefined);
   if (address !== session) {
@@ -159,13 +166,14 @@ export function useWalletBalance(address: Address | undefined): {
         if (cancelled || seq <= lastAppliedSeq) return;
         lastAppliedSeq = seq;
         setResult({
+          address,
           status: "ready",
           balanceTinybars: account?.balanceTinybars,
         });
       } catch {
         if (cancelled || seq <= lastAppliedSeq) return;
         lastAppliedSeq = seq;
-        setResult({ status: "error", balanceTinybars: undefined });
+        setResult({ address, status: "error", balanceTinybars: undefined });
       }
     };
     fetchBalance();
@@ -176,10 +184,11 @@ export function useWalletBalance(address: Address | undefined): {
     };
   }, [address]);
 
-  const status = result?.status ?? "loading";
+  const current = result?.address === address ? result : undefined;
+  const status = current?.status ?? "loading";
   return {
     status,
-    label: formatBalanceLabel(status, result?.balanceTinybars),
+    label: formatBalanceLabel(status, current?.balanceTinybars),
   };
 }
 
