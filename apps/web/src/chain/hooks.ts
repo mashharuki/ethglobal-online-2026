@@ -108,6 +108,16 @@ export function formatBalanceLabel(
   return balanceTinybars === undefined ? "0 ℏ" : formatHbar(balanceTinybars);
 }
 
+type BalanceResult = {
+  /** the address this result belongs to - lets a stale result be detected and ignored even
+   * after `address` itself has already changed (Codex review: without this, switching wallets
+   * briefly shows the PREVIOUS wallet's balance next to the NEW wallet's address, because React
+   * re-renders with the new `address` prop before this hook's effect has a chance to reset). */
+  address: Address;
+  status: WalletBalanceStatus;
+  balanceTinybars: bigint | undefined;
+};
+
 /**
  * The connected wallet's own HBAR balance, read straight from the Hedera Mirror Node (same
  * source Market.tsx's purchase flow already uses via `resolveHederaAccount`, just displayed
@@ -118,32 +128,33 @@ export function useWalletBalance(address: Address | undefined): {
   status: WalletBalanceStatus;
   label: string;
 } {
-  const [status, setStatus] = useState<WalletBalanceStatus>("loading");
-  const [balanceTinybars, setBalanceTinybars] = useState<bigint | undefined>(
-    undefined,
-  );
+  const [result, setResult] = useState<BalanceResult | undefined>(undefined);
 
   useEffect(() => {
-    if (address === undefined) {
-      setStatus("loading");
-      setBalanceTinybars(undefined);
-      return;
-    }
+    if (address === undefined) return;
     let cancelled = false;
+    // Codex review: two overlapping polls (a slow request outlasting the next 15s tick) could
+    // otherwise land out of order and let an older response overwrite a newer one - only the
+    // most-recently-STARTED request's result is ever applied.
+    let latestSeq = 0;
     const fetchBalance = async () => {
+      const seq = ++latestSeq;
       try {
         const account = await resolveHederaAccount(
           address,
           getConfig().mirrorNodeUrl,
         );
-        if (cancelled) return;
-        setBalanceTinybars(account?.balanceTinybars);
-        setStatus("ready");
+        if (cancelled || seq !== latestSeq) return;
+        setResult({
+          address,
+          status: "ready",
+          balanceTinybars: account?.balanceTinybars,
+        });
       } catch {
-        if (!cancelled) setStatus("error");
+        if (cancelled || seq !== latestSeq) return;
+        setResult({ address, status: "error", balanceTinybars: undefined });
       }
     };
-    setStatus("loading");
     fetchBalance();
     const interval = setInterval(fetchBalance, BALANCE_POLL_INTERVAL_MS);
     return () => {
@@ -152,7 +163,12 @@ export function useWalletBalance(address: Address | undefined): {
     };
   }, [address]);
 
-  return { status, label: formatBalanceLabel(status, balanceTinybars) };
+  const current = result?.address === address ? result : undefined;
+  const status = current?.status ?? "loading";
+  return {
+    status,
+    label: formatBalanceLabel(status, current?.balanceTinybars),
+  };
 }
 
 /** EIP-712 (auth challenges) and raw-hash (Hedera transaction) signatures from the wallet. */

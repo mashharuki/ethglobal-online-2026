@@ -68,6 +68,9 @@ describe("formatBalanceLabel", () => {
 
   it("should show a fixed message on error, not a stale or zero balance", () => {
     expect(formatBalanceLabel("error", undefined)).toBe("balance unavailable");
+    expect(formatBalanceLabel("error", 100_000_000n)).toBe(
+      "balance unavailable",
+    );
   });
 
   it("should show 0 ℏ when the Mirror Node has no account yet (not funded/lazy-created)", () => {
