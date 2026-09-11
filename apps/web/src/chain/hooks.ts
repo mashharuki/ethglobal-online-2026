@@ -109,11 +109,6 @@ export function formatBalanceLabel(
 }
 
 type BalanceResult = {
-  /** the address this result belongs to - lets a stale result be detected and ignored even
-   * after `address` itself has already changed (Codex review: without this, switching wallets
-   * briefly shows the PREVIOUS wallet's balance next to the NEW wallet's address, because React
-   * re-renders with the new `address` prop before this hook's effect has a chance to reset). */
-  address: Address;
   status: WalletBalanceStatus;
   balanceTinybars: bigint | undefined;
 };
@@ -128,31 +123,49 @@ export function useWalletBalance(address: Address | undefined): {
   status: WalletBalanceStatus;
   label: string;
 } {
+  // React's documented "adjust state during render" pattern (react.dev/learn/you-might-not-
+  // need-an-effect#adjusting-some-state-when-a-prop-changes), not an extra effect: the instant
+  // `address` differs from the last-seen value, reset `result` in the SAME render (React
+  // discards this render and re-renders immediately, before paint) rather than one render later
+  // via an effect. Codex review, 2 rounds: without this, switching wallets briefly shows the
+  // PREVIOUS wallet's balance next to the NEW address (render-before-effect timing), and
+  // returning to a PREVIOUSLY-SEEN address (A -> B -> A) would resurrect A's stale old result
+  // instead of showing "loading" while it re-fetches.
+  const [session, setSession] = useState(address);
   const [result, setResult] = useState<BalanceResult | undefined>(undefined);
+  if (address !== session) {
+    setSession(address);
+    setResult(undefined);
+  }
 
   useEffect(() => {
     if (address === undefined) return;
     let cancelled = false;
     // Codex review: two overlapping polls (a slow request outlasting the next 15s tick) could
-    // otherwise land out of order and let an older response overwrite a newer one - only the
-    // most-recently-STARTED request's result is ever applied.
-    let latestSeq = 0;
+    // otherwise land out of order and let an older response overwrite a newer one. Guard against
+    // an OUT-OF-ORDER response (one older than whatever was last applied), not merely a response
+    // that isn't the newest STARTED request - the latter would starve updates entirely whenever
+    // every single fetch is slower than the poll interval (each response would always find a
+    // newer one already in flight and get discarded, round 2 of this same review).
+    let nextSeq = 0;
+    let lastAppliedSeq = 0;
     const fetchBalance = async () => {
-      const seq = ++latestSeq;
+      const seq = ++nextSeq;
       try {
         const account = await resolveHederaAccount(
           address,
           getConfig().mirrorNodeUrl,
         );
-        if (cancelled || seq !== latestSeq) return;
+        if (cancelled || seq <= lastAppliedSeq) return;
+        lastAppliedSeq = seq;
         setResult({
-          address,
           status: "ready",
           balanceTinybars: account?.balanceTinybars,
         });
       } catch {
-        if (cancelled || seq !== latestSeq) return;
-        setResult({ address, status: "error", balanceTinybars: undefined });
+        if (cancelled || seq <= lastAppliedSeq) return;
+        lastAppliedSeq = seq;
+        setResult({ status: "error", balanceTinybars: undefined });
       }
     };
     fetchBalance();
@@ -163,11 +176,10 @@ export function useWalletBalance(address: Address | undefined): {
     };
   }, [address]);
 
-  const current = result?.address === address ? result : undefined;
-  const status = current?.status ?? "loading";
+  const status = result?.status ?? "loading";
   return {
     status,
-    label: formatBalanceLabel(status, current?.balanceTinybars),
+    label: formatBalanceLabel(status, result?.balanceTinybars),
   };
 }
 
