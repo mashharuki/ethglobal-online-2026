@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "1.0",
+  "assetId": "GENERATED_BY_CREATOR",
+  "nftContract": "FROM_CONNECTED_DEPLOYMENT",
+  "tokenId": "PREDICTED_BY_CREATOR",
+  "previewURI": "ipfs://REPLACE_WITH_PREVIEW_CID",
+  "encryptedContentURI": "ipfs://REPLACE_WITH_CONTENT_ENC_CID",
+  "contentHash": "GENERATED_FROM_ENCRYPTED_BYTES",
+  "keyGate": {
+    "scheme": "xor-2share",
+    "keyGateVersion": 1,
+    "conditionsHash": "GENERATED_BY_CREATOR",
+    "ownerCondition": "ownerOf(tokenId) == caller",
+    "licenseCondition": "hasValidConsumption(receiptHash, useIndex)"
+  },
+  "ownerAccess": {
+    "price": "0",
+    "durationSec": 3600
+  },
+  "paidAccess": {
+    "price": "100000000000000000",
+    "durationSec": 3600,
+    "maxUses": 3
+  },
+  "permissions": {
+    "commercialUse": false,
+    "aiTraining": false,
+    "derivativeGeneration": true
+  },
+  "transferMode": "SURVIVE_TRANSFER",
+  "revenueSplit": {
+    "creatorBps": 7000,
+    "ownerBps": 3000
+  }
+}

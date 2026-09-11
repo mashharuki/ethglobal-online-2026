@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import { registerAdminRoutes } from "./admin";
 import { registerAgentGrantRoutes } from "./agentGrants";
 import { registerAuditRoutes } from "./audit";
+import { registerCreatorUploadRoutes } from "./creatorUploads";
 import { registerGraphRoutes } from "./graph";
 import { registerKeygateRoutes } from "./keygate";
 import { registerMcpRoutes } from "./mcp";
@@ -14,6 +15,7 @@ import { registerX402Routes } from "./x402";
 
 /** Mounts every HTTP route (tasks.md T086-T091). `services` must already be set on the context. */
 export function registerRoutes(app: Hono<AppEnv>): void {
+  registerCreatorUploadRoutes(app);
   registerPreviewRoutes(app);
   registerOwnerRoutes(app);
   registerKeygateRoutes(app);

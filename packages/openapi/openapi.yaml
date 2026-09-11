@@ -43,6 +43,39 @@ tags:
   - name: mcp
     description: MCP server for AI clients (FR-026, Streamable HTTP)
 paths:
+  /creator/uploads:
+    post:
+      operationId: createCreatorUpload
+      summary: Issue a short-lived Pinata upload capability
+      description: Requires a Privy access token. URL is a reusable bearer capability until expiry; never log it. MIME restrictions do not verify encryption.
+      tags: [admin]
+      security:
+        - PrivyAccessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatorUploadRequest"
+      responses:
+        "200":
+          description: Upload authorization (Cache-Control no-store)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatorUploadResponse"
+        "400":
+          description: Invalid upload purpose, MIME type, size, or JSON
+        "401":
+          description: Invalid Privy access token
+        "413":
+          description: Request body exceeds 2048 bytes
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "502":
+          description: Pinata could not authorize an upload
+        "503":
+          description: Pinata uploads are not configured
   /healthz:
     get:
       operationId: getHealth
@@ -529,7 +562,38 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
 
+  securitySchemes:
+    PrivyAccessToken:
+      type: http
+      scheme: bearer
+      bearerFormat: Privy JWT
   schemas:
+    CreatorUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [purpose, size, mimeType]
+      properties:
+        purpose:
+          type: string
+          enum: [preview, encrypted-content, manifest]
+        size:
+          type: integer
+          minimum: 1
+          maximum: 26214400
+        mimeType:
+          type: string
+          enum: [image/png, image/jpeg, image/webp, application/json, application/octet-stream]
+      description: Preview max 10 MiB (PNG/JPEG/WebP/JSON), encrypted-content max 25 MiB (octet-stream), manifest max 256 KiB (JSON).
+    CreatorUploadResponse:
+      type: object
+      required: [signedUrl, expiresIn]
+      properties:
+        signedUrl:
+          type: string
+          format: uri
+        expiresIn:
+          type: integer
+          const: 60
     Bytes32:
       type: string
       pattern: "^0x[0-9a-fA-F]{64}$"

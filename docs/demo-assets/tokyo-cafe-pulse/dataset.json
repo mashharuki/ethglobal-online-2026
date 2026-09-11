@@ -1,0 +1,747 @@
+{
+  "title": "Tokyo Cafe Pulse — Synthetic Demo Dataset",
+  "schemaVersion": "1.0",
+  "synthetic": true,
+  "disclaimer": "All records are fictional and generated for the TrueCollective hackathon demo. They do not describe real cafes, customers or business performance. Access controls demonstrate software behavior, not exclusive ownership of these synthetic records.",
+  "period": {
+    "start": "2026-08-01",
+    "end": "2026-08-30",
+    "timezone": "Asia/Tokyo"
+  },
+  "rowCount": 90,
+  "dataDictionary": {
+    "date": "Local calendar date, YYYY-MM-DD",
+    "district": "Fictional district-level cafe aggregate, not a named business",
+    "visitors": "Synthetic daily visits, not unique people",
+    "avgSpendJpy": "Synthetic mean spend per visit in JPY",
+    "peakHour": "Busiest hour, integer 0–23 in Asia/Tokyo",
+    "isWeekend": "True for Saturday or Sunday"
+  },
+  "analysisPrompts": [
+    "Compare total visits and estimated revenue by district. Estimate revenue as visitors * avgSpendJpy and label it as an estimate.",
+    "Compare mean daily visits on weekdays and weekends for each district.",
+    "Recommend a district for a fictional cafe pilot using volume, spend and peak-hour evidence. State the limitations of synthetic data."
+  ],
+  "rows": [
+    {
+      "date": "2026-08-01",
+      "district": "Shibuya",
+      "visitors": 2296,
+      "avgSpendJpy": 1190,
+      "peakHour": 15,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-01",
+      "district": "Shinjuku",
+      "visitors": 2641,
+      "avgSpendJpy": 1090,
+      "peakHour": 13,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-01",
+      "district": "Nakameguro",
+      "visitors": 826,
+      "avgSpendJpy": 1530,
+      "peakHour": 16,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-02",
+      "district": "Shibuya",
+      "visitors": 2190,
+      "avgSpendJpy": 1220,
+      "peakHour": 15,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-02",
+      "district": "Shinjuku",
+      "visitors": 2747,
+      "avgSpendJpy": 1070,
+      "peakHour": 13,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-02",
+      "district": "Nakameguro",
+      "visitors": 930,
+      "avgSpendJpy": 1470,
+      "peakHour": 16,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-03",
+      "district": "Shibuya",
+      "visitors": 1751,
+      "avgSpendJpy": 1230,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-03",
+      "district": "Shinjuku",
+      "visitors": 2188,
+      "avgSpendJpy": 1140,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-03",
+      "district": "Nakameguro",
+      "visitors": 762,
+      "avgSpendJpy": 1440,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-04",
+      "district": "Shibuya",
+      "visitors": 1832,
+      "avgSpendJpy": 1200,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-04",
+      "district": "Shinjuku",
+      "visitors": 2154,
+      "avgSpendJpy": 1110,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-04",
+      "district": "Nakameguro",
+      "visitors": 771,
+      "avgSpendJpy": 1530,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-05",
+      "district": "Shibuya",
+      "visitors": 1853,
+      "avgSpendJpy": 1210,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-05",
+      "district": "Shinjuku",
+      "visitors": 2303,
+      "avgSpendJpy": 1110,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-05",
+      "district": "Nakameguro",
+      "visitors": 776,
+      "avgSpendJpy": 1540,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-06",
+      "district": "Shibuya",
+      "visitors": 1883,
+      "avgSpendJpy": 1190,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-06",
+      "district": "Shinjuku",
+      "visitors": 2248,
+      "avgSpendJpy": 1020,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-06",
+      "district": "Nakameguro",
+      "visitors": 743,
+      "avgSpendJpy": 1550,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-07",
+      "district": "Shibuya",
+      "visitors": 1893,
+      "avgSpendJpy": 1260,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-07",
+      "district": "Shinjuku",
+      "visitors": 2176,
+      "avgSpendJpy": 1080,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-07",
+      "district": "Nakameguro",
+      "visitors": 674,
+      "avgSpendJpy": 1520,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-08",
+      "district": "Shibuya",
+      "visitors": 2270,
+      "avgSpendJpy": 1140,
+      "peakHour": 15,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-08",
+      "district": "Shinjuku",
+      "visitors": 2747,
+      "avgSpendJpy": 1120,
+      "peakHour": 13,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-08",
+      "district": "Nakameguro",
+      "visitors": 980,
+      "avgSpendJpy": 1430,
+      "peakHour": 16,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-09",
+      "district": "Shibuya",
+      "visitors": 2321,
+      "avgSpendJpy": 1170,
+      "peakHour": 15,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-09",
+      "district": "Shinjuku",
+      "visitors": 2826,
+      "avgSpendJpy": 1040,
+      "peakHour": 13,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-09",
+      "district": "Nakameguro",
+      "visitors": 864,
+      "avgSpendJpy": 1430,
+      "peakHour": 16,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-10",
+      "district": "Shibuya",
+      "visitors": 1898,
+      "avgSpendJpy": 1190,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-10",
+      "district": "Shinjuku",
+      "visitors": 2166,
+      "avgSpendJpy": 1100,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-10",
+      "district": "Nakameguro",
+      "visitors": 697,
+      "avgSpendJpy": 1530,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-11",
+      "district": "Shibuya",
+      "visitors": 1868,
+      "avgSpendJpy": 1160,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-11",
+      "district": "Shinjuku",
+      "visitors": 2296,
+      "avgSpendJpy": 1120,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-11",
+      "district": "Nakameguro",
+      "visitors": 782,
+      "avgSpendJpy": 1530,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-12",
+      "district": "Shibuya",
+      "visitors": 1925,
+      "avgSpendJpy": 1210,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-12",
+      "district": "Shinjuku",
+      "visitors": 2326,
+      "avgSpendJpy": 1120,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-12",
+      "district": "Nakameguro",
+      "visitors": 692,
+      "avgSpendJpy": 1550,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-13",
+      "district": "Shibuya",
+      "visitors": 1780,
+      "avgSpendJpy": 1240,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-13",
+      "district": "Shinjuku",
+      "visitors": 2255,
+      "avgSpendJpy": 1140,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-13",
+      "district": "Nakameguro",
+      "visitors": 793,
+      "avgSpendJpy": 1540,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-14",
+      "district": "Shibuya",
+      "visitors": 1822,
+      "avgSpendJpy": 1170,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-14",
+      "district": "Shinjuku",
+      "visitors": 2208,
+      "avgSpendJpy": 1090,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-14",
+      "district": "Nakameguro",
+      "visitors": 783,
+      "avgSpendJpy": 1540,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-15",
+      "district": "Shibuya",
+      "visitors": 2373,
+      "avgSpendJpy": 1230,
+      "peakHour": 15,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-15",
+      "district": "Shinjuku",
+      "visitors": 2798,
+      "avgSpendJpy": 1070,
+      "peakHour": 13,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-15",
+      "district": "Nakameguro",
+      "visitors": 891,
+      "avgSpendJpy": 1540,
+      "peakHour": 16,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-16",
+      "district": "Shibuya",
+      "visitors": 2336,
+      "avgSpendJpy": 1190,
+      "peakHour": 15,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-16",
+      "district": "Shinjuku",
+      "visitors": 2858,
+      "avgSpendJpy": 1030,
+      "peakHour": 13,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-16",
+      "district": "Nakameguro",
+      "visitors": 936,
+      "avgSpendJpy": 1440,
+      "peakHour": 16,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-17",
+      "district": "Shibuya",
+      "visitors": 1850,
+      "avgSpendJpy": 1170,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-17",
+      "district": "Shinjuku",
+      "visitors": 2308,
+      "avgSpendJpy": 1040,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-17",
+      "district": "Nakameguro",
+      "visitors": 757,
+      "avgSpendJpy": 1430,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-18",
+      "district": "Shibuya",
+      "visitors": 1947,
+      "avgSpendJpy": 1260,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-18",
+      "district": "Shinjuku",
+      "visitors": 2270,
+      "avgSpendJpy": 1110,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-18",
+      "district": "Nakameguro",
+      "visitors": 820,
+      "avgSpendJpy": 1500,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-19",
+      "district": "Shibuya",
+      "visitors": 1918,
+      "avgSpendJpy": 1250,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-19",
+      "district": "Shinjuku",
+      "visitors": 2306,
+      "avgSpendJpy": 1070,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-19",
+      "district": "Nakameguro",
+      "visitors": 795,
+      "avgSpendJpy": 1470,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-20",
+      "district": "Shibuya",
+      "visitors": 1816,
+      "avgSpendJpy": 1250,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-20",
+      "district": "Shinjuku",
+      "visitors": 2206,
+      "avgSpendJpy": 1140,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-20",
+      "district": "Nakameguro",
+      "visitors": 698,
+      "avgSpendJpy": 1540,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-21",
+      "district": "Shibuya",
+      "visitors": 1916,
+      "avgSpendJpy": 1190,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-21",
+      "district": "Shinjuku",
+      "visitors": 2265,
+      "avgSpendJpy": 1130,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-21",
+      "district": "Nakameguro",
+      "visitors": 789,
+      "avgSpendJpy": 1430,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-22",
+      "district": "Shibuya",
+      "visitors": 2365,
+      "avgSpendJpy": 1240,
+      "peakHour": 15,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-22",
+      "district": "Shinjuku",
+      "visitors": 2805,
+      "avgSpendJpy": 1140,
+      "peakHour": 13,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-22",
+      "district": "Nakameguro",
+      "visitors": 957,
+      "avgSpendJpy": 1480,
+      "peakHour": 16,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-23",
+      "district": "Shibuya",
+      "visitors": 2399,
+      "avgSpendJpy": 1140,
+      "peakHour": 15,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-23",
+      "district": "Shinjuku",
+      "visitors": 2810,
+      "avgSpendJpy": 1140,
+      "peakHour": 13,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-23",
+      "district": "Nakameguro",
+      "visitors": 915,
+      "avgSpendJpy": 1520,
+      "peakHour": 16,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-24",
+      "district": "Shibuya",
+      "visitors": 1807,
+      "avgSpendJpy": 1250,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-24",
+      "district": "Shinjuku",
+      "visitors": 2262,
+      "avgSpendJpy": 1080,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-24",
+      "district": "Nakameguro",
+      "visitors": 839,
+      "avgSpendJpy": 1510,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-25",
+      "district": "Shibuya",
+      "visitors": 1940,
+      "avgSpendJpy": 1150,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-25",
+      "district": "Shinjuku",
+      "visitors": 2289,
+      "avgSpendJpy": 1030,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-25",
+      "district": "Nakameguro",
+      "visitors": 804,
+      "avgSpendJpy": 1450,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-26",
+      "district": "Shibuya",
+      "visitors": 1901,
+      "avgSpendJpy": 1140,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-26",
+      "district": "Shinjuku",
+      "visitors": 2251,
+      "avgSpendJpy": 1070,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-26",
+      "district": "Nakameguro",
+      "visitors": 726,
+      "avgSpendJpy": 1480,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-27",
+      "district": "Shibuya",
+      "visitors": 1834,
+      "avgSpendJpy": 1250,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-27",
+      "district": "Shinjuku",
+      "visitors": 2290,
+      "avgSpendJpy": 1060,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-27",
+      "district": "Nakameguro",
+      "visitors": 738,
+      "avgSpendJpy": 1430,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-28",
+      "district": "Shibuya",
+      "visitors": 1970,
+      "avgSpendJpy": 1160,
+      "peakHour": 14,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-28",
+      "district": "Shinjuku",
+      "visitors": 2367,
+      "avgSpendJpy": 1130,
+      "peakHour": 12,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-28",
+      "district": "Nakameguro",
+      "visitors": 840,
+      "avgSpendJpy": 1440,
+      "peakHour": 15,
+      "isWeekend": false
+    },
+    {
+      "date": "2026-08-29",
+      "district": "Shibuya",
+      "visitors": 2295,
+      "avgSpendJpy": 1210,
+      "peakHour": 15,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-29",
+      "district": "Shinjuku",
+      "visitors": 2910,
+      "avgSpendJpy": 1120,
+      "peakHour": 13,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-29",
+      "district": "Nakameguro",
+      "visitors": 894,
+      "avgSpendJpy": 1470,
+      "peakHour": 16,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-30",
+      "district": "Shibuya",
+      "visitors": 2340,
+      "avgSpendJpy": 1160,
+      "peakHour": 15,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-30",
+      "district": "Shinjuku",
+      "visitors": 2954,
+      "avgSpendJpy": 1020,
+      "peakHour": 13,
+      "isWeekend": true
+    },
+    {
+      "date": "2026-08-30",
+      "district": "Nakameguro",
+      "visitors": 950,
+      "avgSpendJpy": 1440,
+      "peakHour": 16,
+      "isWeekend": true
+    }
+  ]
+}

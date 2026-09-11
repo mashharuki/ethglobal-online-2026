@@ -60,6 +60,7 @@ export type Env = {
    */
   MCP_AUTH_REQUIRED: string;
   // secrets (wrangler secret put / .dev.vars)
+  PINATA_JWT?: string;
   HEDERA_OPERATOR_KEY?: string;
   RECEIPT_SIGNER_KEY?: string;
   KV_KEK?: string;
