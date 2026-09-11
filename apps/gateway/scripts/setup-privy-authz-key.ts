@@ -14,8 +14,9 @@
  *   PRIVY_APP_ID=<app id> PRIVY_APP_SECRET=<app secret> \
  *   pnpm --filter gateway exec tsx scripts/setup-privy-authz-key.ts
  */
-import { generateKeyPairSync } from "node:crypto";
+
 import { spawnSync } from "node:child_process";
+import { generateKeyPairSync } from "node:crypto";
 import { PrivyClient } from "@privy-io/node";
 
 function requireEnv(name: string): string {
@@ -67,7 +68,9 @@ async function main(): Promise<void> {
   }
 
   console.log("");
-  console.log("Done. Add this non-secret id to apps/gateway/wrangler.toml [vars]:");
+  console.log(
+    "Done. Add this non-secret id to apps/gateway/wrangler.toml [vars]:",
+  );
   console.log(`  PRIVY_SIGNER_QUORUM_ID = "${quorum.id}"`);
   console.log("Then redeploy: pnpm --filter gateway exec wrangler deploy");
 }
