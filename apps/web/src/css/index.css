@@ -267,6 +267,11 @@ code {
   border-color: color-mix(in srgb, var(--ok) 65%, var(--border));
 }
 
+.creator-upload.is-compact {
+  min-height: 96px;
+  padding: 0.9rem 1rem;
+}
+
 .creator-upload-icon {
   display: grid;
   width: 48px;
@@ -385,6 +390,16 @@ code {
   font-weight: 800;
 }
 
+.creator-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.creator-preview-actions span {
+  color: var(--text-dim);
+}
+
 @media (max-width: 640px) {
   .creator-upload {
     grid-template-columns: auto minmax(0, 1fr);
@@ -393,6 +408,11 @@ code {
   .creator-upload-button {
     grid-column: 1 / -1;
     text-align: center;
+  }
+
+  .creator-preview-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

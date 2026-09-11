@@ -73,12 +73,21 @@ export default function Creator() {
   >();
   const [encrypting, setEncrypting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [previewFile, setPreviewFile] = useState<File | undefined>();
+  const [previewDragActive, setPreviewDragActive] = useState(false);
 
   const setDraft = (value: typeof draft) => {
     setDraftState(value);
     setManifestURI("");
   };
   const isLocked = busy !== undefined || encrypting;
+
+  const selectPreview = (file: File) => {
+    setPreviewFile(file);
+    setDraftState((current) => ({ ...current, previewURI: "" }));
+    setManifestURI("");
+    setError(undefined);
+  };
 
   // the two shares together are the content key: they leave memory with the component
   useEffect(
@@ -512,18 +521,102 @@ export default function Creator() {
               </label>
             ))}
           </div>
-          <label className="block text-sm">
-            Upload public preview (PNG, JPEG, WebP, or JSON; max 10 MiB)
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp,application/json"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                if (file) void upload("preview", file);
+          <div className="md:col-span-2 space-y-2">
+            <div>
+              <strong className="text-sm text-[var(--text-h)]">
+                Public preview
+              </strong>
+              <p className="creator-upload-intro">
+                Choose the image buyers can see before purchasing access.
+              </p>
+            </div>
+            {/* biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop supplements
+              the labelled file input, which remains keyboard and screen-reader accessible. */}
+            <div
+              className={`creator-upload is-compact${
+                previewDragActive ? " is-dragging" : ""
+              }${draft.previewURI ? " is-ready" : ""}`}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                setPreviewDragActive(true);
               }}
-            />
-          </label>
+              onDragOver={(event) => {
+                event.preventDefault();
+                setPreviewDragActive(true);
+              }}
+              onDragLeave={(event) => {
+                if (
+                  !event.currentTarget.contains(event.relatedTarget as Node)
+                ) {
+                  setPreviewDragActive(false);
+                }
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                setPreviewDragActive(false);
+                const file = event.dataTransfer.files[0];
+                if (file !== undefined) selectPreview(file);
+              }}
+            >
+              <div className="creator-upload-icon" aria-hidden="true">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                  <path d="M4 17l4.8-5 3.4 3.4 2.2-2.2L20 19" />
+                  <path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" />
+                  <path d="M15.5 9.5h.01" />
+                </svg>
+              </div>
+              <div className="creator-upload-copy">
+                <strong>
+                  {previewDragActive
+                    ? "Drop the preview here"
+                    : (previewFile?.name ?? "Choose a public preview")}
+                </strong>
+                <span>
+                  {previewFile === undefined
+                    ? "PNG, JPEG, WebP or JSON · up to 10 MiB"
+                    : `${(previewFile.size / 1024).toLocaleString(undefined, {
+                        maximumFractionDigits: 1,
+                      })} KB · ${draft.previewURI ? "Uploaded to IPFS" : "Ready to upload"}`}
+                </span>
+              </div>
+              <label
+                className="creator-upload-button"
+                htmlFor="creator-preview"
+              >
+                {previewFile === undefined ? "Choose file" : "Replace file"}
+              </label>
+              <input
+                id="creator-preview"
+                className="creator-file-input"
+                type="file"
+                accept="image/png,image/jpeg,image/webp,application/json"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file !== undefined) selectPreview(file);
+                  event.target.value = "";
+                }}
+              />
+            </div>
+            <div className="creator-preview-actions">
+              <button
+                type="button"
+                className="btn primary"
+                disabled={previewFile === undefined || !!draft.previewURI}
+                onClick={() =>
+                  previewFile && void upload("preview", previewFile)
+                }
+              >
+                {draft.previewURI
+                  ? "Preview uploaded"
+                  : "Upload preview to IPFS"}
+              </button>
+              <span className="text-sm">
+                {draft.previewURI
+                  ? "✓ The preview URI was added below."
+                  : "The selected file will be public."}
+              </span>
+            </div>
+          </div>
           {field(
             "preview URI (public; manual fallback)",
             <input
