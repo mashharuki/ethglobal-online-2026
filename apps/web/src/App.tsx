@@ -1,6 +1,6 @@
 import { usePrivy } from "@privy-io/react-auth";
 import { NavLink, Outlet } from "react-router";
-import { useEmbeddedWallet } from "./chain/hooks";
+import { useEmbeddedWallet, useWalletBalance } from "./chain/hooks";
 import { short } from "./graph/queries";
 
 /**
@@ -12,6 +12,7 @@ import { short } from "./graph/queries";
 export default function App() {
   const { ready, authenticated, login, logout } = usePrivy();
   const wallet = useEmbeddedWallet();
+  const balance = useWalletBalance(wallet.address);
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 space-y-4">
       <header className="topbar">
@@ -40,6 +41,14 @@ export default function App() {
                   ? "no wallet"
                   : short(wallet.address)}
               </code>
+              {wallet.address !== undefined && (
+                <span
+                  className="text-xs opacity-70"
+                  title="Hedera Testnet balance"
+                >
+                  {balance.label}
+                </span>
+              )}
               <button type="button" className="btn" onClick={() => logout()}>
                 Log out
               </button>

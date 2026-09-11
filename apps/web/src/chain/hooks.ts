@@ -1,6 +1,6 @@
 import { useWallets } from "@privy-io/react-auth";
 import type { Deployment } from "@truenft/shared";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type Address,
   createPublicClient,
@@ -13,7 +13,9 @@ import {
   parseEventLogs,
 } from "viem";
 import { hederaTestnet } from "viem/chains";
+import { formatHbar } from "../components/formatHbar";
 import { getConfig } from "../config";
+import { resolveHederaAccount } from "../hedera/resolveAccount";
 import { rightsNftAbi, rightsRegistryAbi } from "./abi";
 
 /**
@@ -84,6 +86,109 @@ export function useEmbeddedWallet(): EmbeddedWallet {
     ready,
     address: embedded?.address as Address | undefined,
     getProvider,
+  };
+}
+
+const BALANCE_POLL_INTERVAL_MS = 15_000;
+
+export type WalletBalanceStatus = "loading" | "ready" | "error";
+
+/**
+ * Pure formatting split out of `useWalletBalance` (same pattern as `selectPrimaryWallet`) so it
+ * can be unit tested without rendering the hook. `balanceTinybars === undefined` while
+ * `status === "ready"` means the Mirror Node has no account for this address yet (not funded /
+ * lazy-created) - resolveHederaAccount's own `null` return, not an error.
+ */
+export function formatBalanceLabel(
+  status: WalletBalanceStatus,
+  balanceTinybars: bigint | undefined,
+): string {
+  if (status === "loading") return "…";
+  if (status === "error") return "balance unavailable";
+  return balanceTinybars === undefined ? "0 ℏ" : formatHbar(balanceTinybars);
+}
+
+type BalanceResult = {
+  /** the address this result was fetched for. Belt-and-suspenders with the render-time reset
+   * below (Codex review round 3): a request started for address A can still resolve in the
+   * narrow window after a re-render already committed address B's reset (React's passive-effect
+   * cleanup for A, which sets `cancelled`, has not run yet) - filtering by address at READ time
+   * catches that window even though the render-time reset alone cannot. */
+  address: Address;
+  status: WalletBalanceStatus;
+  balanceTinybars: bigint | undefined;
+};
+
+/**
+ * The connected wallet's own HBAR balance, read straight from the Hedera Mirror Node (same
+ * source Market.tsx's purchase flow already uses via `resolveHederaAccount`, just displayed
+ * here instead of only being read internally). Polls every 15s so a purchase's effect on the
+ * balance shows up without a page reload.
+ */
+export function useWalletBalance(address: Address | undefined): {
+  status: WalletBalanceStatus;
+  label: string;
+} {
+  // React's documented "adjust state during render" pattern (react.dev/learn/you-might-not-
+  // need-an-effect#adjusting-some-state-when-a-prop-changes), not an extra effect: the instant
+  // `address` differs from the last-seen value, reset `result` in the SAME render (React
+  // discards this render and re-renders immediately, before paint) rather than one render later
+  // via an effect. Codex review, 3 rounds: without this, switching wallets briefly shows the
+  // PREVIOUS wallet's balance next to the NEW address (render-before-effect timing), and
+  // returning to a PREVIOUSLY-SEEN address (A -> B -> A) would resurrect A's stale old result
+  // instead of showing "loading" while it re-fetches. This alone doesn't close every window
+  // (see `BalanceResult.address` above), so it's combined with address-tagging at read time.
+  const [session, setSession] = useState(address);
+  const [result, setResult] = useState<BalanceResult | undefined>(undefined);
+  if (address !== session) {
+    setSession(address);
+    setResult(undefined);
+  }
+
+  useEffect(() => {
+    if (address === undefined) return;
+    let cancelled = false;
+    // Codex review: two overlapping polls (a slow request outlasting the next 15s tick) could
+    // otherwise land out of order and let an older response overwrite a newer one. Guard against
+    // an OUT-OF-ORDER response (one older than whatever was last applied), not merely a response
+    // that isn't the newest STARTED request - the latter would starve updates entirely whenever
+    // every single fetch is slower than the poll interval (each response would always find a
+    // newer one already in flight and get discarded, round 2 of this same review).
+    let nextSeq = 0;
+    let lastAppliedSeq = 0;
+    const fetchBalance = async () => {
+      const seq = ++nextSeq;
+      try {
+        const account = await resolveHederaAccount(
+          address,
+          getConfig().mirrorNodeUrl,
+        );
+        if (cancelled || seq <= lastAppliedSeq) return;
+        lastAppliedSeq = seq;
+        setResult({
+          address,
+          status: "ready",
+          balanceTinybars: account?.balanceTinybars,
+        });
+      } catch {
+        if (cancelled || seq <= lastAppliedSeq) return;
+        lastAppliedSeq = seq;
+        setResult({ address, status: "error", balanceTinybars: undefined });
+      }
+    };
+    fetchBalance();
+    const interval = setInterval(fetchBalance, BALANCE_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [address]);
+
+  const current = result?.address === address ? result : undefined;
+  const status = current?.status ?? "loading";
+  return {
+    status,
+    label: formatBalanceLabel(status, current?.balanceTinybars),
   };
 }
 

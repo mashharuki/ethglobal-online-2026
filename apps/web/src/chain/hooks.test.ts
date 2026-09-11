@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { selectPrimaryWallet } from "./hooks";
+import { formatBalanceLabel, selectPrimaryWallet } from "./hooks";
 
 /**
  * Regression test for the MCP OAuth remediation (specs/mcp-auth-remediation-plan.md):
@@ -57,5 +57,28 @@ describe("selectPrimaryWallet", () => {
     // both normalize to 0: the reduce keeps whichever it saw first, in either order
     expect(selectPrimaryWallet([negative, zero])).toBe(negative);
     expect(selectPrimaryWallet([zero, negative])).toBe(zero);
+  });
+});
+
+describe("formatBalanceLabel", () => {
+  it('should show "…" while loading, regardless of any stale balance value', () => {
+    expect(formatBalanceLabel("loading", undefined)).toBe("…");
+    expect(formatBalanceLabel("loading", 100_000_000n)).toBe("…");
+  });
+
+  it("should show a fixed message on error, not a stale or zero balance", () => {
+    expect(formatBalanceLabel("error", undefined)).toBe("balance unavailable");
+    expect(formatBalanceLabel("error", 100_000_000n)).toBe(
+      "balance unavailable",
+    );
+  });
+
+  it("should show 0 ℏ when the Mirror Node has no account yet (not funded/lazy-created)", () => {
+    expect(formatBalanceLabel("ready", undefined)).toBe("0 ℏ");
+  });
+
+  it("should format a resolved balance the same way formatHbar does", () => {
+    expect(formatBalanceLabel("ready", 150_000_000n)).toBe("1.5 ℏ");
+    expect(formatBalanceLabel("ready", 0n)).toBe("0 ℏ");
   });
 });
