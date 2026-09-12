@@ -4,15 +4,9 @@ import { Opening } from "./Opening";
 import { openingDefaults, openingSchema } from "./schema";
 import { DURATION_IN_FRAMES, FPS, HEIGHT, WIDTH } from "./theme";
 
-/**
- * TrueCollective — 30秒オープニング。
- * 1920×1080 / 30fps / 900フレーム。台本: docs/demo-video/opening-30s-ja.md
- *
- * 静止画チェック用の代表フレーム（`npx remotion still <id> --frame=<n>`）:
- *   冒頭      Opening --frame=60
- *   左右比較  Opening --frame=360
- *   収益      Opening --frame=520
- *   締め      Opening --frame=780
+/** English opening: 1920×1080 / 30 fps / 1008 frames.
+ * Script: docs/demo-video/opening-30s-en.md.
+ * Inspection frames: 190, 390, 620, 750, 930.
  */
 export const RemotionRoot: React.FC = () => {
   return (

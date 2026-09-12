@@ -25,7 +25,7 @@ export const MainTelop: React.FC<{
 
   return (
     <Interactive.Div
-      name="メインテロップ"
+      name="Headline"
       style={{
         opacity: interpolate(
           frame,

@@ -12,9 +12,9 @@ export const openingSchema = z.object({
   hasBgm: z.boolean(),
   /** 10–15秒: 実アプリのマーケット（素材カード / x402で購入 / survives-transfer）。画像 or 動画。 */
   coupleClip: z.string(),
-  /** 15–21秒 左: 所有者パスの無料アクセス拒否の実アプリ画面（監査ログ deny NOT_CURRENT_OWNER 等）。 */
+  /** 15–21秒 左: Owner free access deniedの実アプリ画面（Audit log deny NOT_CURRENT_OWNER 等）。 */
   contrastDenyClip: z.string(),
-  /** 15–21秒 右: 購入した利用権での復号継続の実アプリ画面（Viewer licensee path・use #1 of 5）。 */
+  /** 15–21秒 右: Decryption continues with a purchased licenseの実アプリ画面（Viewer licensee path・use #1 of 5）。 */
   contrastOkClip: z.string(),
   /** 21–27秒: 実決済の配分記録（Dashboard の Revenue allocations: owner + creator）。 */
   revenueClip: z.string(),
@@ -27,7 +27,7 @@ export type OpeningProps = z.infer<typeof openingSchema>;
  * 実収録が未提供の枠は空文字にして「素材待ち」表示に戻せる。
  */
 export const openingDefaults: OpeningProps = {
-  hasNarrationAudio: true, // public/audio/narration.m4a 配置済み
+  hasNarrationAudio: true, // User-provided English recording (2026-09-13).
   hasBgm: false,
   coupleClip: "footage/market.png",
   contrastDenyClip: "footage/audit-deny.png",

@@ -17,7 +17,7 @@ export const BrandLockup: React.FC<{
 }> = ({ width, variant = "dark", opacity = 1 }) => {
   return (
     <Img
-      name="TrueCollective ロゴ"
+      name="TrueCollective logo"
       src={staticFile("brand/truecollective-logo.png")}
       style={{
         width,

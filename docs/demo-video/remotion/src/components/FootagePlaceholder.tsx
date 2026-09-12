@@ -98,10 +98,10 @@ export const FootagePlaceholder: React.FC<{
         <div
           style={{ color: COLORS.textHeading, fontSize: 30, fontWeight: 700 }}
         >
-          <span style={{ color: COLORS.accent }}>● 素材待ち</span> — {paneTitle}
+          <span style={{ color: COLORS.accent }}>● Awaiting footage</span> — {paneTitle}
         </div>
         <div style={{ color: COLORS.textDim, fontSize: 20, fontWeight: 500 }}>
-          撮影すべき内容（偽の結果は描かない）:
+          Required footage (show actual results):
         </div>
         <ul
           style={{

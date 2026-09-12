@@ -6,7 +6,7 @@ import { FONT_FAMILY } from "../font";
 import { COLORS } from "../theme";
 
 /**
- * 27–30秒（3秒）。既存ロゴ + コピー「NFTの、その先へ。」だけ。
+ * 27–30秒（3秒）。既存ロゴ + コピー「Beyond the NFT.」だけ。
  * プレゼンスライドへの「つなぎ（butt-join ワイプ）」は削除済み。
  * 長い暗転・終了画面・再度の自己紹介は挟まない。最後はごく短いフェードで終わる。
  */
@@ -36,7 +36,7 @@ export const S6Close: React.FC = () => {
       >
         <BrandLockup width={720} />
         <Interactive.Div
-          name="締めコピー"
+          name="Closing tagline"
           style={{
             fontFamily: FONT_FAMILY,
             fontSize: 64,
@@ -45,7 +45,7 @@ export const S6Close: React.FC = () => {
             letterSpacing: "0.04em",
           }}
         >
-          NFTの、その先へ。
+          Beyond the NFT.
         </Interactive.Div>
       </div>
     </SafeArea>

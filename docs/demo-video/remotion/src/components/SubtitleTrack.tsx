@@ -73,7 +73,7 @@ export const SubtitleTrack: React.FC = () => {
       {SUBTITLE_CUES.map((cue) => (
         <Sequence
           key={cue.id}
-          name={`字幕 ${cue.id}`}
+          name={`Subtitle ${cue.id}`}
           from={cue.from}
           durationInFrames={cue.durationInFrames}
           layout="none"

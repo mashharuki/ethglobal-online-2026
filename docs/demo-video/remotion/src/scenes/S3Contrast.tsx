@@ -6,7 +6,7 @@ import { FONT_FAMILY } from "../font";
 import { COLORS } from "../theme";
 
 /**
- * 9–15秒。中心メッセージ: 所有者パスの無料アクセス拒否 と 購入者の有効な利用権による継続アクセスの対比。
+ * 9–15秒。中心メッセージ: Owner free access denied と 購入者の有効な利用権による継続アクセスの対比。
  * 実アプリのスクショを左右2画面で比較する。ラベル・状態表示は画面の外（上のバー）に出し、
  * スクショ本体と字幕のどちらとも重ねない。
  *
@@ -30,7 +30,7 @@ export const S3Contrast: React.FC<{ denyClip: string; okClip: string }> = ({
         }}
       >
         <Interactive.Div
-          name="対比テロップ"
+          name="Access comparison"
           style={{
             fontFamily: FONT_FAMILY,
             fontSize: 42,
@@ -40,9 +40,9 @@ export const S3Contrast: React.FC<{ denyClip: string; okClip: string }> = ({
             textAlign: "center",
           }}
         >
-          <span style={{ color: COLORS.deny }}>旧管理者：無料アクセス終了</span>
+          <span style={{ color: COLORS.deny }}>Previous manager: free access ends</span>
           {"　／　"}
-          <span style={{ color: COLORS.ok }}>購入企業：利用を継続</span>
+          <span style={{ color: COLORS.ok }}>Licensee: access continues</span>
         </Interactive.Div>
 
         <div
@@ -57,8 +57,7 @@ export const S3Contrast: React.FC<{ denyClip: string; okClip: string }> = ({
             background: "rgba(107,207,154,0.08)",
           }}
         >
-          継続条件: 移転後も存続するプラン（SURVIVE_TRANSFER）／
-          期限・残回数の範囲内に限る
+          Continued access: SURVIVE_TRANSFER plans only, within expiry and remaining uses.
         </div>
 
         <div
@@ -74,28 +73,28 @@ export const S3Contrast: React.FC<{ denyClip: string; okClip: string }> = ({
             src={denyClip || undefined}
             chrome="header"
             imageFit="contain"
-            paneTitle="所有者パスの無料アクセス拒否"
-            note="監査ログ"
-            stateWord={{ text: "無料アクセス：拒否", tone: "deny" }}
-            caption="所有者でないアカウントの owner_keygate は deny NOT_CURRENT_OWNER。"
+            paneTitle="Owner free access denied"
+            note="Audit log"
+            stateWord={{ text: "Free access: denied", tone: "deny" }}
+            caption="For a non-owner, owner_keygate returns deny NOT_CURRENT_OWNER."
             captureSpec={[
-              "移転前に購入企業が利用権を取得済みの同一トークン",
-              "移転後、旧所有者が無料アクセスを再試行 → 403 で拒否",
-              "取得済みファイルが消える演出はしない",
+              "Use the same token, with a license purchased before transfer",
+              "After transfer, the previous owner retries free access: denied with 403",
+              "Do not imply previously downloaded files disappear",
             ]}
           />
           <FootagePlaceholder
             src={okClip || undefined}
             chrome="header"
             imageFit="contain"
-            paneTitle="購入した利用権での復号継続"
+            paneTitle="Decryption continues with a purchased license"
             note="Viewer"
-            stateWord={{ text: "利用権：継続", tone: "ok" }}
-            caption="購入済みの利用権で復号（use #1 of 5）。ライセンスは SURVIVE_TRANSFER。"
+            stateWord={{ text: "License: active", tone: "ok" }}
+            caption="Decrypt with a purchased license (use #1 of 5). Policy: SURVIVE_TRANSFER."
             captureSpec={[
-              "同一トークン・移転をまたいで再アクセス",
-              "移転前に購入した利用権で復号",
-              "期限・残回数の範囲内であること",
+              "Access the same token again after transfer",
+              "Decrypt using a license purchased before transfer",
+              "Stay within expiry and remaining uses",
             ]}
           />
         </div>

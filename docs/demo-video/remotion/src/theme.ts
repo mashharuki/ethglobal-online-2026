@@ -8,9 +8,8 @@
 export const FPS = 30;
 export const WIDTH = 1920;
 export const HEIGHT = 1080;
-// 本人ナレーション（public/audio/narration.m4a、実測 32.49s）に尺を合わせた。
-// 台本の「30秒」は目標値で、音声・映像の速度は変えない方針のため実収録に合わせて拡張。
-export const DURATION_IN_FRAMES = 975; // 32.5秒
+// Full English human recording, rounded up to 30 fps; no speed changes.
+export const DURATION_IN_FRAMES = 1008; // 33.6 seconds
 
 /** apps/web のダークテーマ実値。色だけでなく状態の文字も必ず併記すること。 */
 export const COLORS = {
@@ -24,9 +23,9 @@ export const COLORS = {
   textDim: "#6b6377",
   accent: "#bd9aff",
   accentStrong: "#b680ff",
-  /** 継続（購入企業の利用が続く） */
+  /** 継続（Licenseeの利用が続く） */
   ok: "#6bcf9a",
-  /** 拒否（旧管理者の無料アクセス終了） */
+  /** 拒否（Previous managerの無料アクセス終了） */
   deny: "#e57a7a",
   warn: "#e0b45a",
 } as const;
@@ -58,9 +57,9 @@ export const TYPE = {
  * 「利用シーンの説明図、配分イメージ、実アプリ収録を区別できるラベルを付けてください。」
  */
 export const SOURCE_KIND = {
-  diagram: { label: "説明図", color: COLORS.accent },
-  allocation: { label: "配分イメージ", color: COLORS.warn },
-  footage: { label: "実アプリ画面", color: COLORS.ok },
+  diagram: { label: "Diagram", color: COLORS.accent },
+  allocation: { label: "Allocation diagram", color: COLORS.warn },
+  footage: { label: "Actual app", color: COLORS.ok },
 } as const;
 
 export type SourceKind = keyof typeof SOURCE_KIND;

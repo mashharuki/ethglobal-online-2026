@@ -6,11 +6,11 @@ import { SourceTag } from "./SourceTag";
 
 /**
  * 権利グラフ（説明図）。台本の中心構造:
- * - 上段: 旧管理者 → 新管理者 の接続（移転で切り替わる）
+ * - 上段: Previous manager → New manager の接続（移転で切り替わる）
  * - 中央: 一つの素材カード
- * - 下段: 購入企業 の利用権（移転をまたいで維持される）
+ * - 下段: Licensee の利用権（移転をまたいで維持される）
  *
- * S1 では上段が「切り替わりかける」、S5 では上段が「完成」する。購入企業の接続は常に維持。
+ * S1 では上段が「切り替わりかける」、S5 では上段が「完成」する。Licenseeの接続は常に維持。
  * 偽の実画面ではなく概念図なので、必ず SourceTag kind="diagram" を出す。
  */
 const Node: React.FC<{
@@ -91,7 +91,7 @@ export const RightsGraph: React.FC<{
       }}
     >
       <div style={{ alignSelf: "flex-start", marginBottom: 12 }}>
-        <SourceTag kind="diagram" note="利用シーンの例" />
+        <SourceTag kind="diagram" note="Example use case" />
       </div>
 
       <div
@@ -104,7 +104,7 @@ export const RightsGraph: React.FC<{
           gap: 12,
         }}
       >
-        {/* 上段: 旧管理者 → 新管理者 */}
+        {/* 上段: Previous manager → New manager */}
         <div
           style={{
             display: "flex",
@@ -114,7 +114,7 @@ export const RightsGraph: React.FC<{
           }}
         >
           <Node
-            title="旧管理者"
+            title="Previous manager"
             tone="dim"
             dim={interpolate(adminProgress, [0, 1], [1, 0.45])}
           />
@@ -127,7 +127,7 @@ export const RightsGraph: React.FC<{
             }}
           />
           <Node
-            title="新管理者"
+            title="New manager"
             tone={adminEdge === "done" ? "accent" : "neutral"}
             dim={interpolate(adminProgress, [0, 1], [0.5, 1])}
           />
@@ -153,7 +153,7 @@ export const RightsGraph: React.FC<{
             boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
           }}
         >
-          素材（NFT）
+          Asset (NFT)
           <div
             style={{
               fontSize: 20,
@@ -162,7 +162,7 @@ export const RightsGraph: React.FC<{
               marginTop: 3,
             }}
           >
-            キャラクター・ブランドの利用権
+            Character and brand usage rights
           </div>
         </div>
 
@@ -171,7 +171,7 @@ export const RightsGraph: React.FC<{
           opacity={buyerFocused ? buyerPulse : 0.8}
         />
 
-        {/* 下段: 購入企業（維持される） */}
+        {/* 下段: Licensee（維持される） */}
         <div
           style={{
             opacity: buyerFocused ? 1 : 0.9,
@@ -183,8 +183,8 @@ export const RightsGraph: React.FC<{
           }}
         >
           <Node
-            title="購入企業"
-            sub="購入済みの利用権 · 移転をまたいで維持"
+            title="Licensee"
+            sub="Purchased license · survives transfer"
             tone="ok"
           />
         </div>

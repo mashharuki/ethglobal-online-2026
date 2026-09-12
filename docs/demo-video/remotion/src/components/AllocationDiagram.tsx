@@ -6,8 +6,8 @@ import { SourceTag } from "./SourceTag";
 
 /**
  * 配分イメージ（説明図）。台本 15–20秒:
- * - これからの収益は Creator と 新管理者 へ
- * - Creator は固定、所有者側だけ 旧管理者 → 新管理者
+ * - これからの収益は Creator と New manager へ
+ * - Creator は固定、所有者側だけ Previous manager → New manager
  * - 過去（確定済み）の支払いは動かさない
  *
  * 数値は入れない（台本「台本にない数値・保証を追加しない」「実績数値は実決済後のみ」）。
@@ -74,7 +74,7 @@ export const AllocationDiagram: React.FC = () => {
         <SourceTag kind="allocation" />
       </div>
 
-      {/* 確定済みの収益: 変更なし */}
+      {/* Settled revenue: 変更なし */}
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
         <div
           style={{
@@ -84,11 +84,11 @@ export const AllocationDiagram: React.FC = () => {
             minWidth: 150,
           }}
         >
-          確定済みの収益
+          Settled revenue
         </div>
         <div style={{ display: "flex", gap: 10, opacity: 0.55 }}>
-          <Chip label="過去の支払い" tone="dim" sub="変更なし・ロック" />
-          <Chip label="過去の支払い" tone="dim" sub="変更なし・ロック" />
+          <Chip label="Past payments" tone="dim" sub="Unchanged · locked" />
+          <Chip label="Past payments" tone="dim" sub="Unchanged · locked" />
         </div>
       </div>
 
@@ -105,7 +105,7 @@ export const AllocationDiagram: React.FC = () => {
             minWidth: 150,
           }}
         >
-          次の利用料
+          Future usage fees
         </div>
         <div
           style={{
@@ -117,7 +117,7 @@ export const AllocationDiagram: React.FC = () => {
           }}
         />
         <div style={{ display: "flex", gap: 12 }}>
-          <Chip label="Creator" tone="ok" sub="配分は維持（固定）" />
+          <Chip label="Creator" tone="ok" sub="Share stays fixed" />
           <div style={{ position: "relative", minWidth: 210 }}>
             <div
               style={{
@@ -126,10 +126,10 @@ export const AllocationDiagram: React.FC = () => {
                 inset: 0,
               }}
             >
-              <Chip label="旧管理者" tone="dim" sub="これ以降は対象外" />
+              <Chip label="Previous manager" tone="dim" sub="No future share" />
             </div>
             <div style={{ opacity: ownerSwitch }}>
-              <Chip label="新管理者" tone="accent" sub="所有者側の配分先" />
+              <Chip label="New manager" tone="accent" sub="Receives owner share" />
             </div>
           </div>
         </div>
@@ -138,8 +138,7 @@ export const AllocationDiagram: React.FC = () => {
       <div
         style={{ fontFamily: FONT_FAMILY, color: COLORS.text, fontSize: 20 }}
       >
-        ※ 変わるのは未確定分の所有者側のみ。Creator
-        への配分と確定済みの収益は変わらない。
+        Only the owner share of future revenue changes. The creator share and settled revenue stay unchanged.
       </div>
     </div>
   );

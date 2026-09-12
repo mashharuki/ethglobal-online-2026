@@ -27,8 +27,8 @@ export const S2Couple: React.FC<{ clip: string }> = ({ clip }) => {
           appearAt={6}
           size={80}
           lines={[
-            { text: "所有権と利用権を、" },
-            { text: "ひとつのNFTで。", accent: true },
+            { text: "Ownership and usage rights." },
+            { text: "One NFT.", accent: true },
           ]}
         />
 
@@ -45,13 +45,13 @@ export const S2Couple: React.FC<{ clip: string }> = ({ clip }) => {
             src={clip || undefined}
             chrome="header"
             imageFit="contain"
-            paneTitle="実アプリ / Market（素材カード）"
+            paneTitle="Live app / Market (asset cards)"
             note="Market"
-            caption="素材は RightsNFT。移転をまたぐ扱いは素材ごとに設定（survives / invalidated on transfer）。購入は x402・HBAR。"
+            caption="Assets are RightsNFTs. Each asset sets whether licenses survive or are invalidated on transfer. Buy via x402 in HBAR."
             captureSpec={[
-              "素材カードから実 Viewer へ遷移するところ",
-              "NFT移転フォームで Transfer NFT を実行（署名・確定待ちを含む）",
-              "移転が確認された後の Viewer 画面（accessEpoch 更新済み）",
+              "Open the actual Viewer from an asset card",
+              "Use Transfer NFT, including signing and confirmation time",
+              "Show the Viewer after transfer confirmation (accessEpoch updated)",
             ]}
           />
           <div

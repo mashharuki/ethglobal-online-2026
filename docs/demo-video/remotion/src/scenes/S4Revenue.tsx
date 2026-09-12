@@ -10,7 +10,7 @@ import { COLORS } from "../theme";
  * 15–20秒。実画面の対比は「継続中」であることをリボンで残しつつ、下部に配分イメージ（説明図）と
  * 実決済の記録（実アプリ画面）を表示。Creator は固定、所有者側だけ 旧→新。過去は動かさない。
  * 実素材: docs/img/2.jpg → footage/dashboard-revenue.png（Revenue allocations: owner + creator, block単位）。
- * 台本テロップ: 次の利用料 → Creator ＋ 新管理者
+ * 台本テロップ: Future usage fees → Creator ＋ New manager
  */
 const Pill: React.FC<{ text: string; tone: "ok" | "deny" }> = ({
   text,
@@ -47,7 +47,7 @@ export const S4Revenue: React.FC<{ revenueClip: string }> = ({
         }}
       >
         <Interactive.Div
-          name="収益テロップ"
+          name="Revenue headline"
           style={{
             fontFamily: FONT_FAMILY,
             fontSize: 52,
@@ -56,11 +56,11 @@ export const S4Revenue: React.FC<{ revenueClip: string }> = ({
             textAlign: "center",
           }}
         >
-          次の利用料 → <span style={{ color: COLORS.ok }}>Creator</span> ＋{" "}
-          <span style={{ color: COLORS.accent }}>新管理者</span>
+          Future usage fees → <span style={{ color: COLORS.ok }}>Creator</span> ＋{" "}
+          <span style={{ color: COLORS.accent }}>New manager</span>
         </Interactive.Div>
 
-        {/* S3 の対比は継続中というリボン（実画面の比較を残したまま） */}
+        {/* S3 のAccess status continuesというリボン（実画面の比較を残したまま） */}
         <div
           style={{
             display: "flex",
@@ -76,10 +76,10 @@ export const S4Revenue: React.FC<{ revenueClip: string }> = ({
               color: COLORS.textDim,
             }}
           >
-            対比は継続中
+            Access status continues
           </span>
-          <Pill text="旧管理者：無料アクセス終了" tone="deny" />
-          <Pill text="購入企業：利用を継続" tone="ok" />
+          <Pill text="Previous manager: free access ends" tone="deny" />
+          <Pill text="Licensee: access continues" tone="ok" />
         </div>
 
         {/* 配分イメージ（説明図） */}
@@ -88,7 +88,8 @@ export const S4Revenue: React.FC<{ revenueClip: string }> = ({
             borderRadius: 16,
             border: `1px solid ${COLORS.border}`,
             background: `linear-gradient(155deg, ${COLORS.bg2}, ${COLORS.bg})`,
-            height: 262,
+            height: 310,
+            flexShrink: 0,
           }}
         >
           <AllocationDiagram />
@@ -106,7 +107,7 @@ export const S4Revenue: React.FC<{ revenueClip: string }> = ({
         >
           <SourceTag
             kind="footage"
-            note="Dashboard · 実決済の記録（owner ＋ creator）"
+            note="Dashboard · Actual settlement records (owner + creator)"
           />
           <div
             style={{
@@ -136,8 +137,7 @@ export const S4Revenue: React.FC<{ revenueClip: string }> = ({
                   color: COLORS.text,
                 }}
               >
-                素材待ち: Dashboard の Revenue allocations（owner + creator,
-                block単位の実記録）
+                Awaiting footage: Dashboard revenue allocations (owner + creator, actual per-block records)
               </div>
             )}
           </div>

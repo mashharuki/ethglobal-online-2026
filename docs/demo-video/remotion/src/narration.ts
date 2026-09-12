@@ -1,19 +1,14 @@
 import { FPS } from "./theme";
 
 /**
- * ナレーション（本人収録）。台本 docs/demo-video/opening-30s-ja.md 「ナレーションのみ」。
- *
- * 重要:
- * - 音声は「ユーザー提供の本人ナレーション」を使う。AI音声・速度変更は禁止（ETHOnline 提出規定）。
- * - `SUBTITLE_CUES` の from/durationInFrames は台本タイムラインに沿った字幕タイミングの初期値。
- *   実収録が届いたら、実際の発話の切れ目に合わせて調整する（映像側は速度変更しない）。
- * - 字幕は最大2行に収めるため、長い文は複数キューに分割している（読み上げは1続き）。
- * - `public/audio/narration.m4a` が未提供の間は字幕のみ表示し、無音でプレビューする。
+ * English translation of the five-part Japanese narration.
+ * Cues follow the English human recording supplied on 2026-09-13.
+ * Timing was checked with local word timestamps and silence detection.
+ * Audio and footage play at their original speed.
  */
-
 export type NarrationCue = {
   id: string;
-  /** 画面に焼き込む字幕テキスト（最大2行）。 */
+  /** Burned-in English subtitles, at most two lines. */
   text: string;
   from: number;
   durationInFrames: number;
@@ -21,88 +16,31 @@ export type NarrationCue = {
 
 const s = (sec: number) => Math.round(sec * FPS);
 
-/** 本人が読む原稿（5文）。字幕はこれを分割したもの。 */
+/** Caption transcript of the supplied recording, with light grammar normalization. */
 export const FULL_SCRIPT = [
-  '企業に貸し出した、ブランドの商材。管理する会社が変わるたびに、"誰が使えて、料金は誰に入るのか"を毎回手作業で整理し直しています。',
-  "TrueCollectiveでは NFTをリビルドしこの課題を簡単に終わらせます。",
-  "移転が完了したら前の管理者の無料アクセスはそこで終了。企業が買った利用権は、期限まで有効なまま。",
-  "次の利用料はクリエイターと新しい管理者へ。すでに払われた分は、動かしません。",
-  "所有権と利用権を一体に管理し、TrueCollectiveはNFTの真の価値を再定義します。",
+  "When brand assets are used by companies, access and revenue can get harder to manage when the owner changes.",
+  "TrueCollective makes this simple by giving NFTs a new role.",
+  "When the NFT moves to a new owner, the old owner’s free access ends, but paid access stays active until the end date.",
+  "New fees go to the creator and the new owner.",
+  "TrueCollective brings ownership and access rights together and gives NFTs a new meaning."
 ];
 
-/**
- * タイミングは本人ナレーション（public/audio/narration.m4a）を
- * `ffmpeg silencedetect` で解析した無音区間に合わせて同期済み（音声は速度変更しない）。
- * 文の切れ目（秒）: 0.97 / 3.18–3.78 / 8.10–9.40 / 12.04–12.42 / 14.10–15.16 /
- *   18.91–19.56 / 22.42–23.12 / 26.20–27.30 / 31.70。
- */
 export const SUBTITLE_CUES: NarrationCue[] = [
-  // 文1（問題提起）: 0.97–8.10
-  { id: "l1a", text: "企業に貸し出した、ブランドの商材。", from: s(0.9), durationInFrames: s(2.5) },
-  { id: "l1b", text: "管理する会社が変わるたびに、", from: s(3.75), durationInFrames: s(1.95) },
-  {
-    id: "l1c",
-    text: '"誰が使えて、料金は誰に入るのか"を\n毎回手作業で整理し直しています。',
-    from: s(5.75),
-    durationInFrames: s(2.35),
-  },
-  // 文2: 9.40–14.10（内部の間 12.04–12.42 で切替）
-  {
-    id: "l2a",
-    text: "TrueCollectiveでは NFTをリビルドし",
-    from: s(9.4),
-    durationInFrames: s(2.6),
-  },
-  {
-    id: "l2b",
-    text: "この課題を簡単に終わらせます。",
-    from: s(12.4),
-    durationInFrames: s(1.7),
-  },
-  // 文3: 15.16–22.42（内部の間 18.91–19.56 で切替）
-  {
-    id: "l3a",
-    text: "移転が完了したら\n前の管理者の無料アクセスはそこで終了。",
-    from: s(15.15),
-    durationInFrames: s(3.75),
-  },
-  {
-    id: "l3b",
-    text: "企業が買った利用権は、\n期限まで有効なまま。",
-    from: s(19.55),
-    durationInFrames: s(2.85),
-  },
-  // 文4: 23.12–26.20（内部の間なし＝1息。字幕だけ2分割）
-  {
-    id: "l4a",
-    text: "次の利用料はクリエイターと\n新しい管理者へ。",
-    from: s(23.1),
-    durationInFrames: s(1.8),
-  },
-  {
-    id: "l4b",
-    text: "すでに払われた分は、動かしません。",
-    from: s(24.95),
-    durationInFrames: s(1.25),
-  },
-  // 文5: 27.30–31.70
-  {
-    id: "l5a",
-    text: "所有権と利用権を一体に管理し、",
-    from: s(27.3),
-    durationInFrames: s(2.05),
-  },
-  {
-    id: "l5b",
-    text: "TrueCollectiveは\nNFTの真の価値を再定義します。",
-    from: s(29.4),
-    durationInFrames: s(2.3),
-  },
+  { id: "l1a", text: "When brand assets are used by companies,", from: s(0.03), durationInFrames: s(3.5) - s(0.03) },
+  { id: "l1b", text: "access and revenue can get harder to manage", from: s(4.0), durationInFrames: s(6.5) - s(4.0) },
+  { id: "l1c", text: "when the owner changes.", from: s(6.5), durationInFrames: s(8.5) - s(6.5) },
+  { id: "l2a", text: "TrueCollective makes this simple", from: s(9.1), durationInFrames: s(11.03) - s(9.1) },
+  { id: "l2b", text: "by giving NFTs a new role.", from: s(11.03), durationInFrames: s(13.4) - s(11.03) },
+  { id: "l3a", text: "When the NFT moves to a new owner,", from: s(13.97), durationInFrames: s(16.3) - s(13.97) },
+  { id: "l3b", text: "the old owner’s free access ends,", from: s(16.73), durationInFrames: s(19.1) - s(16.73) },
+  { id: "l3c", text: "but paid access stays active until the end date.", from: s(19.53), durationInFrames: s(23.1) - s(19.53) },
+  { id: "l4a", text: "New fees go to the creator and the new owner.", from: s(23.73), durationInFrames: s(27.07) - s(23.73) },
+  { id: "l5a", text: "TrueCollective brings ownership\nand access rights together", from: s(27.4), durationInFrames: s(30.6) - s(27.4) },
+  { id: "l5b", text: "and gives NFTs a new meaning.", from: s(30.6), durationInFrames: s(33.2) - s(30.6) },
 ];
 
-/** 読み方（TTSではなく本人読み用のメモ）。 */
 export const READING_NOTES =
-  "IP＝アイピー、NFT＝エヌエフティー、Creator＝クリエイター、TrueCollective＝トゥルーコレクティブ";
+  "NFT: N-F-T; IP: I-P; TrueCollective: True Collective; HBAR: H-bar.";
 
-/** public/audio/narration.m4a を配置したら hasNarrationAudio を true に。 */
+/** User replaced this file with the English human recording on 2026-09-13. */
 export const NARRATION_AUDIO_SRC = "audio/narration.m4a";

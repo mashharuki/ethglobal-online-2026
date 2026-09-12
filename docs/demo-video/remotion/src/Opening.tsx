@@ -14,21 +14,16 @@ import type { OpeningProps } from "./schema";
 /** クロスフェード長（フレーム）。台本「最後は長く暗転しない」。 */
 const XF = 10;
 
-/**
- * シーン境界（グローバルフレーム）。本人ナレーション（public/audio/narration.m4a、
- * silencedetect で検出した文の切れ目）に合わせた 5段構成 / v4。総尺 975f（32.5s）。
- *  A 問題提起  0.0–9.4s   （文1: 0.97–8.10）
- *  B 連動      9.4–15.1s  （文2: 9.40–14.10）
- *  C 対比      15.1–23.1s （文3: 15.16–22.42）
- *  D 配分      23.1–27.3s （文4: 23.12–26.20）
- *  E 締め      27.3–32.5s （文5: 27.30–31.70）
+/** Scene boundaries aligned to the English recording and its pauses.
+ * 0–9.2s problem; 9.2–13.97s solution; 13.97–23.73s access;
+ * 23.73–27.4s revenue; 27.4–33.6s closing. Audio plays at original speed.
  */
 const BOUNDS = [
-  { key: "problem", start: 0, end: 282 },
-  { key: "couple", start: 282, end: 453 },
-  { key: "contrast", start: 453, end: 693 },
-  { key: "revenue", start: 693, end: 819 },
-  { key: "close", start: 819, end: 975 },
+  { key: "problem", start: 0, end: 276 },
+  { key: "couple", start: 276, end: 419 },
+  { key: "contrast", start: 419, end: 712 },
+  { key: "revenue", start: 712, end: 822 },
+  { key: "close", start: 822, end: 1008 },
 ] as const;
 
 export const Opening: React.FC<OpeningProps> = ({
@@ -69,7 +64,7 @@ export const Opening: React.FC<OpeningProps> = ({
         return (
           <Sequence
             key={b.key}
-            name={`シーン ${b.key}`}
+            name={`Scene ${b.key}`}
             from={from}
             durationInFrames={end - from}
           >
@@ -84,7 +79,7 @@ export const Opening: React.FC<OpeningProps> = ({
       <SubtitleTrack />
 
       {hasNarrationAudio ? (
-        <Audio name="本人ナレーション" src={staticFile(NARRATION_AUDIO_SRC)} />
+        <Audio name="English narration (human recording)" src={staticFile(NARRATION_AUDIO_SRC)} />
       ) : null}
       {hasBgm ? (
         <Audio name="BGM" src={staticFile("audio/bgm.m4a")} volume={0.16} />
