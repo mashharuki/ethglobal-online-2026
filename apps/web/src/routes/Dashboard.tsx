@@ -68,6 +68,12 @@ export default function Dashboard() {
           reload
         </button>
       </div>
+      <p className="text-sm" style={{ color: "var(--text-dim)" }}>
+        One token's full history, indexed for discovery and audit - not the
+        authorization source (the gateway always re-reads the chain). Owner
+        Epoch below moves on every transfer; Receipts keep working independently
+        as long as their transfer mode allows it.
+      </p>
       {error !== undefined && <ErrorNote error={error} />}
       {timeline === undefined ? (
         <p className="card">token #{tokenId} is not indexed (yet)</p>
@@ -79,6 +85,11 @@ export default function Dashboard() {
               title: "Receipts (indexed)",
               body: (
                 <>
+                  <p className="text-sm" style={{ color: "var(--text-dim)" }}>
+                    Each row is one purchased license. SURVIVE keeps working
+                    after an ownership transfer within its own uses/expiry;
+                    INVALIDATE stops the moment the NFT moves.
+                  </p>
                   {timeline.receipts.length === 0 && (
                     <p className="text-sm">none issued</p>
                   )}
@@ -103,6 +114,11 @@ export default function Dashboard() {
               title: "Revenue allocations (indexed)",
               body: (
                 <>
+                  <p className="text-sm" style={{ color: "var(--text-dim)" }}>
+                    One row per settled purchase: owner + creator split at that
+                    moment. A later transfer changes who the <em>next</em> row's
+                    owner share goes to - rows already here never change.
+                  </p>
                   {timeline.allocations.length === 0 && (
                     <p className="text-sm">none yet</p>
                   )}
@@ -124,6 +140,12 @@ export default function Dashboard() {
       )}
 
       <section className="space-y-2">
+        <p className="text-sm" style={{ color: "var(--text-dim)" }}>
+          Paste a live assetId + receiptHash (from Receipts above) and fire{" "}
+          {PARALLELISM} parallel consume attempts against the same use: the
+          correct result is exactly 1 settled and {PARALLELISM - 1} rejected as{" "}
+          <code>RECEIPT_ALREADY_CONSUMED</code>, each within a few seconds.
+        </p>
         <div className="flex flex-wrap gap-2">
           <input
             className="field mono"
@@ -165,6 +187,11 @@ export default function Dashboard() {
           <h3>Gateway audit log</h3>
           <span className="tag warn">GET /audit (allow + deny)</span>
         </div>
+        <p className="text-sm" style={{ color: "var(--text-dim)" }}>
+          Every access decision the gateway made, allow and deny alike, with the
+          on-chain tx it anchored (when there was one) - this is what actually
+          gated each request, not the indexed view above.
+        </p>
         {audit.length === 0 && <p className="text-sm">no entries</p>}
         {audit.map((entry) => (
           <div key={entry.id} className="text-sm mono flex flex-wrap gap-2">
