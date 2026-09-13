@@ -47,6 +47,14 @@ The recorded live MCP flow uses the default **custodial rail**: payment settleme
 anchoring are separate transactions. It is **not** an atomic end-to-end payment; see the
 [trust model](#trust-model-please-read-before-judging) and [verification status](#verification-status).
 
+**Why not just [ERC-5218](https://eips.ethereum.org/EIPS/eip-5218) (NFT Rights Management)?**
+ERC-5218 actually does the opposite of what we need: its root license is defined to automatically
+follow whoever currently owns the NFT, and it says nothing about what happens to sublicenses on
+transfer, payment, or content access. We deliberately decouple ownership from purchased rights
+with two independent epoch counters, add the entire payment/settlement layer (x402 + atomic
+revenue split), and enforce access cryptographically instead of just recording license terms in a
+URI.
+
 ## System architecture
 
 ![TrueCollective system architecture](docs/img/architecture.png)
