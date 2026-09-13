@@ -15,6 +15,8 @@ export default function AssetCard(props: {
   asset: AssetSummary;
   index: number;
   previewHref: string;
+  /** title/description read from the Rights Manifest's preview JSON (best-effort; may be absent) */
+  preview?: { title?: string; description?: string };
   onBuy: () => void;
   buying: boolean;
   buyDisabledReason?: string;
@@ -40,10 +42,15 @@ export default function AssetCard(props: {
       <div className="asset-card-body space-y-3">
         <div>
           <h3 className="asset-card-title" title={asset.assetId}>
-            asset {short(asset.assetId)}
+            {props.preview?.title ?? `asset ${short(asset.assetId)}`}
           </h3>
+          {props.preview?.description !== undefined && (
+            <p className="asset-card-description">
+              {props.preview.description}
+            </p>
+          )}
           {/* apps/e2e/lib/ui.ts's assetCard() locator matches literal "token #<id>" text */}
-          <div className="asset-card-meta">
+          <div className="asset-card-meta" title={asset.assetId}>
             token #{asset.tokenId} · owner{" "}
             {asset.owner === undefined ? (
               <code>?</code>

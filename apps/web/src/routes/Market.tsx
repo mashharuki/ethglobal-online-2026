@@ -33,6 +33,20 @@ const PERMISSION_FILTERS: Array<{ key: PermissionFilter; label: string }> = [
 
 type SortMode = "featured" | "low" | "high";
 
+type AssetPreview = { title?: string; description?: string };
+
+/** The preview JSON is free-form (not part of the validated Rights Manifest schema) - read the
+ * two fields the card can use and ignore everything else, defensively. */
+function parsePreview(value: unknown): AssetPreview {
+  if (value === null || typeof value !== "object") return {};
+  const record = value as Record<string, unknown>;
+  return {
+    title: typeof record.title === "string" ? record.title : undefined,
+    description:
+      typeof record.description === "string" ? record.description : undefined,
+  };
+}
+
 /**
  * Market (tasks.md T111): the Rights Graph listing, preview, "Access as owner" and the x402
  * purchase (native HBAR through the Privy embedded wallet). Redesigned 2026-09 ("premium
@@ -50,6 +64,7 @@ export default function Market() {
   const [currentOwners, setCurrentOwners] = useState<Record<string, string>>(
     {},
   );
+  const [previews, setPreviews] = useState<Record<string, AssetPreview>>({});
   const [error, setError] = useState<unknown>();
   const [buying, setBuying] = useState<string | undefined>();
   const [note, setNote] = useState<string | undefined>();
@@ -89,6 +104,35 @@ export default function Market() {
       active = false;
     };
   }, [assets, config.deployment, publicClient]);
+
+  // Best-effort: the card's title/description come from the same preview JSON the "Preview"
+  // link already points at (IPFS via the gateway's redirect); a slow/unreachable gateway just
+  // falls back to AssetCard's own "asset {hash}" heading, it never blocks the listing.
+  useEffect(() => {
+    if (assets === undefined) return;
+    let active = true;
+    Promise.all(
+      assets.map(async (asset) => {
+        try {
+          const res = await fetch(
+            `${config.gatewayUrl}/assets/${asset.assetId}/preview`,
+          );
+          if (!res.ok) return [asset.assetId.toLowerCase(), {}] as const;
+          return [
+            asset.assetId.toLowerCase(),
+            parsePreview(await res.json()),
+          ] as const;
+        } catch {
+          return [asset.assetId.toLowerCase(), {}] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (active) setPreviews(Object.fromEntries(entries));
+    });
+    return () => {
+      active = false;
+    };
+  }, [assets, config.gatewayUrl]);
 
   const buy = useCallback(
     async (asset: AssetSummary) => {
@@ -260,6 +304,7 @@ export default function Market() {
             asset={asset}
             index={index}
             previewHref={`${config.gatewayUrl}/assets/${asset.assetId}/preview`}
+            preview={previews[asset.assetId.toLowerCase()]}
             onBuy={() => void buy(asset)}
             buying={buying === asset.assetId}
             buyDisabledReason={
