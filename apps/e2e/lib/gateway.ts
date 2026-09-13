@@ -20,10 +20,12 @@ export class GatewayError extends Error {
   override readonly name = "GatewayError";
   readonly status: number;
   readonly code: string;
-  constructor(status: number, code: string, message: string) {
+  readonly body: unknown;
+  constructor(status: number, code: string, message: string, body?: unknown) {
     super(message);
     this.status = status;
     this.code = code;
+    this.body = body;
   }
 }
 
@@ -74,6 +76,7 @@ function fail(status: number, body: unknown): GatewayError {
     status,
     code,
     typeof b.message === "string" ? b.message : `gateway answered ${status}`,
+    body,
   );
 }
 

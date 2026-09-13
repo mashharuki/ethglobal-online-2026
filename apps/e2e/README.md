@@ -20,6 +20,7 @@ talks to a real gateway on Hedera Testnet; nothing is mocked (constitution princ
 | `ownerFlow.e2e.ts` | T100 | SC-001 / SC-008: Privy login → Market → owner unlock in ≤ 3 clicks, `owner_access_ms` |
 | `transfer.e2e.ts` | T101 | SC-003 / FR-015: transfer → old owner refused within 10 s, ciphertext CID unchanged |
 | `buyerFlow.e2e.ts` | T102 | SC-002: x402 purchase (native HBAR) → decrypt, second use within `maxUses`, `buyer_access_ms` |
+| `expiry.e2e.ts` | expiry guard | Real HBAR purchase → one valid use → wait for `expiresAt` → same Receipt with fresh auth is refused without another on-chain consumption |
 | `splitScreen.e2e.ts` | T103 | US3-3: previous owner refused while a SURVIVE licensee keeps decrypting, at the same time |
 | `attacks.e2e.ts` | T116 | Concurrent Replay (20 real parallel calls, `replay_reject_ms`), Chain-ID spoofing, Cross-Resource |
 | `onchain-indexer.e2e.ts` | T058 | script-level transfer / settle / consume and the Graph Node view of each event |
@@ -37,6 +38,7 @@ concurrent replay. `lib/chain.ts` reads epochs and transfers the NFT directly on
 | `WEB_URL`, `GATEWAY_URL` | every spec (absent → skipped) |
 | `RIGHTS_NFT_ADDRESS`, `RIGHTS_REGISTRY_ADDRESS`, `HEDERA_RPC_URL`, `HEDERA_CHAIN_ID` (296 default), `HEDERA_MIRROR_URL` | node-side signing and chain reads. `HEDERA_CHAIN_ID` also selects the seeded account file: `wallets.ts` reads `.accounts.<HEDERA_CHAIN_ID>.json` (owner-A / owner-B / buyer keys written by `apps/contracts/scripts/seed.ts`) |
 | `SUBGRAPH_URL` | `onchain-indexer.e2e.ts` (absent → that spec is skipped) |
+| `E2E_EXPIRY_MAX_WAIT_SEC` | `expiry.e2e.ts` maximum wait for a published Receipt to expire (default 420 s; the spec selects the shortest qualifying asset) |
 | `E2E_PRIVY_EMAIL`, `E2E_PRIVY_OTP` | browser specs: a Privy **test account** (dashboard → Test accounts, fixed OTP). Absent → browser specs skip as BLOCKED. The embedded wallet must hold Testnet HBAR for `buyerFlow` |
 
 A skipped spec is reported as skipped, never as passed: the run id is persisted before any
@@ -56,3 +58,19 @@ Known gap (SC-008): `ownerFlow` counts every click from the first page load. The
 OTP login is two clicks, "Access as owner" and "Unlock as owner" two more, so the assertion
 fails until the viewer auto-unlocks when the owner arrives from the Market - tracked for the
 web app, not hidden here.
+
+## Live expiry verification
+
+Verified against the deployed Gateway and Hedera Testnet on **2026-09-13** with
+`expiry.e2e.ts`: **1 passed (5.2 min)**.
+
+- Receipt: `0x55bfa4fd6a28cda23829593a88cff9db302fa3d598dc553cb54fd0db2a06bc19`
+- [Purchase / receipt transaction](https://hashscan.io/testnet/transaction/0xbf70ea462841ea5c1b4423e6d79c5cbf78a4f76c77ebef6691b0afefe310b0aa)
+- [First consumption transaction](https://hashscan.io/testnet/transaction/0xb00c8b1951abd40e4ee6f498b455c3cd3be8cdae6e8e70906cb07722bf2d9c83)
+- [Public audit log](https://truecollective-gateway.avp-104-106-107-a78.workers.dev/audit?limit=10):
+  the same Receipt was allowed once, then denied with `RECEIPT_EXPIRED` after its on-chain
+  `expiresAt` boundary.
+
+The expiry attempt used a newly issued authentication challenge. The test also confirmed that
+the denial returned no key material, kept `usedCount` at 1, and left the next `useIndex`
+unconsumed on Hedera.

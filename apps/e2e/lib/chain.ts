@@ -22,6 +22,8 @@ const rightsRegistryAbi = parseAbi([
   "function licenseEpoch(uint256 tokenId) view returns (uint256)",
   "function claimable(address account) view returns (uint256)",
   "function claim()",
+  "function receiptStatus(bytes32 receiptHash) view returns (bool issued, uint256 tokenId, uint256 licenseEpochAtIssue, uint256 ownerEpochAtIssue, address licensee, uint8 transferMode, uint32 maxUses, uint32 usedCount, uint64 expiresAt)",
+  "function isConsumed(bytes32 receiptHash, uint32 useIndex) view returns (bool)",
 ]);
 
 export type Deployment = { rightsNFT: Address; rightsRegistry: Address };
@@ -73,6 +75,48 @@ export async function readEpochs(
     }),
   ]);
   return { owner, accessEpoch, licenseEpoch };
+}
+
+export type ReceiptState = {
+  issued: boolean;
+  maxUses: number;
+  usedCount: number;
+  expiresAt: bigint;
+};
+
+/** Authoritative receipt counters and expiry read directly from Hedera Testnet. */
+export async function readReceiptState(
+  client: PublicClient,
+  deployment: Deployment,
+  receiptHash: Hex,
+): Promise<ReceiptState> {
+  const status = await client.readContract({
+    address: deployment.rightsRegistry,
+    abi: rightsRegistryAbi,
+    functionName: "receiptStatus",
+    args: [receiptHash],
+  });
+  return {
+    issued: status[0],
+    maxUses: status[6],
+    usedCount: status[7],
+    expiresAt: status[8],
+  };
+}
+
+/** Whether a concrete use index was actually consumed on Hedera Testnet. */
+export function readIsConsumed(
+  client: PublicClient,
+  deployment: Deployment,
+  receiptHash: Hex,
+  useIndex: number,
+): Promise<boolean> {
+  return client.readContract({
+    address: deployment.rightsRegistry,
+    abi: rightsRegistryAbi,
+    functionName: "isConsumed",
+    args: [receiptHash, useIndex],
+  });
 }
 
 /** `safeTransferFrom(from, to, tokenId)` signed by `from`; resolves once mined. */
