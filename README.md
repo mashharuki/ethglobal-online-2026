@@ -316,8 +316,8 @@ Skipped or blocked tests must not be reported as passed; see the [E2E prerequisi
 - Before the event: the design and spec documents under `specs/` and `.specify/` (written
   2026-09-02 → 03 with Spec Kit — disclosed here in full; whether pre-event spec-driven design
   falls under the AI policy's allowance for spec-driven work or under the From Scratch rule is a
-  call for the organizers, see `docs/submission/prize-requirements.md` §4), the `.claude/` agent
-  configuration, and public boilerplate copied from the `hedra-sample` collection of Hedera
+  call for the organizers), the `.claude/` agent configuration, and public boilerplate copied
+  from the `hedra-sample` collection of Hedera
   examples: `hardhat-erc-721-mint` (the base of `apps/contracts`' Hardhat config and the first
   mint script), `hedera-subgraph-example` (the base of `apps/subgraph`'s manifest, mappings
   pattern and Graph Node docker-compose, and of `apps/cdk`'s EC2 stack), and an x402 + Privy web

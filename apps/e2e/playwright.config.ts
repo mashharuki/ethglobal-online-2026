@@ -29,6 +29,12 @@ export default defineConfig({
   testDir: ".",
   testMatch: /.*\.e2e\.ts/,
   fullyParallel: false,
+  // Spec files share a handful of seeded demo wallets against one live, rate-limited gateway
+  // (120/min per IP, 30/min per wallet - apps/gateway/src/index.ts). Running spec files
+  // concurrently lets one file's calls exhaust another's budget, failing tests with
+  // RATE_LIMITED instead of the condition under test. One worker keeps the live suite
+  // deterministic; nothing here is testing true multi-client concurrency across files.
+  workers: 1,
   retries: 0,
   reporter: [["list"], ["json", { outputFile: "test-results/results.json" }]],
   use: {

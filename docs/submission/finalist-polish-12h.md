@@ -16,7 +16,7 @@
 
 | 順位 | 確認した事実・根拠の種類 | 作業と完了条件 | 目安 |
 |---|---|---|---|
-| P0 | 公開Dashboardのtoken #1のOwner Epoch履歴はmintのみ。Receipt・0.07 HBAR owner / 0.03 HBAR creatorの分配履歴は表示された。UI実見でありオンチェーン全履歴の断定ではない。動画台本 `docs/demo-video/opening-30s-en.md:59` も非所有者拒否画像だけではtransfer証明にならないと明記。 | 同一NFT・同一SURVIVE Receiptについて、移転前成功→移転Tx→旧Owner拒否→新Owner成功→既存購入者成功→移転後の新規購入による新Ownerへの配賦を記録。過去配賦は変わらないことも示す。 | 3〜4h |
+| P0 | 公開Dashboardのtoken #1のOwner Epoch履歴はmintのみ。Receipt・0.07 HBAR owner / 0.03 HBAR creatorの分配履歴は表示された。UI実見でありオンチェーン全履歴の断定ではない。動画制作メモ `docs/demo-video/remotion/README.md:24` も非所有者拒否画像だけではtransfer証明にならないと明記。 | 同一NFT・同一SURVIVE Receiptについて、移転前成功→移転Tx→旧Owner拒否→新Owner成功→既存購入者成功→移転後の新規購入による新Ownerへの配賦を記録。過去配賦は変わらないことも示す。 | 3〜4h |
 | P0 | ShowcaseのProject Descriptionに “We plan to implement” / “we aim to combine” が残る。公開本文確認。README:23/112/127の未検証記述と189〜197の実MCP成功記録が矛盾。文書確認。 | 実装済み・実測済み・未検証を分け、実測済み機能だけ現在形へ。README冒頭にLive app・動画・再現手順・証跡。検証日・rail・Tx・残る制約を一表にする。未検証を一括で完了扱いにしない。 | 1h |
 | P1 | Marketの商品名は `asset 0x342f…35ee` 等。公開UI確認。ShowcaseはキャラクターIP事業、Marketはデータ、README実証は合成カフェデータ。文書・UI確認。 | 現在のデータ販売実証を主語に揃え、IP事業は応用例とする。実メタデータに基づく商品名・説明・買って答えられる問いを表示。合成データであることを明示。ハッシュは詳細へ。 | 1〜2h |
 | P1 | Dashboardはepoch・Receipt・収益・生ログを読んで関係を推測する必要がある。UI・コード確認。 | 旧Owner／新Owner／既存Licenseeの状態を同一資産で比較できる導線。実測時刻・Txへのリンクを付ける。記録の再生ならライブと区別する。認可判定をindexerに移さない。 | 1〜2h |
@@ -66,7 +66,7 @@
 - 旧Ownerの拒否が署名不正や期限切れに起因すると、移転による失効の証明にならない。移転前に成功した有効なセッションを使い、拒否理由を確認する。
 - SURVIVEを示す際は移転後に再購入しない。同一Receipt、licenseEpoch、期限、残回数を示す。
 - 実決済railがcustodialなら、決済とReceipt記録全体を単一Txで原子的だと表現しない。
-- Privy signer/quorumの署名要求者制御と、Gatewayが強制する支出額制限を区別する。`docs/submission/prize-requirements.md` §3に現時点の確認範囲が記載されている。
+- Privy signer/quorumの署名要求者制御と、Gatewayが強制する支出額制限を区別する。README.md「Trust model」節の "MCP wallet" 項目に現時点の確認範囲が記載されている。
 - 復号済みデータの回収や法的著作権の移転は主張しない。停止するのは以後のGatewayアクセス。
 - 20並列デモはReceipt残回数とリクエスト内容に応じて期待値を定義する。「必ず1成功19拒否」と無条件に言わない。
 

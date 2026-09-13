@@ -219,13 +219,13 @@ Agent が自律で：`discover`（subgraph）→ `purchase`（x402、実ネイ�
 
 | DoD | 対応する検証 | 状態（2026-09-06） |
 |---|---|---|
-| 1. 発明が一文で説明できる | デモ 0:20、`plan.md` Summary | ✅ README 冒頭・`docs/submission/showcase.md` の Tagline |
+| 1. 発明が一文で説明できる | デモ 0:20、`plan.md` Summary | ✅ README 冒頭の Tagline（"Transfer the NFT. Keep eligible paid access valid. Route future revenue to the new owner."） |
 | 2. Ethereum（Hedera）の必然性 | `accessEpoch` は `_update` のみ、権利 anchor ＝決済 tx（R-2 primary。**不成立時は `finalize` 経路。いずれも `_update` 限定で必然性は保たれる**） | ✅ `RightsNFT._update` override と `RightsRegistry.settleAndIssue{value}` は contract suite で検証。レール（primary / custodial / fallback）の確定は day1 probe T020 待ち |
 | 3. 既存作との差が明確 | KeyGate（再暗号化不要）＋ 二層 epoch の並置デモ（1:10） | 🟡 KeyGate と二層 epoch は gateway suite で検証済み。並置デモ（`splitScreen.e2e.ts`）はデプロイ先が無く skip |
 | 4. 実装が本物 | SC-009（モック不在監査 + CI 実 Testnet ジョブ） | 🟡 `AUDIT_STRICT=1 bash scripts/audit-no-mocks.sh` が 5 core path 全 pass（PR #25）。実 Testnet ジョブは CI 配置と `HEDERA_OPERATOR_KEY` 待ち＝**ライブ未** |
 | 5. 攻撃に耐える | SC-004（14 行 ＝ 拒否 13 + 正常系 1）、SC-005 | 🟡 contract 層の `AdversarialMatrix.t.sol` と gateway 層の adversarial / 20 並列 replay suite は green。実デプロイに対する `attacks.e2e.ts`（T116）は skip |
-| 6. Sponsor 統合が深い | **submit 3 枠：Hedera「AI & Agentic Payments」（x402 ゲートを Hedera で実ホスト・Blocky402）／ Privy「Best Financial Flow」（決済フローの中核）／ Privy「Best B2B Financial Product」（MCP 決済ウォレットの Privy server wallet + per-session spend cap ＋ per-principal 委任ウォレットの signer quorum / authorization key）**。Rights Graph（自前 Graph Node）は Agent 発見・監査で load-bearing だが Graph の賞には submit しない（Hedera が Subgraph Studio 非対応、R-5） | 🟡 統合はコードとして存在しローカル検証済み。Hedera 実ホスト・HashScan verify・Privy 実ログインは**ライブ未**。B2B 枠の「Privy control」の設計判断は解消済み（signer quorum + authorization key を採用・実装済み、`docs/submission/prize-requirements.md` §3）。ここも上記と同じ「実デプロイ・実 Privy App credentials」待ちのライブ未枠＝authorization signature 欠如時に Privy が実際に拒否することのライブ実測が残る |
-| 7. 提出が透明 | README に信頼モデル段落（`docs/idea.md` §9.1）・**事前作業の明示的開示（`hedra-sample` 含む）**・AI 使用・Git 履歴（実装コミットは 09-04 以降）・提出動画は規定準拠（T127） | 🟡 README の信頼モデル / 事前作業開示 / AI 使用は記載済み。From Scratch 自己監査は 09-04 より前の初回コミット 0 件を実測（`docs/submission/prize-requirements.md` §4）。**動画（T127）は未**。ライブ未検証項目を README で skip 明示している限り「透明」は保てるが、✅ は動画と最終監査の後 |
+| 6. Sponsor 統合が深い | **submit 3 枠：Hedera「AI & Agentic Payments」（x402 ゲートを Hedera で実ホスト・Blocky402）／ Privy「Best Financial Flow」（決済フローの中核）／ Privy「Best B2B Financial Product」（MCP 決済ウォレットの Privy server wallet + per-session spend cap ＋ per-principal 委任ウォレットの signer quorum / authorization key）**。Rights Graph（自前 Graph Node）は Agent 発見・監査で load-bearing だが Graph の賞には submit しない（Hedera が Subgraph Studio 非対応、R-5） | ✅ Hedera 実ホスト・デプロイ・2026-09-08 のライブ MCP 実行（README「Recorded live run」）で検証済み。B2B 枠の「Privy control」の設計判断は解消済み（signer quorum + authorization key を採用・実装済み、README「Trust model」節 "MCP wallet" 項目）。残るのは mandatory-auth cutover（`MCP_AUTH_REQUIRED=true`）後の live 拒否実測（同節に記載） |
+| 7. 提出が透明 | README に信頼モデル段落（`docs/idea.md` §9.1）・**事前作業の明示的開示（`hedra-sample` 含む）**・AI 使用・Git 履歴（実装コミットは 09-04 以降）・提出動画は規定準拠（T127） | 🟡 README の信頼モデル / 事前作業開示（README「Prior work and disclosure」節：`apps/` `packages/` の初回コミットはすべて 09-05 以降と `git log --reverse` で確認済み）/ AI 使用は記載済み。**動画（T127）は未完成**（`docs/submission/finalist-polish-12h.md` 参照）。ライブ未検証項目を README で skip 明示している限り「透明」は保てるが、✅ は動画と最終監査の後 |
 
 ---
 

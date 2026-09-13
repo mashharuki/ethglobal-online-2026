@@ -1,6 +1,6 @@
 # TrueCollective — English opening (Remotion)
 
-English production script: [opening-30s-en.md](../opening-30s-en.md). Original Japanese script: [opening-30s-ja.md](../opening-30s-ja.md).
+The narrated English script is the source of truth in [`src/narration.ts`](src/narration.ts)'s `SUBTITLE_CUES`; scene boundaries are `BOUNDS` in [`src/Opening.tsx`](src/Opening.tsx). The original standalone script documents (`opening-30s-en.md` / `opening-30s-ja.md`) have been superseded by the code and removed.
 
 The English version preserves the original message, five scenes, screenshots, dark theme, logo, and animations: **1920×1080 / 30 fps / 1008 frames (33.6 seconds)**. Headlines, subtitles, diagram labels, captions, and missing-footage instructions are in English.
 

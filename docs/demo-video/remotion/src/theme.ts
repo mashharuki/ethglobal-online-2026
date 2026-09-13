@@ -2,7 +2,7 @@
  * TrueCollective 30秒オープニングの制作定数。
  *
  * 色は apps/web/src/css/index.css のダークテーマ（"premium marketplace" direction）を継承する。
- * 台本: docs/demo-video/opening-30s-ja.md 「映像制作の指定」。
+ * 台本: src/narration.ts の SUBTITLE_CUES（旧 docs/demo-video/opening-30s-ja.md は廃止・統合済み）。
  */
 
 export const FPS = 30;

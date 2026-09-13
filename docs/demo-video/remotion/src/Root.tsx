@@ -5,7 +5,7 @@ import { openingDefaults, openingSchema } from "./schema";
 import { DURATION_IN_FRAMES, FPS, HEIGHT, WIDTH } from "./theme";
 
 /** English opening: 1920×1080 / 30 fps / 1008 frames.
- * Script: docs/demo-video/opening-30s-en.md.
+ * Script: src/narration.ts (SUBTITLE_CUES).
  * Inspection frames: 190, 390, 620, 750, 930.
  */
 export const RemotionRoot: React.FC = () => {
