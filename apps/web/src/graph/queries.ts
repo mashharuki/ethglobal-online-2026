@@ -75,6 +75,9 @@ export type EpochLaneEvent = {
   epoch: number;
   blockNumber: number;
   label: string;
+  /** owner-lane events only: the raw addresses `label` was built from, for linking to HashScan */
+  from?: string;
+  to?: string;
 };
 
 /**
@@ -88,6 +91,8 @@ export function toEpochLanes(timeline: TokenTimeline): EpochLaneEvent[] {
     blockNumber: Number(t.blockNumber),
     label:
       i === 0 ? `mint -> ${short(t.to)}` : `${short(t.from)} -> ${short(t.to)}`,
+    from: i === 0 ? undefined : t.from,
+    to: t.to,
   }));
   const license = timeline.licenseEpochChanges.map((c) => ({
     lane: "license" as const,

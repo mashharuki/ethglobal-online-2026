@@ -2,6 +2,7 @@ import type { AssetSummary } from "../api/client";
 import { short } from "../graph/queries";
 import { useAssetMotion } from "../lib/useAssetMotion";
 import AssetArt from "./AssetArt";
+import ExplorerLink from "./ExplorerLink";
 import PricePanel from "./PricePanel";
 
 /**
@@ -44,7 +45,13 @@ export default function AssetCard(props: {
           {/* apps/e2e/lib/ui.ts's assetCard() locator matches literal "token #<id>" text */}
           <div className="asset-card-meta">
             token #{asset.tokenId} · owner{" "}
-            <code title={asset.owner}>{short(asset.owner ?? "?")}</code>
+            {asset.owner === undefined ? (
+              <code>?</code>
+            ) : (
+              <ExplorerLink kind="address" value={asset.owner}>
+                <code title={asset.owner}>{short(asset.owner)}</code>
+              </ExplorerLink>
+            )}
           </div>
         </div>
         <a

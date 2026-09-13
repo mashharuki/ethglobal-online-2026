@@ -5,6 +5,7 @@ import { useGateway } from "../app/gateway";
 import { rightsNftAbi } from "../chain/abi";
 import { mintToken, useEmbeddedWallet, usePublicClient } from "../chain/hooks";
 import ErrorNote from "../components/ErrorNote";
+import ExplorerLink from "../components/ExplorerLink";
 import {
   buildManifest,
   contentHashOf,
@@ -722,13 +723,9 @@ export default function Creator() {
           {minted !== undefined && (
             <p className="text-sm mono">
               minted token #{minted.tokenId?.toString() ?? "?"} ·{" "}
-              <a
-                href={`https://hashscan.io/testnet/transaction/${minted.txHash}`}
-                target="_blank"
-                rel="noreferrer"
-              >
+              <ExplorerLink kind="tx" value={minted.txHash}>
                 {minted.txHash}
-              </a>
+              </ExplorerLink>
             </p>
           )}
         </section>

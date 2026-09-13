@@ -1,6 +1,7 @@
 import { usePrivy } from "@privy-io/react-auth";
 import { NavLink, Outlet } from "react-router";
 import { useEmbeddedWallet, useWalletBalance } from "./chain/hooks";
+import ExplorerLink from "./components/ExplorerLink";
 import { short } from "./graph/queries";
 
 /**
@@ -36,11 +37,13 @@ export default function App() {
           {!ready && <span>loading wallet…</span>}
           {ready && authenticated && (
             <>
-              <code title={wallet.address}>
-                {wallet.address === undefined
-                  ? "no wallet"
-                  : short(wallet.address)}
-              </code>
+              {wallet.address === undefined ? (
+                <code>no wallet</code>
+              ) : (
+                <ExplorerLink kind="address" value={wallet.address}>
+                  <code title={wallet.address}>{short(wallet.address)}</code>
+                </ExplorerLink>
+              )}
               {wallet.address !== undefined && (
                 <span
                   className="text-xs opacity-70"

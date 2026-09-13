@@ -7,6 +7,7 @@ import { useEmbeddedWallet, useSigners } from "../chain/hooks";
 import AttackCounter from "../components/AttackCounter";
 import EpochTimeline from "../components/EpochTimeline";
 import ErrorNote from "../components/ErrorNote";
+import ExplorerLink from "../components/ExplorerLink";
 import { formatHbar } from "../components/formatHbar";
 import SplitScreen from "../components/SplitScreen";
 import {
@@ -15,6 +16,7 @@ import {
   type TokenTimeline,
   toEpochLanes,
 } from "../graph/queries";
+import { isEvmAddress } from "../lib/explorer";
 
 const PARALLELISM = 20;
 
@@ -82,8 +84,11 @@ export default function Dashboard() {
                   )}
                   {timeline.receipts.map((r) => (
                     <div key={r.id} className="text-sm mono">
-                      {short(r.id)} · {short(r.licensee)} · {r.usedCount}/
-                      {r.maxUses} uses ·{" "}
+                      {short(r.id)} ·{" "}
+                      <ExplorerLink kind="address" value={r.licensee}>
+                        {short(r.licensee)}
+                      </ExplorerLink>{" "}
+                      · {r.usedCount}/{r.maxUses} uses ·{" "}
                       <span
                         className={`tag ${r.transferMode === 0 ? "ok" : "warn"}`}
                       >
@@ -103,7 +108,10 @@ export default function Dashboard() {
                   )}
                   {timeline.allocations.map((a) => (
                     <div key={a.id} className="text-sm mono">
-                      block {a.blockNumber}: owner {short(a.owner)}{" "}
+                      block {a.blockNumber}: owner{" "}
+                      <ExplorerLink kind="address" value={a.owner}>
+                        {short(a.owner)}
+                      </ExplorerLink>{" "}
                       {formatHbar(BigInt(a.ownerAmount))} · creator{" "}
                       {formatHbar(BigInt(a.creatorAmount))}
                     </div>
@@ -168,7 +176,19 @@ export default function Dashboard() {
               {entry.outcome}
               {entry.code !== undefined ? ` ${entry.code}` : ""}
             </span>
-            {entry.subject !== undefined && <span>{short(entry.subject)}</span>}
+            {entry.subject !== undefined &&
+              (isEvmAddress(entry.subject) ? (
+                <ExplorerLink kind="address" value={entry.subject}>
+                  {short(entry.subject)}
+                </ExplorerLink>
+              ) : (
+                <span>{short(entry.subject)}</span>
+              ))}
+            {entry.onchainRef !== undefined && (
+              <ExplorerLink kind="tx" value={entry.onchainRef}>
+                {short(entry.onchainRef)}
+              </ExplorerLink>
+            )}
           </div>
         ))}
       </section>

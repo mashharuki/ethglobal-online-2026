@@ -1,4 +1,5 @@
-import type { EpochLaneEvent } from "../graph/queries";
+import { type EpochLaneEvent, short } from "../graph/queries";
+import ExplorerLink from "./ExplorerLink";
 
 /**
  * Two lanes (tasks.md T109): Owner Epoch (bumped by every transfer) and License Epoch (bumped
@@ -30,7 +31,26 @@ export default function EpochTimeline(props: { events: EpochLaneEvent[] }) {
                   className="tag accent"
                   title={`block ${e.blockNumber}`}
                 >
-                  #{e.epoch} {e.label}
+                  #{e.epoch}{" "}
+                  {e.to === undefined ? (
+                    e.label
+                  ) : (
+                    <>
+                      {e.from === undefined ? (
+                        "mint -> "
+                      ) : (
+                        <>
+                          <ExplorerLink kind="address" value={e.from}>
+                            {short(e.from)}
+                          </ExplorerLink>
+                          {" -> "}
+                        </>
+                      )}
+                      <ExplorerLink kind="address" value={e.to}>
+                        {short(e.to)}
+                      </ExplorerLink>
+                    </>
+                  )}
                 </li>
               ))}
             </ol>

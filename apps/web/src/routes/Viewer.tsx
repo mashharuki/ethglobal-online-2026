@@ -14,6 +14,7 @@ import {
 import DatasetView from "../components/DatasetView";
 import EpochTimeline from "../components/EpochTimeline";
 import ErrorNote from "../components/ErrorNote";
+import ExplorerLink from "../components/ExplorerLink";
 import RightsBadge, { type RightsRole } from "../components/RightsBadge";
 import {
   type AccessDeps,
@@ -249,7 +250,14 @@ export default function Viewer() {
           readAtBlock={ownership?.block}
         />
         <div className="text-sm">
-          owner <code title={ownership?.owner}>{ownership?.owner}</code>
+          owner{" "}
+          {ownership === undefined ? (
+            <code>?</code>
+          ) : (
+            <ExplorerLink kind="address" value={ownership.owner}>
+              <code title={ownership.owner}>{ownership.owner}</code>
+            </ExplorerLink>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -314,14 +322,13 @@ export default function Viewer() {
                 <span className="tag ok">
                   use #{unlocked.useIndex + 1} of {asset.paidAccess.maxUses}
                 </span>
-                <a
+                <ExplorerLink
+                  kind="tx"
+                  value={unlocked.onchainTx}
                   className="tag accent"
-                  href={`https://hashscan.io/testnet/transaction/${unlocked.onchainTx}`}
-                  target="_blank"
-                  rel="noreferrer"
                 >
                   consume tx
-                </a>
+                </ExplorerLink>
               </>
             )}
           </div>
