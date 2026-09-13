@@ -162,6 +162,24 @@ This is verified today with real parallelism in the contract suite (Hardhat) and
 (workerd + PGlite); the same burst against the deployed gateway is the pending acceptance
 criterion in `apps/e2e/attacks.e2e.ts`.
 
+That concurrent-replay row is one of a **14-row adversarial matrix** (`specs/001-rights-runtime-mvp/contracts/error-codes.md`
+§10.1: 13 deny rows across 12 unique error codes, plus 1 accept row) exercised as acceptance
+tests, not just documented: reused `(receiptHash, useIndex)`, resource/policy/chain-ID hash
+mismatches, an owner presenting a pre-transfer session after the NFT moved
+(`OWNER_EPOCH_MISMATCH`), a policy update invalidating an in-flight receipt
+(`LICENSE_EPOCH_MISMATCH`), expiry, use-limit, underpayment, and payment-ID replay - twelve rows
+at the contract layer (`apps/contracts/test/AdversarialMatrix.t.sol`), the remaining rows at the
+gateway's EIP-712 / chain-read layer.
+
+The matrix itself came out of a structured multi-model adversarial review (Codex and a second
+reviewer, independently): one of them, not the other, caught that the owner path's
+`POST /owner/keygate` took `assetId` and `tokenId` as two separate client-supplied fields with no
+check that they actually named the same asset - a cross-resource attack the licensee path already
+guarded against but the owner path did not (`research.md` R-11). The fix derives `tokenId` from
+`assetId` server-side (`resolveAsset`, `apps/gateway/src/routes/ownerAccess.ts`) instead of
+trusting the client's value, and is now its own regression test
+(`apps/gateway/test/node/release.test.ts`, "cross-resource signature ... R-11").
+
 ## AI agent through MCP
 
 The gateway hosts an MCP server (Streamable HTTP) with three tools: `discover_assets`,
