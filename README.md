@@ -1,10 +1,34 @@
-# TrueCollective — transfer-coupled rights runtime for NFTs on Hedera
+# 🐳 TrueCollective
 
 ETHGlobal **ETHOnline 2026** submission (2026-09-04 → 2026-09-16, https://ethglobal.com/events/ethonline2026).
 
-**One sentence:** when an NFT is transferred, the *actual right to use the content* (free owner
-access, paid licenses, future revenue) switches with it — atomically at the epoch level, without
-re-encrypting anything — and an AI agent can buy and use that right on its own through MCP.
+**Transfer the NFT. Keep eligible paid access valid. Route future revenue to the new owner.**
+
+[Live app](https://truecollective.pages.dev/market) ·
+[Demo video & ETHGlobal submission](https://ethglobal.com/showcase/truecollective-wha6k) ·
+[Rights dashboard](https://truecollective.pages.dev/dashboard) ·
+[Try the MCP agent flow](#ai-agent-through-mcp) ·
+[Verification & evidence](#verification-status)
+
+TrueCollective is a transfer-coupled rights runtime on Hedera Testnet. A data provider can
+transfer ownership of a digital asset without interrupting customers whose purchased licenses
+allow transfers. The previous owner's free access ends, the new owner's free access starts,
+and new payments allocate revenue to the creator and the new owner. Previously settled
+allocations remain unchanged. An AI client can discover, buy and decrypt the data through MCP.
+
+The demo uses **synthetic Tokyo cafe data**: a recorded Claude Code run bought access for
+**0.1 testnet HBAR**, decrypted nine rows and identified the highest-visitor location.
+See the [recorded run and transaction links](#recorded-live-run-2026-09-08).
+
+## What changes when ownership transfers?
+
+| Right | Before: owner A | After: owner B |
+|---|---|---|
+| Free owner access | A can access | A is revoked; B can access |
+| Existing `SURVIVE_TRANSFER` license | Buyer can access within its terms | Same license remains usable within its expiry, remaining uses and current license policy |
+| Existing `INVALIDATE_ON_TRANSFER` license | Buyer can access within its terms | License is invalidated |
+| Revenue from new purchases | Creator + A | Creator + B |
+| Already-settled revenue | Allocated to the original recipients | Unchanged |
 
 Two independent epoch counters keep ownership and usage in sync:
 
@@ -18,16 +42,16 @@ until their own expiry, invalidates `INVALIDATE_ON_TRANSFER` ones, and reassigns
 to the new owner. Purchases are x402 payments in **native HBAR** settled through the Blocky402
 facilitator and anchored on `RightsRegistry` as an EIP-712 **Rights Receipt** before any key is
 released (settle-before-release); every release is re-derived from chain reads on every request —
-the Rights Graph (subgraph) is discovery and audit only, never an authorization source. Whether
-payment and anchoring share one transaction depends on the rail (see below); the live settlement
-path is not yet verified.
+the Rights Graph (subgraph) is discovery and audit only, never an authorization source.
+The recorded live MCP flow uses the default **custodial rail**: payment settlement and receipt
+anchoring are separate transactions. It is **not** an atomic end-to-end payment; see the
+[trust model](#trust-model-please-read-before-judging) and [verification status](#verification-status).
 
 ## System architecture
 
-![TrueCollective system architecture](docs/architecture.png)
+![TrueCollective system architecture](docs/img/architecture.png)
 
-Editable source: [`docs/architecture.drawio`](docs/architecture.drawio) (draw.io / diagrams.net) —
-also exported as [`docs/architecture.svg`](docs/architecture.svg).
+Editable source: [`docs/architecture.drawio`](docs/architecture.drawio) (draw.io / diagrams.net).
 
 Components are grouped by hosting boundary — **Client** (an autonomous MCP client or the
 `apps/agent` CI harness), **Cloudflare** (`apps/gateway`: Workers + Durable Objects + KV +
@@ -107,9 +131,10 @@ sequenceDiagram
     B->>B: recover K = share_G XOR share_U, decrypt AES-256-GCM locally
 ```
 
-Steps 4–8 describe the default **custodial rail**; the `settleAndIssue{value}` and
-`payFor` + `finalize` rails collapse or move the anchoring step (see the trust model below). None
-of the three is live-verified against the facilitator yet.
+The sequence above describes the default **custodial rail**, used in the
+[recorded live MCP run](#recorded-live-run-2026-09-08). The `settleAndIssue{value}` and
+`payFor` + `finalize` alternatives collapse or move the anchoring step (see the trust model
+below); that run does not verify either alternative against the live facilitator.
 
 1. `GET /assets/{assetId}/paid` → **402** with an x402 v2 `accepts` entry: `scheme: exact`,
    `network: hedera:testnet`, `amount` in tinybar, `payTo`, and the exact Rights Receipt quote
@@ -124,8 +149,8 @@ of the three is live-verified against the facilitator yet.
    binding (`payment_id`, stage, claim) makes retries idempotent. This is the default
    **custodial rail**; the contract also implements the single-transaction
    `settleAndIssue{value}` rail (payment and receipt in one call) and the `payFor` + `finalize`
-   rail, selectable by `SETTLEMENT_MODE`. **None of the three has been exercised against the live
-   facilitator yet** (day-1 probe pending).
+   rail, selectable by `SETTLEMENT_MODE`. **Live evidence here covers the custodial flow only**;
+   live facilitator verification of the two alternatives remains pending.
 4. `POST /keygate/share` (licensee path) → `ReceiptLock` serialises the receipt, `consume` is
    submitted on-chain by the operator queue, and only then the blinded key share is released;
    the client recovers `K = share_G XOR share_U` and decrypts AES-256-GCM locally.
@@ -186,7 +211,7 @@ connection cannot be reused. The demo license expires 300 seconds after purchase
 The gateway's Privy wallet pays, so fund it with testnet HBAR before repeating the demo.
 No Anthropic API key is required by the gateway or this MCP configuration.
 
-Live verification (2026-09-08):
+### Recorded live run (2026-09-08)
 
 - Receipt: `0x5d14b654f06dce23601e4e5916eeac0a93f6542fb3fdc7e0ec4d456122c98bd5`.
 - [Purchase transaction](https://hashscan.io/testnet/transaction/0xcc4e4e96c27f3aa89db1d135410090c43a4e0b646c2c64bfec4a29eb18ebb94b) and
@@ -225,7 +250,9 @@ Stated as precisely as we can (constitution VII):
   between settlement and anchoring the HBAR sits with the facilitator / operator, not in the
   contract. The `payFor` + permissionless `finalize` rail keeps the deposit in `RightsRegistry`
   (non-atomic, non-custodial), and `settleAndIssue{value}` is the single-transaction rail; all
-  three are implemented and selectable, and none is live-verified yet (`apps/gateway/CONFIG.md`).
+  three are implemented and selectable. The recorded live MCP run covers the custodial rail;
+  the other two have no live facilitator verification recorded here
+  ([rail configuration](apps/gateway/CONFIG.md)).
 - **MCP wallet:** OAuth 2.1 (DCR + PKCE S256, `/oauth/*`) is implemented and covered by the
   gateway's unit suite: an authenticated caller signs purchases through their OWN
   Privy-delegated wallet (provisioned at consent, revocable per-principal or all at once,
@@ -262,24 +289,23 @@ Stated as precisely as we can (constitution VII):
 |RightsNFT|[0x3524049309DC3F7f1dE83a8687a55Afa927dAe7A](https://explorer.arkhia.io/testnet/contract/0.0.10391301)|[0x3524049309DC3F7f1dE83a8687a55Afa927dAe7A](https://sourcify.dev/server/repo-ui/296/0x3524049309DC3F7f1dE83a8687a55Afa927dAe7A)|
 |RightsRegistry|[0x18fD81Ef7caA46e104772B23F27351FD8748152b](https://explorer.arkhia.io/testnet/contract/0.0.10403546)|[0x18fD81Ef7caA46e104772B23F27351FD8748152b](https://sourcify.dev/server/repo-ui/296/0x18fD81Ef7caA46e104772B23F27351FD8748152b)|
 
-## Verification status (honest)
+## Verification status
 
-Everything below the network boundary is verified locally and in review: contract test suites,
-gateway (workerd + PGlite) suites incl. the 20-parallel replay, web unit tests, e2e tooling
-tests, agent unit tests, biome / knip / jscpd / typecheck all green, every PR reviewed by a second
-model (GPT-6 Astra via Codex) until clean. CI (`.github/workflows/ci.yml`) runs the same suite on
-every push and PR.
+Evidence summary updated **2026-09-13**. Historical runs are dated below; they do not imply that
+every acceptance scenario has passed against the current deployment.
 
-**Verified live, with a link to check it yourself:** `RightsNFT` and `RightsRegistry` are deployed
-on Hedera Testnet and verified on Sourcify (see the Deployed Contract table above — "Exact Match",
-runtime bytecode). The self-hosted Rights Graph (subgraph) is deployed and reachable at the
-`SUBGRAPH_URL` in `apps/gateway/wrangler.toml`.
+| Scope | Evidence / status | What it does not establish |
+|---|---|---|
+| MCP discovery → purchase → decryption → analysis | **Recorded live, 2026-09-08:** 0.1 testnet HBAR, receipt issuance and consumption, nine decrypted rows and Claude Code's answer. [Receipt and transaction links](#recorded-live-run-2026-09-08). | Full `apps/agent` CI acceptance, browser purchase flow, or either alternative payment rail. The run predates the mandatory OAuth cutover. |
+| Contracts | Deployed on Hedera Testnet; previously verified on Sourcify. [Addresses and verification links](#deployed-contract). | A complete deployed end-to-end test run. |
+| Public web and Rights Graph | **Observed 2026-09-13:** Market displayed two assets; Dashboard token #1 displayed receipts and creator/owner revenue allocations. [Open dashboard](https://truecollective.pages.dev/dashboard). | Indexed views are not authorization evidence. Browsing an existing wallet session does not verify a fresh Privy login or purchase. |
+| Transfer-coupled rights | Acceptance scenarios are defined in the [E2E suite](apps/e2e/README.md): old-owner rejection, surviving paid access, and the full demo flow. | The purchase/consume run above is not proof of the complete transfer scenario; a dated deployed run covering all transitions remains to be recorded here. |
+| Local tests and quality checks | [CI workflow](.github/workflows/ci.yml) includes contract/gateway/web/agent tests, real-Postgres concurrency, type checks and lint/audits. [CI runs](https://github.com/mashharuki/ethglobal-online-2026/actions/workflows/ci.yml). | A green quality job is not proof of live Hedera, browser, Newman or agent acceptance. Live jobs require their configured credentials and services. |
+| OAuth and Privy controls | Delegated-wallet authentication is implemented; checked-in configuration keeps `MCP_AUTH_REQUIRED=false`. [Configuration and cutover steps](apps/gateway/CONFIG.md). | Mandatory-auth cutover and live Privy rejection of missing/invalid authorization signatures are not verified by the recorded demo. Spend limits are gateway-enforced. |
 
-The demo seed data, Gateway Worker, Web Pages site and self-hosted Rights Graph are live. A real
-MCP run completed `discover_assets → buy_access → decrypt_content` with a 0.1 HBAR Testnet
-payment, on-chain Receipt issuance and consumption. The Pages origin is allowed by Privy and the
-login UI loads in the deployed site. Remaining live checks are the interactive Privy wallet flow
-and the full deployed Playwright / Newman suites.
+Remaining live acceptance evidence includes the full transfer flow, a fresh interactive Privy
+wallet purchase, deployed replay/Playwright/Newman checks, and the autonomous CI harness run.
+Skipped or blocked tests must not be reported as passed; see the [E2E prerequisites](apps/e2e/README.md).
 
 ## Prior work and disclosure (ETHOnline rules)
 
@@ -304,5 +330,7 @@ and the full deployed Playwright / Newman suites.
 
 Hedera "AI & Agentic Payments" (x402-gated service on Hedera Testnet through Blocky402, native
 HBAR), Privy "Best Financial Flow" (embedded wallet at the core of the payment flow), Privy "Best
-B2B Financial Product" (MCP payment wallet under Privy session signer + spend policy). The Graph
+B2B Financial Product" (Privy server wallets; delegated signer/quorum controls implemented,
+mandatory-auth cutover and live rejection verification pending; spending limits enforced by the
+gateway). The Graph
 track is intentionally not entered (self-hosted node, Hedera unsupported by Subgraph Studio).
