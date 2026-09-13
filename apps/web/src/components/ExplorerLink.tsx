@@ -16,12 +16,15 @@ export default function ExplorerLink(props: {
     props.kind === "address"
       ? hashscanAddressUrl(props.value)
       : hashscanTxUrl(props.value);
+  const className = ["explorer-link", props.className]
+    .filter(Boolean)
+    .join(" ");
   return (
     <a
       href={href}
       target="_blank"
       rel="noreferrer"
-      className={props.className}
+      className={className}
       title={props.title}
     >
       {props.children}

@@ -224,6 +224,23 @@ code {
   color: var(--deny);
 }
 
+/* Wallet address / tx hash links to HashScan (ExplorerLink) - Tailwind's preflight strips the
+   browser's default link underline/color, and <code> sets its own text color, so both need to
+   be reinstated explicitly here for the link to read as clickable. */
+.explorer-link {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+.explorer-link:not(.tag),
+.explorer-link:not(.tag) code {
+  color: var(--accent);
+}
+.explorer-link:not(.tag):hover,
+.explorer-link:not(.tag):hover code {
+  color: var(--accent-strong);
+}
+
 /* ---- Creator: local encryption drop zone ---- */
 
 .creator-upload-intro {
